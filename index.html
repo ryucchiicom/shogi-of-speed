@@ -179,8 +179,8 @@
 <body>
   <div id="app">
     <div class="panel" id="topbar">
-      <input id="roomInput" maxlength="12" placeholder="ROOM CODE（空なら自動生成）" />
-      <button class="primary" id="connectBtn">入室 / 作成</button>
+      <input id="roomInput" maxlength="12" placeholder="ROOM CODE" />
+      <button class="primary" id="enterBtn">入室 / 作成</button>
       <button id="copyBtn">コードコピー</button>
       <label class="pill">操作
         <select id="modeSelect">
@@ -208,8 +208,8 @@
     </div>
 
     <div class="panel" id="hint">
-      相手が来るまでは駒を動かせないよ。白側は盤面だけ反転する。<br>
-      移動先は●で出る。クールダウンの円は毎フレーム更新される。
+      相手が来るまで駒は動かせない。白側は盤面が反転する。<br>
+      移動先は●で表示。クールダウンは3秒。
     </div>
   </div>
 
@@ -236,14 +236,14 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    try { getAnalytics(app); } catch (e) {}
+    try { getAnalytics(app); } catch {}
     const db = getFirestore(app);
 
     const boardCanvas = document.getElementById("board");
     const ctx = boardCanvas.getContext("2d");
 
     const roomInput = document.getElementById("roomInput");
-    const connectBtn = document.getElementById("connectBtn");
+    const enterBtn = document.getElementById("enterBtn");
     const copyBtn = document.getElementById("copyBtn");
     const modeSelect = document.getElementById("modeSelect");
     const statusEl = document.getElementById("status");
@@ -251,8 +251,7 @@
     const myHandsEl = document.getElementById("myHands");
     const enemyHandsEl = document.getElementById("enemyHands");
 
-    const SIZE = 9;
-    const COOLDOWN_MS = 1000;
+    const COOLDOWN_MS = 3000;
     const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
@@ -693,16 +692,6 @@
       return { x, y };
     }
 
-    function screenPointToBoardFraction(ev) {
-      const rect = boardCanvas.getBoundingClientRect();
-      const sx = (ev.clientX - rect.left) / rect.width * 9;
-      const sy = (ev.clientY - rect.top) / rect.height * 9;
-      if (getViewSide() === "white") {
-        return { x: 8 - sx, y: 8 - sy };
-      }
-      return { x: sx, y: sy };
-    }
-
     function drawPiece(piece, cell, now, selected) {
       const x = cell.x + cell.size / 2;
       const y = cell.y + cell.size / 2;
@@ -728,13 +717,8 @@
       ctx.closePath();
 
       const grad = ctx.createLinearGradient(cell.x, cell.y, cell.x + s, cell.y + s);
-      if (piece.side === "black") {
-        grad.addColorStop(0, "#d7b68a");
-        grad.addColorStop(1, "#b88d58");
-      } else {
-        grad.addColorStop(0, "#fffaf0");
-        grad.addColorStop(1, "#eadfc8");
-      }
+      grad.addColorStop(0, "#d9ba90");
+      grad.addColorStop(1, "#ba905b");
       ctx.fillStyle = grad;
       ctx.strokeStyle = "rgba(65,45,18,.75)";
       ctx.lineWidth = 2;
@@ -746,12 +730,6 @@
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(pieceText(piece.type), x, y + 1);
-
-      if (piece.type !== baseOf[piece.type]) {
-        ctx.fillStyle = "rgba(220,80,40,.9)";
-        ctx.font = `700 ${Math.max(11, s * 0.16)}px system-ui, sans-serif`;
-        ctx.fillText("+", x + s * 0.17, y - s * 0.16);
-      }
 
       const remain = Math.max(0, piece.cooldownUntil - now);
       if (remain > 0) {
@@ -774,10 +752,7 @@
     }
 
     function renderFrame() {
-      if (!state.boardReady) {
-        requestAnimationFrame(renderFrame);
-        return;
-      }
+      if (!state.boardReady) return;
 
       const rect = boardCanvas.getBoundingClientRect();
       const w = rect.width;
@@ -787,12 +762,12 @@
 
       ctx.clearRect(0, 0, w, h);
 
-      for (let by = 0; by < 9; by++) {
-        for (let bx = 0; bx < 9; bx++) {
-          const s = boardToScreen(bx, by);
-          const light = (bx + by) % 2 === 0;
+      for (let sy = 0; sy < 9; sy++) {
+        for (let sx = 0; sx < 9; sx++) {
+          const board = screenToBoard(sx, sy);
+          const light = (board.x + board.y) % 2 === 0;
           ctx.fillStyle = light ? "#edd9b3" : "#e0c390";
-          ctx.fillRect(s.x * cell, s.y * cell, cell, cell);
+          ctx.fillRect(sx * cell, sy * cell, cell, cell);
         }
       }
 
@@ -874,16 +849,16 @@
       const rect = boardCanvas.getBoundingClientRect();
       const px = (ev.clientX - rect.left) / rect.width * 9;
       const py = (ev.clientY - rect.top) / rect.height * 9;
-      const x = Math.floor(px);
-      const y = Math.floor(py);
-      if (!isInside(x, y)) return null;
-      return { x, y, px, py };
+      const sx = Math.floor(px);
+      const sy = Math.floor(py);
+      if (!isInside(sx, sy)) return null;
+      return { x: sx, y: sy, px, py };
     }
 
-    function pieceUnderSquare(x, y) {
+    function pieceUnderSquare(screenX, screenY) {
       const live = state.roomData?.state;
       if (!live) return null;
-      const b = screenToBoard(x, y);
+      const b = screenToBoard(screenX, screenY);
       return live.pieces.find(p => p.x === b.x && p.y === b.y) || null;
     }
 
@@ -896,10 +871,10 @@
     }
 
     async function commitSelectionMove(destScreen) {
-      if (!state.roomRef || !state.roomData || !state.selected) return false;
+      if (!state.roomRef || !state.roomData || !state.selected) return;
+      if (!canAct()) return;
 
       const dest = screenToBoard(destScreen.x, destScreen.y);
-      let success = false;
 
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(state.roomRef);
@@ -951,8 +926,6 @@
           if (canPromote(piece.type) && (promotionZone(piece.side, beforeY) || promotionZone(piece.side, dest.y))) {
             piece.type = promotedType(piece.type);
           }
-
-          success = true;
         }
 
         if (state.selected.kind === "hand") {
@@ -974,107 +947,112 @@
             y: dest.y,
             cooldownUntil: now + COOLDOWN_MS
           });
-
-          success = true;
         }
 
-        if (success) {
-          tx.update(state.roomRef, { state: next, updatedAt: now });
-        }
+        tx.update(state.roomRef, { state: next, updatedAt: now });
       }).catch(err => {
         setStatus(`動かせなかった: ${err.message}`);
       });
-
-      return success;
     }
 
-    function buildRoomId() {
-      const typed = normalizeRoomId(roomInput.value);
-      return typed || randRoomId();
-    }
-
-    async function connectOrCreateRoom() {
+    async function enterRoom() {
       try {
-        const roomId = buildRoomId();
-        roomInput.value = roomId;
+        let roomId = normalizeRoomId(roomInput.value);
+        if (!roomId) {
+          roomId = randRoomId();
+          roomInput.value = roomId;
+        }
 
-        if (state.unsub) state.unsub();
+        const ref = doc(db, "rooms", roomId);
+        const snap = await getDoc(ref);
 
-        state.roomId = roomId;
-        state.roomRef = doc(db, "rooms", roomId);
-        state.selected = null;
+        if (!snap.exists()) {
+          await setDoc(ref, makeRoomDoc(state.playerId));
+        }
+
+        await connectRoom(roomId);
+      } catch (err) {
+        setStatus(`入室に失敗した: ${err.message}`);
+      }
+    }
+
+    async function connectRoom(roomId) {
+      roomId = normalizeRoomId(roomId);
+      if (!roomId) return;
+
+      if (state.unsub) state.unsub();
+
+      state.roomId = roomId;
+      state.roomRef = doc(db, "rooms", roomId);
+      state.selected = null;
+      updateMePill();
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(state.roomRef);
+
+        if (!snap.exists()) {
+          tx.set(state.roomRef, makeRoomDoc(state.playerId));
+          return;
+        }
+
+        const data = snap.data() || {};
+        const players = data.players || { black: null, white: null };
+
+        if (players.black === state.playerId || players.white === state.playerId) {
+          tx.update(state.roomRef, { updatedAt: Date.now() });
+          return;
+        }
+
+        if (!players.black) {
+          players.black = state.playerId;
+        } else if (!players.white) {
+          players.white = state.playerId;
+        }
+
+        tx.update(state.roomRef, {
+          players,
+          updatedAt: Date.now()
+        });
+      });
+
+      state.unsub = onSnapshot(state.roomRef, (snap) => {
+        if (!snap.exists()) {
+          setStatus("ルームが見つからないよ。");
+          return;
+        }
+
+        state.roomData = snap.data();
+
+        const players = state.roomData.players || {};
+        state.mySide =
+          players.black === state.playerId ? "black" :
+          players.white === state.playerId ? "white" :
+          "spectator";
+
+        if (state.selected?.kind === "piece") {
+          const stillThere = state.roomData.state?.pieces?.some(p => p.id === state.selected.id);
+          if (!stillThere) state.selected = null;
+        }
+
         updateMePill();
 
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(state.roomRef);
+        const live = state.roomData.state || {};
+        if (live.winner) {
+          setStatus(`勝者は ${live.winner === "black" ? "黒" : "白"} だよ。`);
+        } else if (!players.black || !players.white) {
+          setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
+        } else {
+          const mine = state.mySide === "black" ? "黒"
+                     : state.mySide === "white" ? "白"
+                     : "観戦";
+          setStatus(`ルーム ${state.roomId} に接続中。あなたは ${mine}。`);
+        }
 
-          if (!snap.exists()) {
-            tx.set(state.roomRef, makeRoomDoc(state.playerId));
-            return;
-          }
-
-          const data = snap.data() || {};
-          const players = data.players || { black: null, white: null };
-
-          if (players.black === state.playerId || players.white === state.playerId) {
-            tx.update(state.roomRef, { updatedAt: Date.now() });
-            return;
-          }
-
-          if (!players.black) {
-            players.black = state.playerId;
-          } else if (!players.white) {
-            players.white = state.playerId;
-          }
-
-          tx.update(state.roomRef, {
-            players,
-            updatedAt: Date.now()
-          });
-        });
-
-        state.unsub = onSnapshot(state.roomRef, (snap) => {
-          if (!snap.exists()) {
-            setStatus("ルームが見つからないよ。");
-            return;
-          }
-
-          state.roomData = snap.data();
-
-          const players = state.roomData.players || {};
-          state.mySide =
-            players.black === state.playerId ? "black" :
-            players.white === state.playerId ? "white" :
-            "spectator";
-
-          if (state.selected?.kind === "piece") {
-            const stillThere = state.roomData.state?.pieces?.some(p => p.id === state.selected.id);
-            if (!stillThere) state.selected = null;
-          }
-
-          updateMePill();
-
-          const live = state.roomData.state || {};
-          if (live.winner) {
-            setStatus(`勝者は ${live.winner === "black" ? "黒" : "白"} だよ。`);
-          } else if (!players.black || !players.white) {
-            setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
-          } else {
-            const mine = state.mySide === "black" ? "黒"
-                       : state.mySide === "white" ? "白"
-                       : "観戦";
-            setStatus(`ルーム ${state.roomId} に接続中。あなたは ${mine}。`);
-          }
-
-          refreshHands();
-        });
-
-        setStatus(`ルーム ${roomId} に接続したよ。`);
         refreshHands();
-        renderFrame();
-      } catch (err) {
-        setStatus(`接続に失敗した: ${err.message}`);
-      }
+      });
+
+      setStatus(`ルーム ${roomId} に接続したよ。`);
+      renderFrame();
     }
 
     function clearSelection() {
@@ -1087,16 +1065,20 @@
       const live = state.roomData?.state;
       if (!live || !state.selected) return null;
 
-      const bp = screenPointToBoardFraction(ev);
+      const rect = boardCanvas.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) / rect.width * 9;
+      const py = (ev.clientY - rect.top) / rect.height * 9;
+
       const legal = selectedLegalMoves(live);
       if (!legal.length) return null;
 
       let best = null;
       let bestD = Infinity;
       for (const m of legal) {
-        const dx = (m.x + 0.5) - bp.x;
-        const dy = (m.y + 0.5) - bp.y;
-        const d = dx * dx + dy * dy;
+        const s = boardToScreen(m.x, m.y);
+        const cx = s.x + 0.5;
+        const cy = s.y + 0.5;
+        const d = (cx - px) * (cx - px) + (cy - py) * (cy - py);
         if (d < bestD) {
           bestD = d;
           best = m;
@@ -1116,48 +1098,25 @@
       const mode = modeSelect.value;
 
       if (mode === "tap") {
-        if (clicked) {
-          if (state.selected?.kind === "piece") {
-            const selPiece = state.roomData.state.pieces.find(p => p.id === state.selected.id);
-            const sameSide = selPiece && selPiece.side === clicked.side;
+        if (state.selected) {
+          if (!canAct()) return;
 
-            if (selPiece && selPiece.side === state.mySide && clicked.side !== selPiece.side) {
-              const moved = await commitSelectionMove({ x: sq.x, y: sq.y });
-              if (moved) {
-                clearSelection();
-                return;
-              }
-              state.selected = { kind: "piece", id: clicked.id };
-              refreshHands();
-              renderFrame();
-              return;
-            }
-
-            if (sameSide) {
-              state.selected = { kind: "piece", id: clicked.id };
-              refreshHands();
-              renderFrame();
-              return;
-            }
-
+          if (clicked && state.selected.kind === "piece" && clicked.side === state.mySide) {
             state.selected = { kind: "piece", id: clicked.id };
             refreshHands();
             renderFrame();
             return;
           }
 
-          state.selected = { kind: "piece", id: clicked.id };
-          refreshHands();
-          renderFrame();
+          await commitSelectionMove({ x: sq.x, y: sq.y });
+          clearSelection();
           return;
         }
 
-        if (!state.selected) return;
-        if (!canAct()) return;
-
-        const moved = await commitSelectionMove({ x: sq.x, y: sq.y });
-        if (moved) {
-          clearSelection();
+        if (clicked) {
+          state.selected = { kind: "piece", id: clicked.id };
+          refreshHands();
+          renderFrame();
         }
         return;
       }
@@ -1178,7 +1137,6 @@
 
       const sq = pointToSquare(ev);
       if (!sq) return;
-
       const clicked = pieceUnderSquare(sq.x, sq.y);
       if (clicked) {
         state.selected = { kind: "piece", id: clicked.id };
@@ -1204,8 +1162,8 @@
       if (state.selected && state.dragging && canAct()) {
         const target = getNearestLegalMove(ev);
         if (target) {
-          const moved = await commitSelectionMove(target);
-          if (moved) clearSelection();
+          await commitSelectionMove(target);
+          clearSelection();
         }
       }
 
@@ -1220,7 +1178,7 @@
       state.dragging = false;
     });
 
-    connectBtn.addEventListener("click", connectOrCreateRoom);
+    enterBtn.addEventListener("click", enterRoom);
 
     copyBtn.addEventListener("click", async () => {
       const code = normalizeRoomId(roomInput.value);
@@ -1237,7 +1195,7 @@
     });
 
     roomInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") connectOrCreateRoom();
+      if (e.key === "Enter") enterRoom();
     });
 
     modeSelect.addEventListener("change", () => {
@@ -1252,6 +1210,7 @@
     refreshHands();
     updateMePill();
     renderFrame();
+    setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
   </script>
 </body>
 </html>
