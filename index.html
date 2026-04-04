@@ -1,393 +1,228 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ノーターン将棋オンライン</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <title>Shogi of Speed</title>
   <style>
     :root{
-      --bg:#141414;
-      --panel:rgba(255,255,255,.05);
-      --panel2:rgba(255,255,255,.08);
-      --text:#f2f2f2;
-      --muted:#adadad;
-      --line:#444;
-      --board:#d8b07f;
-      --board2:#c79663;
-      --target:rgba(255, 235, 90, .45);
-      --selected:rgba(90, 180, 255, .35);
-      --good:#71e59a;
-      --bad:#ff8080;
+      --bg:#f6f1e6;
+      --panel:#fffaf0;
+      --ink:#2c2418;
+      --line:#d6c7a8;
+      --accent:#f2c94c;
+      --accent2:#8ab4ff;
+      --danger:#e07a5f;
+      --good:#52b788;
     }
-    *{box-sizing:border-box}
     html,body{
       margin:0;
       padding:0;
-      height:100%;
-      background:linear-gradient(180deg,#0f0f0f,#1b1b1b);
-      color:var(--text);
-      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;
-      -webkit-tap-highlight-color: transparent;
-      user-select:none;
+      background:var(--bg);
+      color:var(--ink);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;
       touch-action:none;
+      user-select:none;
+      -webkit-user-select:none;
+      overscroll-behavior:none;
     }
-    button,input{
-      font:inherit;
-      color:var(--text);
-      border:none;
+    #app{
+      max-width:980px;
+      margin:0 auto;
+      padding:12px;
+      box-sizing:border-box;
+    }
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:16px;
+      box-shadow:0 4px 18px rgba(0,0,0,.05);
+    }
+    #topbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+      padding:10px;
+      margin-bottom:10px;
+    }
+    #roomInput{
+      width:180px;
+      max-width:100%;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      font-size:16px;
+      outline:none;
+      box-sizing:border-box;
+      background:#fff;
+      color:var(--ink);
+    }
+    button, select{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--ink);
+      font-size:15px;
       outline:none;
     }
     button{
       cursor:pointer;
-      background:#2f2f2f;
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:12px;
+    }
+    button.primary{
+      background:linear-gradient(180deg,#fff3bf,#ffe08a);
+      border-color:#d8b84a;
+    }
+    button.good{
+      background:linear-gradient(180deg,#d9f6e8,#b9efd2);
+      border-color:#90d4b0;
+    }
+    button.danger{
+      background:linear-gradient(180deg,#fde2dd,#f7c1b7);
+      border-color:#e6a89b;
+    }
+    button:disabled{
+      opacity:.55;
+      cursor:not-allowed;
+    }
+    #status{
       padding:10px 12px;
-    }
-    button:active{transform:scale(.98)}
-    input{
-      background:#262626;
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:12px;
-      padding:10px 12px;
-      min-width:110px;
-    }
-
-    #app{
-      min-height:100svh;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      padding:12px;
-      padding-bottom:max(12px, env(safe-area-inset-bottom));
-    }
-    .topbar,.statusbar{
-      background:var(--panel);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:18px;
-      padding:10px;
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      align-items:center;
-      justify-content:space-between;
-    }
-    .group{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      align-items:center;
-    }
-    .label{
-      font-size:12px;
-      color:var(--muted);
-      margin-right:2px;
-    }
-    .small{
-      font-size:12px;
-      color:var(--muted);
-    }
-    .primary{background:#355dff}
-    .ghost{background:#343434}
-    .warn{background:#8b5a00}
-    .goodBtn{background:#236f43}
-    .selectedBtn{
-      outline:2px solid rgba(255,255,255,.7);
-    }
-
-    #main{
-      display:grid;
-      grid-template-columns:minmax(170px,1fr) minmax(320px,560px) minmax(170px,1fr);
-      gap:12px;
-      align-items:start;
-      flex:1;
-    }
-    .sidePanel{
-      background:var(--panel);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:18px;
-      padding:10px;
-      min-height:200px;
-    }
-    .panelTitle{
-      font-weight:700;
-      font-size:14px;
       margin-bottom:10px;
+      line-height:1.45;
+      font-size:14px;
     }
-
-    #boardWrap{
-      display:flex;
-      justify-content:center;
-      align-items:flex-start;
-    }
-    #boardShell{
-      width:min(92vw,560px);
-      max-width:100%;
-    }
-    #board{
-      width:100%;
-      aspect-ratio:1/1;
+    #layout{
       display:grid;
-      grid-template-columns:repeat(9,1fr);
-      grid-template-rows:repeat(9,1fr);
-      background:linear-gradient(180deg,var(--board),var(--board2));
-      border:4px solid #4c2d12;
-      border-radius:18px;
-      overflow:hidden;
-      box-shadow:0 16px 50px rgba(0,0,0,.35);
-      position:relative;
-      touch-action:none;
+      grid-template-columns:1fr;
+      gap:10px;
     }
-    .cell{
-      position:relative;
-      border-right:1px solid rgba(70,43,18,.28);
-      border-bottom:1px solid rgba(70,43,18,.28);
+    #handsTop,#handsBottom{
+      padding:10px;
     }
-    .cell:nth-child(9n){border-right:none}
-    .cell:nth-last-child(-n+9){border-bottom:none}
-    .cell.target::after{
-      content:"";
-      position:absolute;
-      inset:8%;
-      border-radius:12px;
-      background:var(--target);
-      pointer-events:none;
-    }
-    .cell.selected::before{
-      content:"";
-      position:absolute;
-      inset:5%;
-      border:3px solid rgba(90,180,255,.95);
-      border-radius:12px;
-      pointer-events:none;
-    }
-
-    .piece{
-      position:absolute;
-      inset:8%;
-      border-radius:14px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:linear-gradient(180deg,#fff2d7,#f0d9b0);
-      color:#25160a;
-      font-weight:800;
-      font-size:clamp(18px, 3vw, 26px);
-      box-shadow:0 3px 0 rgba(0,0,0,.16), inset 0 0 0 1px rgba(100,60,20,.35);
-      overflow:hidden;
-      transform-origin:center center;
-      touch-action:none;
-      border:none;
-    }
-    .piece.white{transform:rotate(180deg)}
-    .piece.cooling::after{
-      content:"";
-      position:absolute;
-      inset:-1px;
-      border-radius:14px;
-      background:conic-gradient(from -90deg,
-        rgba(255,255,255,.95) 0deg,
-        rgba(255,255,255,.95) calc(var(--p,1) * 360deg),
-        rgba(255,255,255,.05) 0deg
-      );
-      -webkit-mask: radial-gradient(circle, transparent 0 63%, #000 64% 100%);
-              mask: radial-gradient(circle, transparent 0 63%, #000 64% 100%);
-      pointer-events:none;
-      opacity:.95;
-    }
-    .piece.inspect{
-      outline:2px solid rgba(255,255,255,.55);
-    }
-
-    .hand{
+    .handRow{
       display:flex;
       flex-wrap:wrap;
       gap:8px;
+      align-items:center;
+    }
+    .handLabel{
+      font-weight:700;
+      min-width:78px;
     }
     .handBtn{
       min-width:68px;
-      padding:10px 10px 8px;
-      border-radius:14px;
-      background:#2d2d2d;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      gap:4px;
+      text-align:center;
       position:relative;
-    }
-    .handBtn .pieceMark{
-      font-size:24px;
-      line-height:1;
+      padding:9px 10px;
     }
     .handBtn .count{
-      font-size:11px;
-      color:#dadada;
+      font-weight:800;
+      margin-left:4px;
     }
-    .handBtn.disabled{
-      opacity:.35;
-      pointer-events:none;
+    .handBtn.selected{
+      outline:3px solid rgba(138,180,255,.9);
+      border-color:#7aa4f5;
     }
-    .handBtn.active{
-      outline:2px solid rgba(255,255,255,.7);
+    .handBtn.canMove{
+      box-shadow:0 0 0 3px rgba(242,201,76,.25) inset;
     }
-
-    .legend{
+    #boardWrap{
+      padding:10px;
       display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin-top:10px;
-      font-size:12px;
-      color:var(--muted);
+      justify-content:center;
+      align-items:center;
     }
-    .tag{
+    canvas{
+      width:min(92vw,720px);
+      height:min(92vw,720px);
+      max-width:720px;
+      max-height:720px;
+      aspect-ratio:1/1;
+      display:block;
+      border-radius:18px;
+      background:#ead7b4;
+      box-shadow:0 8px 24px rgba(0,0,0,.08);
+      touch-action:none;
+    }
+    #hint{
+      padding:10px 12px;
+      font-size:13px;
+      opacity:.85;
+      line-height:1.55;
+    }
+    .row{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .pill{
       display:inline-flex;
       align-items:center;
       gap:6px;
-      padding:6px 10px;
+      padding:7px 10px;
       border-radius:999px;
-      background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.08);
+      border:1px solid var(--line);
+      background:#fff;
+      font-size:13px;
     }
-    .dot{
-      width:10px;
-      height:10px;
-      border-radius:50%;
-      background:#888;
-      display:inline-block;
-    }
-    .dot.blue{background:#7fc8ff}
-    .dot.warn{background:#ffce5c}
-    .dot.good{background:#6ff0a0}
-
-    #status{
-      min-height:44px;
-      display:flex;
-      align-items:center;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-    #statusText{line-height:1.45}
-
-    .modal{
-      position:fixed;
-      inset:0;
-      display:none;
-      align-items:center;
-      justify-content:center;
-      background:rgba(0,0,0,.55);
-      padding:16px;
-      z-index:50;
-    }
-    .modal.show{display:flex}
-    .modalCard{
-      width:min(92vw,360px);
-      background:#232323;
-      border:1px solid rgba(255,255,255,.1);
-      border-radius:18px;
-      padding:14px;
-      box-shadow:0 20px 60px rgba(0,0,0,.45);
-    }
-    .modalCard h3{
-      margin:0 0 8px;
-      font-size:18px;
-    }
-    .modalCard p{
-      margin:0 0 14px;
-      color:#d0d0d0;
-      line-height:1.5;
-      font-size:14px;
-    }
-    .modalActions{
-      display:flex;
-      gap:8px;
-      justify-content:flex-end;
-      flex-wrap:wrap;
-    }
-
-    @media (max-width: 980px){
-      #main{
-        grid-template-columns:1fr;
-      }
-      #boardShell{
-        width:min(96vw,560px);
-      }
-      .sidePanel{order:2}
-      #boardWrap{order:1}
+    .small{
+      font-size:12px;
+      opacity:.8;
     }
   </style>
 </head>
 <body>
   <div id="app">
-    <div class="topbar">
-      <div class="group">
-        <span class="label">部屋コード</span>
-        <input id="roomInput" placeholder="room-001" />
-        <button id="connectBtn" class="primary">接続</button>
+    <div class="panel" id="topbar">
+      <input id="roomInput" maxlength="12" placeholder="ROOM CODE" />
+      <button class="primary" id="createBtn">作成</button>
+      <button class="good" id="joinBtn">参加</button>
+      <button id="copyBtn">コードコピー</button>
+      <label class="pill">操作
+        <select id="modeSelect">
+          <option value="tap">タップ</option>
+          <option value="slide">スライド</option>
+        </select>
+      </label>
+      <span class="pill" id="mePill">未接続</span>
+    </div>
+
+    <div class="panel" id="status">ルームを作成するか、コードを入れて参加してね。</div>
+
+    <div id="layout">
+      <div class="panel" id="handsTop">
+        <div class="handRow" id="enemyHands"></div>
       </div>
-      <div class="group">
-        <span class="label">名前</span>
-        <input id="nameInput" placeholder="player" />
-        <button id="modeBtn" class="ghost">操作: タップ</button>
+
+      <div class="panel" id="boardWrap">
+        <canvas id="board"></canvas>
       </div>
-      <div class="group">
-        <span id="meInfo" class="small">未接続</span>
+
+      <div class="panel" id="handsBottom">
+        <div class="handRow" id="myHands"></div>
       </div>
     </div>
 
-    <div id="main">
-      <div class="sidePanel">
-        <div class="panelTitle">自分の持ち駒</div>
-        <div id="myHand" class="hand"></div>
-        <div class="legend">
-          <span class="tag"><span class="dot blue"></span>選択中</span>
-          <span class="tag"><span class="dot warn"></span>動ける場所</span>
-          <span class="tag"><span class="dot good"></span>1秒クールダウン</span>
-        </div>
-      </div>
-
-      <div id="boardWrap">
-        <div id="boardShell">
-          <div id="board"></div>
-        </div>
-      </div>
-
-      <div class="sidePanel">
-        <div class="panelTitle">相手の持ち駒</div>
-        <div id="oppHand" class="hand"></div>
-        <div class="small" style="margin-top:10px;">
-          敵の駒も選択できて、どう動けるか見られる。<br>
-          でも動かせるのは自分の駒だけ。
-        </div>
-      </div>
-    </div>
-
-    <div class="statusbar">
-      <div id="status">
-        <span class="label">状態</span>
-        <span id="statusText">Firebase に接続すると開始できます。</span>
-      </div>
-    </div>
-  </div>
-
-  <div id="modal" class="modal">
-    <div class="modalCard">
-      <h3>成りますか？</h3>
-      <p id="modalText">この手は成れるよ。</p>
-      <div class="modalActions">
-        <button id="modalNo" class="ghost">成らない</button>
-        <button id="modalYes" class="primary">成る</button>
-      </div>
+    <div class="panel" id="hint">
+      1秒クールダウン中の駒には円が出るよ。敵の駒も選んで、どう動けるか確認できる。<br>
+      ルールは基本の将棋ベースだけど、手軽さ優先で「成り」は自動にしてあるよ。
     </div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
-    import { getDatabase, ref, onValue, runTransaction, onDisconnect } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
+    import {
+      getFirestore,
+      doc,
+      setDoc,
+      getDoc,
+      onSnapshot,
+      runTransaction
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
-    // ===== 君がコピーした Firebase 設定 =====
     const firebaseConfig = {
       apiKey: "AIzaSyC-T-apiQQYpou3f5BdMFjglW7uhF0QEUs",
       authDomain: "shogi-of-speed.firebaseapp.com",
@@ -395,795 +230,991 @@
       storageBucket: "shogi-of-speed.firebasestorage.app",
       messagingSenderId: "161090240863",
       appId: "1:161090240863:web:2f9f54c8fa57fd9fca76ea",
-      measurementId: "G-S9FD32FECD",
-      databaseURL: "https://shogi-of-speed-default-rtdb.asia-southeast1.firebasedatabase.app"
+      measurementId: "G-S9FD32FECD"
     };
 
     const app = initializeApp(firebaseConfig);
-    getAnalytics(app);
-    const auth = getAuth(app);
-    const db = getDatabase(app);
+    try { getAnalytics(app); } catch {}
+    const db = getFirestore(app);
+
+    const boardCanvas = document.getElementById("board");
+    const ctx = boardCanvas.getContext("2d");
 
     const roomInput = document.getElementById("roomInput");
-    const nameInput = document.getElementById("nameInput");
-    const connectBtn = document.getElementById("connectBtn");
-    const modeBtn = document.getElementById("modeBtn");
-    const meInfo = document.getElementById("meInfo");
-    const statusText = document.getElementById("statusText");
-    const boardEl = document.getElementById("board");
-    const myHandEl = document.getElementById("myHand");
-    const oppHandEl = document.getElementById("oppHand");
-    const modalEl = document.getElementById("modal");
-    const modalText = document.getElementById("modalText");
-    const modalYes = document.getElementById("modalYes");
-    const modalNo = document.getElementById("modalNo");
+    const createBtn = document.getElementById("createBtn");
+    const joinBtn = document.getElementById("joinBtn");
+    const copyBtn = document.getElementById("copyBtn");
+    const modeSelect = document.getElementById("modeSelect");
+    const statusEl = document.getElementById("status");
+    const mePill = document.getElementById("mePill");
+    const myHandsEl = document.getElementById("myHands");
+    const enemyHandsEl = document.getElementById("enemyHands");
 
-    const savedRoom = localStorage.getItem("noTurnShogi.room") || "";
-    const savedName = localStorage.getItem("noTurnShogi.name") || "player";
-    const savedMode = localStorage.getItem("noTurnShogi.mode") || "tap";
+    const SIZE = 9;
+    const COOLDOWN_MS = 1000;
+    const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
 
-    roomInput.value = location.hash.replace("#", "") || savedRoom;
-    nameInput.value = savedName;
-
-    const PIECE_NAMES = {
-      king:"玉", rook:"飛", bishop:"角", gold:"金",
-      silver:"銀", knight:"桂", lance:"香", pawn:"歩"
+    const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
+    const typeLabel = {
+      pawn:"歩", lance:"香", knight:"桂", silver:"銀", gold:"金",
+      bishop:"角", rook:"飛", king:"玉",
+      tokin:"と", proLance:"成香", proKnight:"成桂", proSilver:"成銀",
+      horse:"馬", dragon:"龍"
     };
-    const PROMOTED_NAMES = {
-      rook:"龍", bishop:"馬", gold:"金", silver:"全",
-      knight:"圭", lance:"杏", pawn:"と", king:"玉"
+    const baseOf = {
+      pawn:"pawn", lance:"lance", knight:"knight", silver:"silver", gold:"gold",
+      bishop:"bishop", rook:"rook", king:"king",
+      tokin:"pawn", proLance:"lance", proKnight:"knight", proSilver:"silver",
+      horse:"bishop", dragon:"rook"
+    };
+    const promotedTo = {
+      pawn:"tokin", lance:"proLance", knight:"proKnight", silver:"proSilver",
+      bishop:"horse", rook:"dragon"
     };
 
-    let uid = "";
-    let roomId = "";
-    let roomRef = null;
-    let roomData = null;
-    let mySide = "s";
-    let mode = savedMode;
-    let selected = null; // {kind:'board', id} or {kind:'hand', color, type}
-    let legalTargets = [];
-    let pendingPromote = null;
-    let dragging = null;
-    let statusTimer = null;
+    const state = {
+      roomId: "",
+      roomRef: null,
+      unsub: null,
+      playerId: localStorage.getItem("shogi_of_speed_pid") || crypto.randomUUID(),
+      mySide: "spectator",
+      roomData: null,
+      selected: null, // {kind:'piece', id} or {kind:'hand', side, type}
+      drag: null,
+      cachedLegalMoves: [],
+      pointerDown: false,
+      pointerStart: null,
+      boardReady: false
+    };
+    localStorage.setItem("shogi_of_speed_pid", state.playerId);
 
-    function now(){ return Date.now(); }
-    function cleanRoomId(v){
-      return (v || "").trim().replace(/[^a-zA-Z0-9_-]/g,"").slice(0,32);
+    function randRoomId(){
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let s = "";
+      for(let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
+      return s;
     }
 
-    function defaultHands(){
-      const base = { pawn:0, lance:0, knight:0, silver:0, gold:0, bishop:0, rook:0 };
-      return { b:{...base}, w:{...base} };
+    function makeHands(){
+      const obj = {};
+      for (const side of ["black","white"]) {
+        obj[side] = {};
+        for (const t of pieceOrder) obj[side][t] = 0;
+      }
+      return obj;
     }
 
-    function addPiece(list, id, type, color, x, y, promoted=false, cooldownUntil=0){
-      list.push({ id, type, color, x, y, promoted, cooldownUntil });
+    function initialPieces(){
+      const pieces = [];
+      let n = 1;
+      const add = (side, type, x, y) => pieces.push({
+        id: `${side}_${type}_${n++}`,
+        side, type, x, y,
+        cooldownUntil: 0
+      });
+
+      // White top
+      ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t,x)=>add("white",t,x,0));
+      add("white","bishop",1,1);
+      add("white","rook",7,1);
+      for(let x=0;x<9;x++) add("white","pawn",x,2);
+
+      // Black bottom
+      ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t,x)=>add("black",t,x,8));
+      add("black","rook",1,7);
+      add("black","bishop",7,7);
+      for(let x=0;x<9;x++) add("black","pawn",x,6);
+
+      return pieces;
     }
 
-    function initialBoard(){
-      const p = [];
-      addPiece(p,"w-lance-1","lance","w",0,0);
-      addPiece(p,"w-knight-1","knight","w",1,0);
-      addPiece(p,"w-silver-1","silver","w",2,0);
-      addPiece(p,"w-gold-1","gold","w",3,0);
-      addPiece(p,"w-king","king","w",4,0);
-      addPiece(p,"w-gold-2","gold","w",5,0);
-      addPiece(p,"w-silver-2","silver","w",6,0);
-      addPiece(p,"w-knight-2","knight","w",7,0);
-      addPiece(p,"w-lance-2","lance","w",8,0);
-      addPiece(p,"w-rook","rook","w",1,1);
-      addPiece(p,"w-bishop","bishop","w",7,1);
-      for(let x=0;x<9;x++) addPiece(p,`w-pawn-${x+1}`,"pawn","w",x,2);
-
-      addPiece(p,"b-lance-1","lance","b",0,8);
-      addPiece(p,"b-knight-1","knight","b",1,8);
-      addPiece(p,"b-silver-1","silver","b",2,8);
-      addPiece(p,"b-gold-1","gold","b",3,8);
-      addPiece(p,"b-king","king","b",4,8);
-      addPiece(p,"b-gold-2","gold","b",5,8);
-      addPiece(p,"b-silver-2","silver","b",6,8);
-      addPiece(p,"b-knight-2","knight","b",7,8);
-      addPiece(p,"b-lance-2","lance","b",8,8);
-      addPiece(p,"b-rook","rook","b",7,7);
-      addPiece(p,"b-bishop","bishop","b",1,7);
-      for(let x=0;x<9;x++) addPiece(p,`b-pawn-${x+1}`,"pawn","b",x,6);
-      return p;
-    }
-
-    function createInitialRoom(){
+    function freshState(){
       return {
-        createdAt: now(),
-        gameOver: false,
+        pieces: initialPieces(),
+        hands: makeHands(),
         winner: null,
-        board: initialBoard(),
-        hands: defaultHands(),
-        players: {}
+        updatedAt: Date.now(),
+        rev: 0
       };
     }
 
-    function inBoard(x,y){ return x>=0 && x<9 && y>=0 && y<9; }
-    function boardMap(pieces){
-      const m = new Map();
-      for(const p of (pieces || [])) m.set(`${p.x},${p.y}`, p);
-      return m;
-    }
-    function pieceAt(pieces,x,y){
-      return (pieces || []).find(p => p.x === x && p.y === y) || null;
-    }
-    function baseType(piece){
-      if (!piece.promoted) return piece.type;
-      return piece.type;
-    }
-    function displayName(piece){
-      if (!piece) return "";
-      if (piece.promoted) return PROMOTED_NAMES[piece.type] || PIECE_NAMES[piece.type] || "?";
-      return PIECE_NAMES[piece.type] || "?";
+    function isInside(x,y){
+      return x>=0 && x<9 && y>=0 && y<9;
     }
 
-    function isPromotionZone(color, y){
-      return color === "b" ? y <= 2 : y >= 6;
+    function opposite(side){
+      return side === "black" ? "white" : "black";
     }
-    function canPromote(piece, fromY, toY){
-      if (piece.promoted) return false;
-      if (piece.type === "king" || piece.type === "gold") return false;
-      return isPromotionZone(piece.color, fromY) || isPromotionZone(piece.color, toY);
+
+    function forward(side){
+      return side === "black" ? -1 : 1;
     }
-    function isForcedPromotion(piece, toY){
-      if (piece.promoted) return false;
-      if (piece.type === "pawn" || piece.type === "lance") return piece.color === "b" ? toY === 0 : toY === 8;
-      if (piece.type === "knight") return piece.color === "b" ? toY <= 1 : toY >= 7;
+
+    function promotionZone(side, y){
+      return PROMOTION_ZONE[side].includes(y);
+    }
+
+    function demote(type){
+      return baseOf[type] || type;
+    }
+
+    function canPromote(type){
+      return !!promotedTo[baseOf[type] || type];
+    }
+
+    function promotedType(type){
+      return promotedTo[baseOf[type] || type] || type;
+    }
+
+    function pieceText(type){
+      return typeLabel[type] || "?";
+    }
+
+    function cloneState(s){
+      return {
+        pieces: s.pieces.map(p => ({...p})),
+        hands: JSON.parse(JSON.stringify(s.hands)),
+        winner: s.winner || null,
+        updatedAt: s.updatedAt || Date.now(),
+        rev: s.rev || 0
+      };
+    }
+
+    function boardMap(pieces){
+      const map = new Map();
+      for (const p of pieces) map.set(`${p.x},${p.y}`, p);
+      return map;
+    }
+
+    function pieceAt(pieces, x, y){
+      return pieces.find(p => p.x === x && p.y === y);
+    }
+
+    function kingPos(pieces, side){
+      const k = pieces.find(p => p.side === side && p.type === "king");
+      return k ? {x:k.x, y:k.y} : null;
+    }
+
+    function rayMoves(piece, pieces, dirs, maxSteps=99){
+      const out = [];
+      const occ = boardMap(pieces);
+      for (const [dx,dy] of dirs) {
+        for (let step=1; step<=maxSteps; step++){
+          const x = piece.x + dx*step;
+          const y = piece.y + dy*step;
+          if (!isInside(x,y)) break;
+          const hit = occ.get(`${x},${y}`);
+          if (hit) {
+            if (hit.side !== piece.side) out.push({x,y});
+            break;
+          }
+          out.push({x,y});
+        }
+      }
+      return out;
+    }
+
+    function stepMoves(piece, pieces, steps){
+      const out = [];
+      const occ = boardMap(pieces);
+      for (const [dx,dy] of steps){
+        const x = piece.x + dx;
+        const y = piece.y + dy;
+        if (!isInside(x,y)) continue;
+        const hit = occ.get(`${x},${y}`);
+        if (!hit || hit.side !== piece.side) out.push({x,y});
+      }
+      return out;
+    }
+
+    function pseudoMovesForPiece(piece, pieces){
+      const f = forward(piece.side);
+      const type = piece.type;
+
+      if (type === "pawn") return stepMoves(piece,pieces,[[0,f]]);
+      if (type === "lance") return rayMoves(piece,pieces,[[0,f]]);
+      if (type === "knight") return stepMoves(piece,pieces,[[-1,2*f],[1,2*f]]);
+      if (type === "silver") return stepMoves(piece,pieces,[[0,f],[-1,f],[1,f],[-1,-f],[1,-f]]);
+      if (type === "gold" || type === "tokin" || type === "proLance" || type === "proKnight" || type === "proSilver") {
+        return stepMoves(piece,pieces,[[0,f],[-1,f],[1,f],[-1,0],[1,0],[0,-f]]);
+      }
+      if (type === "bishop") return rayMoves(piece,pieces,[[-1,-1],[1,-1],[-1,1],[1,1]]);
+      if (type === "rook") return rayMoves(piece,pieces,[[0,-1],[0,1],[-1,0],[1,0]]);
+      if (type === "king") return stepMoves(piece,pieces,[
+        [0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]
+      ]);
+      if (type === "horse") {
+        const moves = rayMoves(piece,pieces,[[-1,-1],[1,-1],[-1,1],[1,1]]);
+        moves.push(...stepMoves(piece,pieces,[[0,-1],[0,1],[-1,0],[1,0]]));
+        return dedupeMoves(moves);
+      }
+      if (type === "dragon") {
+        const moves = rayMoves(piece,pieces,[[0,-1],[0,1],[-1,0],[1,0]]);
+        moves.push(...stepMoves(piece,pieces,[[-1,-1],[1,-1],[-1,1],[1,1]]));
+        return dedupeMoves(moves);
+      }
+      return [];
+    }
+
+    function dedupeMoves(arr){
+      const seen = new Set();
+      const out = [];
+      for (const m of arr){
+        const k = `${m.x},${m.y}`;
+        if (!seen.has(k)){
+          seen.add(k);
+          out.push(m);
+        }
+      }
+      return out;
+    }
+
+    function isSquareAttacked(pieces, x, y, bySide){
+      for (const p of pieces){
+        if (p.side !== bySide) continue;
+        for (const m of pseudoMovesForPiece(p, pieces)){
+          if (m.x === x && m.y === y) return true;
+        }
+      }
       return false;
     }
 
-    function goldLikeMoves(color){
-      return color === "b"
-        ? [[0,-1],[-1,-1],[1,-1],[-1,0],[1,0],[0,1]]
-        : [[0,1],[-1,1],[1,1],[-1,0],[1,0],[0,-1]];
-    }
-    function silverMoves(color){
-      return color === "b"
-        ? [[0,-1],[-1,-1],[1,-1],[-1,1],[1,1]]
-        : [[0,1],[-1,1],[1,1],[-1,-1],[1,-1]];
-    }
-    function kingMoves(){
-      return [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
+    function isKingInCheck(pieces, side){
+      const kp = kingPos(pieces, side);
+      if (!kp) return true;
+      return isSquareAttacked(pieces, kp.x, kp.y, opposite(side));
     }
 
-    function lineMoves(piece, pieces, dirs){
-      const map = boardMap(pieces);
-      const result = [];
-      for (const [dx, dy] of dirs) {
-        let x = piece.x + dx;
-        let y = piece.y + dy;
-        while (inBoard(x,y)) {
-          const occ = map.get(`${x},${y}`);
-          if (occ) {
-            if (occ.color !== piece.color) result.push({x,y});
-            break;
+    function legalMovesForPiece(stateObj, piece){
+      if (!piece || stateObj.winner) return [];
+      if (piece.cooldownUntil && Date.now() < piece.cooldownUntil) return [];
+
+      const pseudo = pseudoMovesForPiece(piece, stateObj.pieces);
+      const legal = [];
+
+      for (const mv of pseudo){
+        const sim = cloneState(stateObj);
+        const sp = sim.pieces.find(p => p.id === piece.id);
+        if (!sp) continue;
+
+        const occupant = pieceAt(sim.pieces, mv.x, mv.y);
+        if (occupant && occupant.side === sp.side) continue;
+
+        if (occupant) {
+          const capturedBase = demote(occupant.type);
+          sim.pieces = sim.pieces.filter(p => p.id !== occupant.id);
+          sim.hands[sp.side][capturedBase] += 1;
+          if (occupant.type === "king") {
+            legal.push(mv); // king capture ends game, still legal
+            continue;
           }
-          result.push({x,y});
-          x += dx;
-          y += dy;
         }
+
+        sp.x = mv.x;
+        sp.y = mv.y;
+
+        if (canPromote(sp.type) && promotionZone(sp.side, piece.y) || canPromote(sp.type) && promotionZone(sp.side, mv.y)) {
+          sp.type = promotedType(sp.type);
+        }
+
+        if (!isKingInCheck(sim.pieces, sp.side)) legal.push(mv);
       }
-      return result;
+      return legal;
     }
 
-    function legalBoardTargets(piece, pieces){
-      if (!piece) return [];
-      if (piece.color === mySide && piece.cooldownUntil && piece.cooldownUntil > now()) return [];
+    function dropLegalSquares(stateObj, side, type){
+      if (!stateObj || stateObj.winner) return [];
+      const out = [];
+      const occ = boardMap(stateObj.pieces);
+      const f = forward(side);
 
-      const map = boardMap(pieces);
-      const result = [];
-      const f = piece.color === "b" ? -1 : 1;
-
-      const push = (x,y) => {
-        if (!inBoard(x,y)) return;
-        const occ = map.get(`${x},${y}`);
-        if (occ && occ.color === piece.color) return;
-        result.push({x,y});
-      };
-
-      if (piece.promoted) {
-        if (piece.type === "pawn" || piece.type === "lance" || piece.type === "knight" || piece.type === "silver") {
-          goldLikeMoves(piece.color).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
-          return result;
-        }
-        if (piece.type === "bishop") {
-          lineMoves(piece, pieces, [[-1,-1],[1,-1],[-1,1],[1,1]]).forEach(t => result.push(t));
-          kingMoves().filter(d => Math.abs(d[0]) + Math.abs(d[1]) === 1).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
-          return result;
-        }
-        if (piece.type === "rook") {
-          lineMoves(piece, pieces, [[0,-1],[0,1],[-1,0],[1,0]]).forEach(t => result.push(t));
-          kingMoves().filter(d => Math.abs(d[0]) + Math.abs(d[1]) === 2).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
-          return result;
-        }
-      }
-
-      switch(piece.type){
-        case "pawn":
-          push(piece.x, piece.y + f);
-          break;
-        case "lance":
-          lineMoves(piece, pieces, [[0,f]]).forEach(t => result.push(t));
-          break;
-        case "knight":
-          push(piece.x - 1, piece.y + f*2);
-          push(piece.x + 1, piece.y + f*2);
-          break;
-        case "silver":
-          silverMoves(piece.color).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
-          break;
-        case "gold":
-          goldLikeMoves(piece.color).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
-          break;
-        case "king":
-          kingMoves().forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
-          break;
-        case "bishop":
-          lineMoves(piece, pieces, [[-1,-1],[1,-1],[-1,1],[1,1]]).forEach(t => result.push(t));
-          break;
-        case "rook":
-          lineMoves(piece, pieces, [[0,-1],[0,1],[-1,0],[1,0]]).forEach(t => result.push(t));
-          break;
-      }
-      return result;
-    }
-
-    function legalDropTargets(type, color, pieces){
-      const map = boardMap(pieces);
-      const result = [];
-      for(let y=0;y<9;y++){
-        for(let x=0;x<9;x++){
-          if (map.has(`${x},${y}`)) continue;
+      for (let y=0; y<9; y++){
+        for (let x=0; x<9; x++){
+          if (occ.has(`${x},${y}`)) continue;
 
           if (type === "pawn") {
-            const fileHasPawn = pieces.some(p => p.color === color && !p.promoted && p.type === "pawn" && p.x === x);
-            if (fileHasPawn) continue;
-            if (color === "b" && y === 0) continue;
-            if (color === "w" && y === 8) continue;
-          }
-          if (type === "lance") {
-            if (color === "b" && y === 0) continue;
-            if (color === "w" && y === 8) continue;
-          }
-          if (type === "knight") {
-            if (color === "b" && y <= 1) continue;
-            if (color === "w" && y >= 7) continue;
+            let nifu = false;
+            for (const p of stateObj.pieces){
+              if (p.side === side && p.type === "pawn" && p.x === x) { nifu = true; break; }
+            }
+            if (nifu) continue;
+            if ((side === "black" && y === 0) || (side === "white" && y === 8)) continue;
           }
 
-          result.push({x,y});
+          if (type === "lance") {
+            if ((side === "black" && y === 0) || (side === "white" && y === 8)) continue;
+          }
+
+          if (type === "knight") {
+            if ((side === "black" && y <= 1) || (side === "white" && y >= 7)) continue;
+          }
+
+          const sim = cloneState(stateObj);
+          sim.hands[side][type] -= 1;
+          const nid = `drop_${side}_${type}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+          sim.pieces.push({
+            id:nid,
+            side,
+            type,
+            x,y,
+            cooldownUntil:Date.now()+COOLDOWN_MS
+          });
+
+          if (!isKingInCheck(sim.pieces, side)) out.push({x,y});
         }
       }
-      return result;
+      return out;
     }
 
-    function countInHand(room, color, type){
-      return room?.hands?.[color]?.[type] || 0;
-    }
+    function selectedLegalMoves(stateObj){
+      if (!stateObj || stateObj.winner) return [];
+      if (!state.selected) return [];
 
-    function selectedPieceObject(){
-      if (!roomData || !selected || selected.kind !== "board") return null;
-      return (roomData.board || []).find(p => p.id === selected.id) || null;
-    }
-
-    function normalizeSelection(){
-      if (!roomData || !selected) return selected;
-      if (selected.kind === "board") {
-        const p = selectedPieceObject();
-        if (!p) return null;
-      } else {
-        if (countInHand(roomData, selected.color, selected.type) <= 0) return null;
+      if (state.selected.kind === "piece") {
+        const piece = stateObj.pieces.find(p => p.id === state.selected.id);
+        if (!piece) return [];
+        return legalMovesForPiece(stateObj, piece);
       }
-      return selected;
+
+      if (state.selected.kind === "hand") {
+        if (state.selected.side !== state.mySide) return [];
+        return dropLegalSquares(stateObj, state.selected.side, state.selected.type);
+      }
+
+      return [];
     }
 
-    function updatePreview(){
-      if (!roomData || !selected) {
-        legalTargets = [];
+    function currentPieceFromSelection(){
+      if (!state.roomData) return null;
+      if (!state.selected || state.selected.kind !== "piece") return null;
+      return state.roomData.pieces.find(p => p.id === state.selected.id) || null;
+    }
+
+    function setStatus(msg){
+      statusEl.textContent = msg;
+    }
+
+    function updateMePill(){
+      if (!state.roomId){
+        mePill.textContent = "未接続";
         return;
       }
-      if (selected.kind === "board") {
-        const p = selectedPieceObject();
-        legalTargets = p ? legalBoardTargets(p, roomData.board || []) : [];
-      } else {
-        legalTargets = legalDropTargets(selected.type, selected.color, roomData.board || []);
+      const label = state.mySide === "black" ? "あなた: 先手(黒)" :
+                    state.mySide === "white" ? "あなた: 後手(白)" :
+                    "あなた: 観戦";
+      mePill.textContent = `${state.roomId} / ${label}`;
+    }
+
+    function makeRoomDoc(playerId){
+      return {
+        players: { black: playerId, white: null },
+        state: freshState(),
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    }
+
+    async function createRoom(){
+      const roomId = roomInput.value.trim().toUpperCase() || randRoomId();
+      roomInput.value = roomId;
+      const ref = doc(db, "rooms", roomId);
+      const snap = await getDoc(ref);
+      if (snap.exists()){
+        setStatus(`そのルームコードはもうあるよ: ${roomId}。参加ボタンで入ってね。`);
+        return;
       }
+      await setDoc(ref, makeRoomDoc(state.playerId));
+      await connectRoom(roomId);
     }
 
-    function setStatus(msg, kind=""){
-      statusText.textContent = msg;
-      statusText.style.color =
-        kind === "good" ? "var(--good)" :
-        kind === "bad" ? "var(--bad)" :
-        "var(--text)";
-      clearTimeout(statusTimer);
-      if (kind) {
-        statusTimer = setTimeout(() => {
-          statusText.style.color = "var(--text)";
-        }, 1800);
+    async function joinRoom(){
+      const roomId = roomInput.value.trim().toUpperCase();
+      if (!roomId){
+        setStatus("ルームコードを入れてね。");
+        return;
       }
+      await connectRoom(roomId);
     }
 
-    function renderInfo(){
-      const sideText = mySide === "b" ? "先手(黒)" : mySide === "w" ? "後手(白)" : "観戦";
-      meInfo.textContent = roomId
-        ? `部屋: ${roomId} / ${sideText} / 名前: ${nameInput.value.trim() || "player"}`
-        : `未接続 / ${sideText}`;
-      modeBtn.textContent = `操作: ${mode === "tap" ? "タップ" : "スライド"}`;
-      modeBtn.classList.toggle("selectedBtn", mode === "slide");
-    }
+    async function connectRoom(roomId){
+      roomId = roomId.toUpperCase();
+      if (state.unsub) state.unsub();
+      state.roomId = roomId;
+      state.roomRef = doc(db, "rooms", roomId);
+      state.selected = null;
+      state.cachedLegalMoves = [];
+      updateMePill();
 
-    function renderBoard(){
-      const pieces = roomData?.board || [];
-      const map = boardMap(pieces);
-      const selectedPiece = selected && selected.kind === "board" ? selectedPieceObject() : null;
-      const targetSet = new Set(legalTargets.map(t => `${t.x},${t.y}`));
-
-      let html = "";
-      for(let y=0;y<9;y++){
-        for(let x=0;x<9;x++){
-          const cellClass = ["cell"];
-          if (targetSet.has(`${x},${y}`)) cellClass.push("target");
-          if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) cellClass.push("selected");
-          html += `<div class="${cellClass.join(" ")}" data-x="${x}" data-y="${y}">`;
-          const piece = map.get(`${x},${y}`);
-          if (piece) {
-            const cooling = piece.color === mySide && piece.cooldownUntil && piece.cooldownUntil > now();
-            const p = cooling ? Math.max(0, Math.min(1, (piece.cooldownUntil - now()) / 1000)) : 0;
-            const classes = ["piece", piece.color === "w" ? "white" : "black"];
-            if (cooling) classes.push("cooling");
-            if (selectedPiece && selectedPiece.id === piece.id) classes.push("inspect");
-            html += `<button type="button"
-              class="${classes.join(" ")}"
-              data-piece-id="${piece.id}"
-              data-color="${piece.color}"
-              data-type="${piece.type}"
-              data-promoted="${piece.promoted ? "1" : "0"}"
-              style="${cooling ? `--p:${p};` : ""}"
-              aria-label="${displayName(piece)}"
-            >${displayName(piece)}</button>`;
-          }
-          html += `</div>`;
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(state.roomRef);
+        if (!snap.exists()){
+          tx.set(state.roomRef, makeRoomDoc(state.playerId));
+          return;
         }
-      }
-      boardEl.innerHTML = html;
-    }
 
-    function handTypes(){
-      return ["pawn","lance","knight","silver","gold","bishop","rook"];
-    }
+        const data = snap.data();
+        const players = data.players || { black:null, white:null };
 
-    function renderHands(){
-      const renderSide = (color, hostEl, selectable) => {
-        const counts = roomData?.hands?.[color] || {};
-        let html = "";
-        for (const type of handTypes()) {
-          const count = counts[type] || 0;
-          const classes = ["handBtn"];
-          if (selectable && selected && selected.kind === "hand" && selected.color === color && selected.type === type) {
-            classes.push("active");
-          }
-          if (count <= 0) classes.push("disabled");
-          html += `
-            <button type="button" class="${classes.join(" ")}"
-              data-hand-type="${type}"
-              data-hand-color="${color}"
-              ${count <= 0 ? "disabled" : ""}>
-              <div class="pieceMark">${PIECE_NAMES[type]}</div>
-              <div class="count">×${count}</div>
-            </button>
-          `;
+        if (players.black === state.playerId || players.white === state.playerId) {
+          return;
         }
-        hostEl.innerHTML = html;
+
+        if (!players.black) {
+          players.black = state.playerId;
+        } else if (!players.white) {
+          players.white = state.playerId;
+        }
+
+        tx.update(state.roomRef, {
+          players,
+          updatedAt: Date.now()
+        });
+      });
+
+      state.unsub = onSnapshot(state.roomRef, (snap) => {
+        if (!snap.exists()){
+          setStatus("ルームが見つからないよ。");
+          return;
+        }
+        state.roomData = snap.data();
+        const players = state.roomData.players || {};
+        state.mySide = players.black === state.playerId ? "black"
+                      : players.white === state.playerId ? "white"
+                      : "spectator";
+
+        if (state.selected && state.selected.kind === "piece") {
+          const stillThere = state.roomData.pieces.some(p => p.id === state.selected.id);
+          if (!stillThere) state.selected = null;
+        }
+
+        updateMePill();
+
+        const live = state.roomData.state || {};
+        if (live.winner){
+          setStatus(`勝者: ${live.winner === "black" ? "黒" : "白"}。もう終わってるよ。`);
+        } else {
+          const yourName = state.mySide === "black" ? "黒" : state.mySide === "white" ? "白" : "観戦";
+          setStatus(`ルーム ${state.roomId} に接続中。あなたは ${yourName}。敵の駒も選んで見れるよ。`);
+        }
+
+        refreshHands();
+        render();
+      });
+
+      setStatus(`ルーム ${state.roomId} に接続したよ。`);
+    }
+
+    function selectedPieceObj(){
+      if (!state.roomData) return null;
+      if (!state.selected || state.selected.kind !== "piece") return null;
+      return state.roomData.state.pieces.find(p => p.id === state.selected.id) || null;
+    }
+
+    function isMyPiece(piece){
+      return piece && piece.side === state.mySide;
+    }
+
+    function canAct(){
+      return state.mySide !== "spectator" && state.roomData && !(state.roomData.state && state.roomData.state.winner);
+    }
+
+    async function commitSelectionMove(dest){
+      if (!state.roomRef || !state.roomData) return;
+      const sel = state.selected;
+      if (!sel) return;
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(state.roomRef);
+        if (!snap.exists()) throw new Error("ルームが消えたよ");
+        const room = snap.data();
+        const live = room.state;
+        if (!live || live.winner) return;
+
+        const mySide = room.players?.black === state.playerId ? "black"
+                     : room.players?.white === state.playerId ? "white"
+                     : "spectator";
+        if (mySide === "spectator") return;
+
+        const now = Date.now();
+        const next = cloneState(live);
+        next.rev = (next.rev || 0) + 1;
+        next.updatedAt = now;
+
+        if (sel.kind === "piece") {
+          const piece = next.pieces.find(p => p.id === sel.id);
+          if (!piece) return;
+          if (piece.side !== mySide) {
+            return;
+          }
+          if (piece.cooldownUntil && now < piece.cooldownUntil) return;
+
+          const legal = legalMovesForPiece(next, piece);
+          const ok = legal.find(m => m.x === dest.x && m.y === dest.y);
+          if (!ok) return;
+
+          const occupant = pieceAt(next.pieces, dest.x, dest.y);
+          if (occupant && occupant.side === piece.side) return;
+
+          if (occupant) {
+            const capturedBase = demote(occupant.type);
+            next.pieces = next.pieces.filter(p => p.id !== occupant.id);
+            next.hands[piece.side][capturedBase] += 1;
+            if (occupant.type === "king") {
+              next.winner = piece.side;
+            }
+          }
+
+          piece.x = dest.x;
+          piece.y = dest.y;
+          piece.cooldownUntil = now + COOLDOWN_MS;
+
+          if (canPromote(piece.type) && (promotionZone(piece.side, piece.y) || promotionZone(piece.side, dest.y))) {
+            piece.type = promotedType(piece.type);
+          }
+        }
+
+        if (sel.kind === "hand") {
+          if (sel.side !== mySide) return;
+          const type = sel.type;
+          if ((next.hands[mySide]?.[type] || 0) <= 0) return;
+
+          const legal = dropLegalSquares(next, mySide, type);
+          const ok = legal.find(m => m.x === dest.x && m.y === dest.y);
+          if (!ok) return;
+
+          next.hands[mySide][type] -= 1;
+          next.pieces.push({
+            id: `drop_${mySide}_${type}_${now}_${Math.random().toString(16).slice(2)}`,
+            side: mySide,
+            type,
+            x: dest.x,
+            y: dest.y,
+            cooldownUntil: now + COOLDOWN_MS
+          });
+        }
+
+        tx.update(state.roomRef, { state: next, updatedAt: now });
+      }).catch(err => {
+        setStatus(`移動できなかった: ${err.message}`);
+      });
+    }
+
+    function squareFromPointer(ev){
+      const rect = boardCanvas.getBoundingClientRect();
+      const x = (ev.clientX - rect.left) / rect.width * SIZE;
+      const y = (ev.clientY - rect.top) / rect.height * SIZE;
+      return { sx: x, sy: y };
+    }
+
+    function squareAtClient(ev){
+      const rect = boardCanvas.getBoundingClientRect();
+      const x = (ev.clientX - rect.left) / rect.width * 9;
+      const y = (ev.clientY - rect.top) / rect.height * 9;
+      const sx = Math.floor(x);
+      const sy = Math.floor(y);
+      if (!isInside(sx, sy)) return null;
+      return { x:sx, y:sy, px:x, py:y };
+    }
+
+    function selectPieceById(id){
+      state.selected = { kind:"piece", id };
+      refreshHands();
+      render();
+    }
+
+    function selectHand(side, type){
+      state.selected = { kind:"hand", side, type };
+      refreshHands();
+      render();
+    }
+
+    function clearSelection(){
+      state.selected = null;
+      refreshHands();
+      render();
+    }
+
+    function refreshHands(){
+      const live = state.roomData?.state;
+      const hands = live?.hands || makeHands();
+
+      const renderHandArea = (el, side, interactive) => {
+        el.innerHTML = "";
+        const label = document.createElement("div");
+        label.className = "handLabel";
+        label.textContent = side === "black" ? "黒の持ち駒" : "白の持ち駒";
+        el.appendChild(label);
+
+        for (const t of pieceOrder){
+          const count = hands[side]?.[t] || 0;
+          if (!count && !interactive) continue;
+
+          const btn = document.createElement("button");
+          btn.className = "handBtn";
+          if (state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) btn.classList.add("selected");
+          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator";
+          btn.innerHTML = `${pieceText(t)} <span class="count">×${count}</span>`;
+          if (btn.disabled && count > 0) btn.classList.add("canMove");
+          btn.addEventListener("click", () => {
+            if (!interactive || count <= 0) return;
+            selectHand(side, t);
+          });
+          el.appendChild(btn);
+        }
       };
 
-      renderSide(mySide === "w" ? "w" : "b", myHandEl, true);
-      renderSide(mySide === "w" ? "b" : "w", oppHandEl, false);
+      const mySide = state.mySide;
+      if (mySide === "black") {
+        renderHandArea(enemyHandsEl, "white", false);
+        renderHandArea(myHandsEl, "black", true);
+      } else if (mySide === "white") {
+        renderHandArea(enemyHandsEl, "black", false);
+        renderHandArea(myHandsEl, "white", true);
+      } else {
+        renderHandArea(enemyHandsEl, "black", false);
+        renderHandArea(myHandsEl, "white", false);
+      }
+    }
+
+    function resizeCanvas(){
+      const rect = boardCanvas.getBoundingClientRect();
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      boardCanvas.width = Math.floor(rect.width * dpr);
+      boardCanvas.height = Math.floor(rect.height * dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      state.boardReady = true;
+      render();
+    }
+
+    function drawPiece(piece, cell, now, selected, legalTargets){
+      const x = cell.x + cell.size/2;
+      const y = cell.y + cell.size/2;
+      const s = cell.size;
+
+      const w = s * 0.62;
+      const h = s * 0.72;
+
+      ctx.save();
+
+      if (selected) {
+        ctx.strokeStyle = "rgba(138,180,255,.95)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.roundRect(cell.x + 4, cell.y + 4, s - 8, s - 8, 10);
+        ctx.stroke();
+      }
+
+      // Shogi piece body
+      ctx.beginPath();
+      ctx.moveTo(x, y - h*0.48);
+      ctx.lineTo(x + w*0.34, y - h*0.16);
+      ctx.lineTo(x + w*0.26, y + h*0.42);
+      ctx.lineTo(x - w*0.26, y + h*0.42);
+      ctx.lineTo(x - w*0.34, y - h*0.16);
+      ctx.closePath();
+
+      const grad = ctx.createLinearGradient(cell.x, cell.y, cell.x + s, cell.y + s);
+      if (piece.side === "black") {
+        grad.addColorStop(0, "#d7b68a");
+        grad.addColorStop(1, "#b88d58");
+      } else {
+        grad.addColorStop(0, "#fffaf0");
+        grad.addColorStop(1, "#eadfc8");
+      }
+      ctx.fillStyle = grad;
+      ctx.strokeStyle = "rgba(65,45,18,.75)";
+      ctx.lineWidth = 2.2;
+      ctx.fill();
+      ctx.stroke();
+
+      if (piece.type !== baseOf[piece.type]) {
+        ctx.fillStyle = "rgba(220,80,40,.9)";
+        ctx.font = `bold ${Math.max(12, s*0.18)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("+", x + s*0.17, y - s*0.16);
+      }
+
+      ctx.fillStyle = piece.side === "black" ? "#2b1d10" : "#2c2418";
+      ctx.font = `700 ${Math.max(14, s*0.22)}px "Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(pieceText(piece.type), x, y + 1);
+
+      const remain = Math.max(0, piece.cooldownUntil - now);
+      if (remain > 0) {
+        const ratio = remain / COOLDOWN_MS;
+        ctx.beginPath();
+        ctx.arc(x, y, s*0.36, -Math.PI/2, -Math.PI/2 + Math.PI*2*ratio, false);
+        ctx.strokeStyle = "rgba(255,255,255,.92)";
+        ctx.lineWidth = 5;
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x, y, s*0.36, -Math.PI/2, -Math.PI/2 + Math.PI*2*ratio, false);
+        ctx.strokeStyle = "rgba(20,20,20,.25)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.restore();
     }
 
     function render(){
-      selected = normalizeSelection();
-      updatePreview();
-      renderBoard();
-      renderHands();
-      renderInfo();
+      if (!state.boardReady) return;
+      const rect = boardCanvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      const cell = w / 9;
+      const now = Date.now();
+
+      ctx.clearRect(0,0,w,h);
+
+      // board
+      for(let y=0;y<9;y++){
+        for(let x=0;x<9;x++){
+          const isLight = (x + y) % 2 === 0;
+          ctx.fillStyle = isLight ? "#edd9b3" : "#e0c390";
+          ctx.fillRect(x*cell, y*cell, cell, cell);
+        }
+      }
+
+      // grid
+      ctx.strokeStyle = "rgba(104,79,42,.55)";
+      ctx.lineWidth = 1;
+      for(let i=0;i<=9;i++){
+        ctx.beginPath();
+        ctx.moveTo(i*cell, 0);
+        ctx.lineTo(i*cell, 9*cell);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i*cell);
+        ctx.lineTo(9*cell, i*cell);
+        ctx.stroke();
+      }
+
+      const live = state.roomData?.state;
+      if (!live){
+        ctx.fillStyle = "rgba(0,0,0,.6)";
+        ctx.font = "600 18px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("ルーム接続待ち", w/2, h/2);
+        return;
+      }
+
+      const legal = selectedLegalMoves(live);
+      state.cachedLegalMoves = legal;
+
+      for (const m of legal){
+        ctx.fillStyle = "rgba(242,201,76,.34)";
+        ctx.fillRect(m.x*cell + 2, m.y*cell + 2, cell - 4, cell - 4);
+        ctx.strokeStyle = "rgba(242,201,76,.95)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(m.x*cell + 3, m.y*cell + 3, cell - 6, cell - 6);
+      }
+
+      const selectedPiece = selectedPieceObj();
+      if (selectedPiece){
+        const sx = selectedPiece.x * cell;
+        const sy = selectedPiece.y * cell;
+        ctx.strokeStyle = "rgba(138,180,255,.95)";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(sx + 3, sy + 3, cell - 6, cell - 6);
+      }
+
+      for (const p of live.pieces){
+        const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
+        drawPiece(p, {x:p.x*cell, y:p.y*cell, size:cell}, now, isSel, legal);
+      }
+
+      if (live.winner){
+        ctx.fillStyle = "rgba(0,0,0,.35)";
+        ctx.fillRect(0,0,w,h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 28px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w/2, h/2 - 6);
+        ctx.font = "500 16px system-ui, sans-serif";
+        ctx.fillText("この対局は終了してるよ", w/2, h/2 + 24);
+      }
     }
 
-    function nearestLegalTargetToPoint(legal, clientX, clientY){
-      if (!legal || !legal.length) return null;
-      const rect = boardEl.getBoundingClientRect();
-      const cw = rect.width / 9;
-      const ch = rect.height / 9;
-      let best = legal[0];
+    function pointToSquareFromCanvas(ev){
+      const rect = boardCanvas.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) / rect.width * 9;
+      const py = (ev.clientY - rect.top) / rect.height * 9;
+      const x = Math.floor(px);
+      const y = Math.floor(py);
+      if (!isInside(x,y)) return null;
+      return { x, y, px, py, rect };
+    }
+
+    function pieceUnderSquare(x,y){
+      const live = state.roomData?.state;
+      if (!live) return null;
+      return live.pieces.find(p => p.x === x && p.y === y) || null;
+    }
+
+    function handSelectionToLegal(){
+      const live = state.roomData?.state;
+      if (!live || !state.selected || state.selected.kind !== "hand") return [];
+      return dropLegalSquares(live, state.selected.side, state.selected.type);
+    }
+
+    function nearestLegalMoveFromRelease(ev){
+      const live = state.roomData?.state;
+      if (!live || !state.selected) return null;
+      const rect = boardCanvas.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) / rect.width * 9;
+      const py = (ev.clientY - rect.top) / rect.height * 9;
+      const legal = selectedLegalMoves(live);
+      if (!legal.length) return null;
+
+      let best = null;
       let bestD = Infinity;
-      for (const t of legal) {
-        const cx = rect.left + (t.x + 0.5) * cw;
-        const cy = rect.top + (t.y + 0.5) * ch;
-        const d = (cx-clientX)**2 + (cy-clientY)**2;
-        if (d < bestD) {
+      for (const m of legal){
+        const cx = m.x + 0.5;
+        const cy = m.y + 0.5;
+        const d = (cx - px) * (cx - px) + (cy - py) * (cy - py);
+        if (d < bestD){
           bestD = d;
-          best = t;
+          best = m;
         }
       }
       return best;
     }
 
-    function boardCoordsFromEvent(ev){
-      const rect = boardEl.getBoundingClientRect();
-      const x = Math.floor(((ev.clientX - rect.left) / rect.width) * 9);
-      const y = Math.floor(((ev.clientY - rect.top) / rect.height) * 9);
-      if (!inBoard(x,y)) return null;
-      return {x,y};
-    }
+    boardCanvas.addEventListener("click", async (ev) => {
+      if (!state.roomData) return;
+      const sq = pointToSquareFromCanvas(ev);
+      if (!sq) return;
 
-    function openPromotionModal(piece){
-      return new Promise(resolve => {
-        pendingPromote = resolve;
-        modalText.textContent = `${displayName(piece)} は成れるよ。成る？`;
-        modalEl.classList.add("show");
-      });
-    }
-    modalYes.addEventListener("click", () => {
-      modalEl.classList.remove("show");
-      if (pendingPromote) {
-        const r = pendingPromote;
-        pendingPromote = null;
-        r(true);
-      }
-    });
-    modalNo.addEventListener("click", () => {
-      modalEl.classList.remove("show");
-      if (pendingPromote) {
-        const r = pendingPromote;
-        pendingPromote = null;
-        r(false);
-      }
-    });
+      const live = state.roomData.state;
+      const clicked = pieceUnderSquare(sq.x, sq.y);
+      const mode = modeSelect.value;
 
-    async function commitMove(destX, destY, opts={}){
-      if (!roomRef || !roomData || !selected) return;
-      const ts = now();
-
-      const tx = await runTransaction(roomRef, (room) => {
-        if (!room || room.gameOver) return;
-        room.board = room.board || [];
-        room.hands = room.hands || defaultHands();
-        room.players = room.players || {};
-
-        const pieces = room.board;
-        const map = boardMap(pieces);
-
-        if (selected.kind === "board") {
-          const idx = pieces.findIndex(p => p.id === selected.id);
-          if (idx < 0) return;
-          const piece = pieces[idx];
-          if (piece.color !== mySide) return;
-          if (piece.cooldownUntil && piece.cooldownUntil > ts) return;
-
-          const legal = legalBoardTargets(piece, pieces);
-          if (!legal.some(t => t.x === destX && t.y === destY)) return;
-
-          const occ = map.get(`${destX},${destY}`);
-          if (occ && occ.color === piece.color) return;
-
-          if (occ && occ.color !== piece.color) {
-            if (occ.type === "king") {
-              room.gameOver = true;
-              room.winner = piece.color;
-            }
-            const capturedType = baseType(occ);
-            room.hands[piece.color][capturedType] = (room.hands[piece.color][capturedType] || 0) + 1;
-            const occIndex = pieces.findIndex(p => p.id === occ.id);
-            if (occIndex >= 0) pieces.splice(occIndex, 1);
-          }
-
-          const forced = isForcedPromotion(piece, destY);
-          const promoAllowed = canPromote(piece, piece.y, destY);
-          if ((forced || (promoAllowed && opts.promote)) && piece.type !== "king" && piece.type !== "gold") {
-            piece.promoted = true;
-          }
-
-          piece.x = destX;
-          piece.y = destY;
-          piece.cooldownUntil = ts + 1000;
-          room.lastMoveAt = ts;
-          return room;
+      if (mode === "tap"){
+        if (clicked){
+          state.selected = { kind:"piece", id:clicked.id };
+          refreshHands();
+          render();
+          return;
         }
 
-        if (selected.kind === "hand") {
-          if (selected.color !== mySide) return;
-          if ((room.hands[selected.color][selected.type] || 0) <= 0) return;
+        if (!state.selected) return;
+        if (!canAct() && state.selected.kind !== "piece") return;
 
-          const occ = map.get(`${destX},${destY}`);
-          if (occ) return;
-
-          const legal = legalDropTargets(selected.type, selected.color, pieces);
-          if (!legal.some(t => t.x === destX && t.y === destY)) return;
-
-          room.hands[selected.color][selected.type] -= 1;
-          pieces.push({
-            id:`${selected.color}-drop-${selected.type}-${ts}-${Math.floor(Math.random()*100000)}`,
-            type:selected.type,
-            color:selected.color,
-            x:destX,
-            y:destY,
-            promoted:false,
-            cooldownUntil:ts + 1000
-          });
-          room.lastMoveAt = ts;
-          return room;
-        }
-      });
-
-      if (tx.committed) {
-        selected = null;
-        legalTargets = [];
-        setStatus("動かした！", "good");
+        await commitSelectionMove({x:sq.x, y:sq.y});
+        state.selected = null;
+        refreshHands();
         render();
-      } else {
-        setStatus("その手は通らなかった。", "bad");
-      }
-    }
-
-    async function trySelectedMove(x, y){
-      if (!selected) return;
-      if (selected.kind === "board") {
-        const piece = selectedPieceObject();
-        if (!piece) return;
-        const legal = legalBoardTargets(piece, roomData.board || []);
-        const target = legal.find(t => t.x === x && t.y === y);
-        if (!target) return;
-
-        let promote = false;
-        if (piece.color === mySide && canPromote(piece, piece.y, y)) {
-          promote = await openPromotionModal(piece);
-        }
-        await commitMove(x, y, { promote });
         return;
       }
 
-      if (selected.kind === "hand") {
-        const legal = legalDropTargets(selected.type, selected.color, roomData.board || []);
-        const target = legal.find(t => t.x === x && t.y === y);
-        if (!target) return;
-        await commitMove(x, y, {});
+      // slide mode still allows hand selection by tapping buttons; board tap can select only.
+      if (clicked){
+        state.selected = { kind:"piece", id:clicked.id };
+        refreshHands();
+        render();
+      } else if (state.selected && state.selected.kind === "hand") {
+        // keep selected hand
+        render();
       }
-    }
+    });
 
-    function clearSelection(){
-      selected = null;
-      legalTargets = [];
-      render();
-    }
+    let dragPointerId = null;
+    let dragging = false;
 
-    boardEl.addEventListener("click", async (e) => {
-      if (mode !== "tap") return;
+    boardCanvas.addEventListener("pointerdown", (ev) => {
+      if (modeSelect.value !== "slide") return;
+      boardCanvas.setPointerCapture(ev.pointerId);
+      dragPointerId = ev.pointerId;
+      dragging = false;
+      state.pointerDown = true;
+      state.pointerStart = { x:ev.clientX, y:ev.clientY };
 
-      const pieceBtn = e.target.closest(".piece");
-      if (pieceBtn) {
-        selectBoardPiece(pieceBtn.dataset.pieceId);
-        return;
+      const sq = pointToSquareFromCanvas(ev);
+      if (!sq) return;
+
+      const clicked = pieceUnderSquare(sq.x, sq.y);
+      if (clicked){
+        state.selected = { kind:"piece", id:clicked.id };
+        refreshHands();
+        render();
       }
+    });
 
-      const handBtn = e.target.closest(".handBtn");
-      if (handBtn && !handBtn.disabled) {
-        const type = handBtn.dataset.handType;
-        const color = handBtn.dataset.handColor;
-        if (color === mySide) {
-          selected = { kind:"hand", color, type };
-          selected = normalizeSelection();
-          updatePreview();
+    boardCanvas.addEventListener("pointermove", (ev) => {
+      if (modeSelect.value !== "slide") return;
+      if (dragPointerId !== ev.pointerId) return;
+      if (!state.pointerStart) return;
+      const dx = ev.clientX - state.pointerStart.x;
+      const dy = ev.clientY - state.pointerStart.y;
+      if (Math.hypot(dx,dy) > 6) dragging = true;
+    });
+
+    boardCanvas.addEventListener("pointerup", async (ev) => {
+      if (modeSelect.value !== "slide") return;
+      if (dragPointerId !== ev.pointerId) return;
+
+      const hadSelected = !!state.selected;
+      if (hadSelected && dragging) {
+        const target = nearestLegalMoveFromRelease(ev);
+        if (target) {
+          await commitSelectionMove(target);
+          state.selected = null;
+          refreshHands();
           render();
         }
-        return;
       }
 
-      const cell = e.target.closest(".cell");
-      if (!cell) return;
-      if (selected) {
-        await trySelectedMove(Number(cell.dataset.x), Number(cell.dataset.y));
+      state.pointerDown = false;
+      state.pointerStart = null;
+      dragging = false;
+      dragPointerId = null;
+    });
+
+    boardCanvas.addEventListener("pointercancel", () => {
+      state.pointerDown = false;
+      state.pointerStart = null;
+      dragging = false;
+      dragPointerId = null;
+    });
+
+    createBtn.addEventListener("click", createRoom);
+    joinBtn.addEventListener("click", joinRoom);
+    copyBtn.addEventListener("click", async () => {
+      const code = roomInput.value.trim().toUpperCase();
+      if (!code){
+        setStatus("コピーするコードがないよ。");
+        return;
+      }
+      try{
+        await navigator.clipboard.writeText(code);
+        setStatus(`コードをコピーしたよ: ${code}`);
+      }catch{
+        setStatus("コピーできなかった。手動でコピーしてね。");
       }
     });
 
-    function selectBoardPiece(id){
-      selected = { kind:"board", id };
-      selected = normalizeSelection();
-      updatePreview();
-      render();
-    }
-
-    boardEl.addEventListener("pointerdown", (e) => {
-      if (mode !== "slide") return;
-      const pieceBtn = e.target.closest(".piece");
-      if (pieceBtn) {
-        const piece = (roomData?.board || []).find(p => p.id === pieceBtn.dataset.pieceId);
-        if (!piece) return;
-        selected = { kind:"board", id: piece.id };
-        selected = normalizeSelection();
-        updatePreview();
-        render();
-        dragging = { kind:"board", id: piece.id };
-        boardEl.setPointerCapture?.(e.pointerId);
-        return;
-      }
-
-      const handBtn = e.target.closest(".handBtn");
-      if (handBtn && !handBtn.disabled) {
-        const type = handBtn.dataset.handType;
-        const color = handBtn.dataset.handColor;
-        if (color !== mySide) return;
-        selected = { kind:"hand", color, type };
-        selected = normalizeSelection();
-        updatePreview();
-        render();
-        dragging = { kind:"hand", color, type };
-        boardEl.setPointerCapture?.(e.pointerId);
-        return;
-      }
-    });
-
-    document.addEventListener("pointerup", async (e) => {
-      if (mode !== "slide" || !dragging) return;
-      const d = dragging;
-      dragging = null;
-
-      const coords = boardCoordsFromEvent(e);
-      if (!coords || !selected) {
-        clearSelection();
-        return;
-      }
-
-      if (selected.kind === "board") {
-        const piece = selectedPieceObject();
-        if (!piece) return;
-        const legal = legalBoardTargets(piece, roomData.board || []);
-        let target = legal.find(t => t.x === coords.x && t.y === coords.y);
-        if (!target) target = nearestLegalTargetToPoint(legal, e.clientX, e.clientY);
-        if (!target) return;
-
-        let promote = false;
-        if (piece.color === mySide && canPromote(piece, piece.y, target.y)) {
-          promote = await openPromotionModal(piece);
-        }
-        await commitMove(target.x, target.y, { promote });
-        return;
-      }
-
-      if (selected.kind === "hand") {
-        const legal = legalDropTargets(selected.type, selected.color, roomData.board || []);
-        let target = legal.find(t => t.x === coords.x && t.y === coords.y);
-        if (!target) target = nearestLegalTargetToPoint(legal, e.clientX, e.clientY);
-        if (!target) return;
-        await commitMove(target.x, target.y, {});
-      }
-    });
-
-    document.addEventListener("pointercancel", () => {
-      dragging = null;
-    });
-
-    modeBtn.addEventListener("click", () => {
-      mode = mode === "tap" ? "slide" : "tap";
-      localStorage.setItem("noTurnShogi.mode", mode);
-      renderInfo();
-      setStatus(`操作モードを ${mode === "tap" ? "タップ" : "スライド"} に変更した。`, "good");
-    });
-
-    async function connectRoom(){
-      const rid = cleanRoomId(roomInput.value);
-      if (!rid) {
-        setStatus("部屋コードを入れてね。", "bad");
-        return;
-      }
-      if (!auth.currentUser) {
-        setStatus("匿名認証の準備中。もう少し待ってね。", "bad");
-        return;
-      }
-
-      roomId = rid;
-      roomRef = ref(db, `rooms/${roomId}`);
-      localStorage.setItem("noTurnShogi.room", roomId);
-      location.hash = roomId;
-
-      const name = (nameInput.value.trim() || "player").slice(0,18);
-      localStorage.setItem("noTurnShogi.name", name);
-
-      const joined = await runTransaction(roomRef, (room) => {
-        if (!room) room = createInitialRoom();
-        room.players = room.players || {};
-        room.board = room.board || initialBoard();
-        room.hands = room.hands || defaultHands();
-
-        const existing = room.players[uid];
-        if (existing) {
-          existing.name = name;
-          existing.lastSeen = now();
-        } else {
-          const sides = Object.values(room.players).map(v => v?.side).filter(Boolean);
-          const hasB = sides.includes("b");
-          const hasW = sides.includes("w");
-          const side = !hasB ? "b" : !hasW ? "w" : "s";
-          room.players[uid] = {
-            name,
-            side,
-            joinedAt: now(),
-            lastSeen: now()
-          };
-        }
-        return room;
-      });
-
-      if (!joined.committed) {
-        setStatus("部屋に入れなかった。", "bad");
-        return;
-      }
-
-      const playerRef = ref(db, `rooms/${roomId}/players/${uid}`);
-      onDisconnect(playerRef).remove();
-
-      onValue(roomRef, (snap) => {
-        roomData = snap.val() || createInitialRoom();
-        mySide = roomData.players?.[uid]?.side || "s";
-        selected = normalizeSelection();
-        updatePreview();
-
-        if (roomData.gameOver && roomData.winner) {
-          const winText = roomData.winner === "b" ? "先手(黒)" : "後手(白)";
-          setStatus(`対局終了！ ${winText} の勝ち。`, "good");
-        } else {
-          const sideText = mySide === "b" ? "先手(黒)" : mySide === "w" ? "後手(白)" : "観戦";
-          setStatus(`接続中。あなたは ${sideText}。`, "good");
-        }
-        render();
-      });
-
-      setStatus("接続した！", "good");
-      render();
-    }
-
-    connectBtn.addEventListener("click", connectRoom);
     roomInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") connectRoom();
-    });
-    nameInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") connectRoom();
+      if (e.key === "Enter") joinRoom();
     });
 
-    onAuthStateChanged(auth, (user) => {
-      if (!user) return;
-      uid = user.uid;
-      connectBtn.disabled = false;
-      if (roomInput.value.trim()) {
-        connectRoom();
-      } else {
-        setStatus("部屋コードを入れて接続してね。", "");
-      }
+    modeSelect.addEventListener("change", () => {
+      state.selected = null;
+      refreshHands();
+      render();
     });
 
-    signInAnonymously(auth).catch((err) => {
-      console.error(err);
-      setStatus("匿名認証に失敗した。Authentication を確認してね。", "bad");
-    });
+    window.addEventListener("resize", resizeCanvas);
 
-    function updateLoop(){
-      if (roomData) {
-        renderBoard();
-        renderHands();
-        renderInfo();
-      }
-      requestAnimationFrame(updateLoop);
-    }
-
-    document.addEventListener("click", (e) => {
-      if (mode !== "tap") return;
-      if (e.target.closest("#board") || e.target.closest(".handBtn") || e.target.closest(".topbar") || e.target.closest(".modal")) return;
-      clearSelection();
-    });
-
-    render();
-    requestAnimationFrame(updateLoop);
+    // initial
+    resizeCanvas();
+    refreshHands();
+    updateMePill();
+    setStatus("ルームを作成するか、コードを入れて参加してね。");
   </script>
 </body>
 </html>
