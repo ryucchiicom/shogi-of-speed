@@ -6,32 +6,53 @@
   <title>ノーターン将棋オンライン</title>
   <style>
     :root{
-      --bg:#171717;
-      --panel:#232323;
-      --panel2:#2b2b2b;
-      --text:#f3f3f3;
-      --muted:#aaaaaa;
-      --line:#404040;
+      --bg:#141414;
+      --panel:rgba(255,255,255,.05);
+      --panel2:rgba(255,255,255,.08);
+      --text:#f2f2f2;
+      --muted:#adadad;
+      --line:#444;
       --board:#d8b07f;
-      --board2:#c79a65;
+      --board2:#c79663;
       --target:rgba(255, 235, 90, .45);
-      --selected:rgba(80, 180, 255, .36);
-      --good:#6ff0a0;
+      --selected:rgba(90, 180, 255, .35);
+      --good:#71e59a;
       --bad:#ff8080;
     }
     *{box-sizing:border-box}
-    body{
+    html,body{
       margin:0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
-      background:linear-gradient(180deg,#101010,#1b1b1b);
+      padding:0;
+      height:100%;
+      background:linear-gradient(180deg,#0f0f0f,#1b1b1b);
       color:var(--text);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;
       -webkit-tap-highlight-color: transparent;
       user-select:none;
       touch-action:none;
     }
     button,input{
       font:inherit;
+      color:var(--text);
+      border:none;
+      outline:none;
     }
+    button{
+      cursor:pointer;
+      background:#2f2f2f;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px 12px;
+    }
+    button:active{transform:scale(.98)}
+    input{
+      background:#262626;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px 12px;
+      min-width:110px;
+    }
+
     #app{
       min-height:100svh;
       display:flex;
@@ -41,9 +62,9 @@
       padding-bottom:max(12px, env(safe-area-inset-bottom));
     }
     .topbar,.statusbar{
-      background:rgba(255,255,255,.04);
+      background:var(--panel);
       border:1px solid rgba(255,255,255,.08);
-      border-radius:16px;
+      border-radius:18px;
       padding:10px;
       display:flex;
       flex-wrap:wrap;
@@ -58,91 +79,40 @@
       align-items:center;
     }
     .label{
-      color:var(--muted);
       font-size:12px;
-      margin-right:4px;
+      color:var(--muted);
+      margin-right:2px;
     }
-    input,button{
-      border:none;
-      border-radius:12px;
-      padding:10px 12px;
-      background:#2b2b2b;
-      color:var(--text);
-      outline:none;
+    .small{
+      font-size:12px;
+      color:var(--muted);
     }
-    input{
-      min-width:120px;
-      border:1px solid rgba(255,255,255,.08);
+    .primary{background:#355dff}
+    .ghost{background:#343434}
+    .warn{background:#8b5a00}
+    .goodBtn{background:#236f43}
+    .selectedBtn{
+      outline:2px solid rgba(255,255,255,.7);
     }
-    button{
-      cursor:pointer;
-      border:1px solid rgba(255,255,255,.08);
-      transition:.15s transform,.15s opacity,.15s background;
-    }
-    button:active{transform:scale(.98)}
-    button.primary{background:#355dff}
-    button.good{background:#247b49}
-    button.warn{background:#8b5a00}
-    button.ghost{background:#343434}
-    button.selectedBtn{
-      outline:2px solid rgba(255,255,255,.65);
-    }
+
     #main{
       display:grid;
-      grid-template-columns: minmax(160px, 1fr) minmax(320px, 560px) minmax(160px, 1fr);
+      grid-template-columns:minmax(170px,1fr) minmax(320px,560px) minmax(170px,1fr);
       gap:12px;
       align-items:start;
       flex:1;
     }
     .sidePanel{
-      background:rgba(255,255,255,.04);
+      background:var(--panel);
       border:1px solid rgba(255,255,255,.08);
       border-radius:18px;
       padding:10px;
-      min-height:180px;
+      min-height:200px;
     }
     .panelTitle{
       font-weight:700;
       font-size:14px;
       margin-bottom:10px;
-    }
-    .small{
-      color:var(--muted);
-      font-size:12px;
-      line-height:1.45;
-    }
-    .hand{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-    }
-    .handBtn{
-      min-width:68px;
-      padding:10px 10px 8px;
-      border-radius:14px;
-      background:#2e2e2e;
-      position:relative;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      gap:4px;
-      justify-content:center;
-    }
-    .handBtn .count{
-      font-size:11px;
-      color:#d8d8d8;
-      opacity:.9;
-    }
-    .handBtn .pieceMark{
-      font-size:24px;
-      line-height:1;
-    }
-    .handBtn.disabled{
-      opacity:.35;
-      pointer-events:none;
-    }
-    .handBtn.active{
-      outline:2px solid rgba(255,255,255,.7);
     }
 
     #boardWrap{
@@ -151,35 +121,30 @@
       align-items:flex-start;
     }
     #boardShell{
-      width:min(92vw, 560px);
+      width:min(92vw,560px);
       max-width:100%;
     }
     #board{
       width:100%;
       aspect-ratio:1/1;
       display:grid;
-      grid-template-columns:repeat(9, 1fr);
-      grid-template-rows:repeat(9, 1fr);
+      grid-template-columns:repeat(9,1fr);
+      grid-template-rows:repeat(9,1fr);
       background:linear-gradient(180deg,var(--board),var(--board2));
-      border:4px solid #4b2f12;
+      border:4px solid #4c2d12;
       border-radius:18px;
       overflow:hidden;
-      box-shadow:0 18px 50px rgba(0,0,0,.35);
-      touch-action:none;
+      box-shadow:0 16px 50px rgba(0,0,0,.35);
       position:relative;
+      touch-action:none;
     }
     .cell{
       position:relative;
-      border-right:1px solid rgba(70,43,18,.32);
-      border-bottom:1px solid rgba(70,43,18,.32);
-      touch-action:none;
+      border-right:1px solid rgba(70,43,18,.28);
+      border-bottom:1px solid rgba(70,43,18,.28);
     }
-    .cell:nth-child(9n){
-      border-right:none;
-    }
-    .cell:nth-last-child(-n+9){
-      border-bottom:none;
-    }
+    .cell:nth-child(9n){border-right:none}
+    .cell:nth-last-child(-n+9){border-bottom:none}
     .cell.target::after{
       content:"";
       position:absolute;
@@ -192,62 +157,85 @@
       content:"";
       position:absolute;
       inset:5%;
-      border:3px solid rgba(80,180,255,.95);
+      border:3px solid rgba(90,180,255,.95);
       border-radius:12px;
       pointer-events:none;
     }
+
     .piece{
       position:absolute;
       inset:8%;
-      border:none;
       border-radius:14px;
-      background:linear-gradient(180deg,#fff3d6,#f2dbb1);
-      color:#24170b;
-      font-weight:800;
       display:flex;
       align-items:center;
       justify-content:center;
-      box-shadow:0 3px 0 rgba(0,0,0,.18), inset 0 0 0 1px rgba(84,49,12,.35);
-      font-size:clamp(18px, 3.2vw, 26px);
+      background:linear-gradient(180deg,#fff2d7,#f0d9b0);
+      color:#25160a;
+      font-weight:800;
+      font-size:clamp(18px, 3vw, 26px);
+      box-shadow:0 3px 0 rgba(0,0,0,.16), inset 0 0 0 1px rgba(100,60,20,.35);
       overflow:hidden;
-      touch-action:none;
       transform-origin:center center;
+      touch-action:none;
+      border:none;
     }
-    .piece.white{
-      transform:rotate(180deg);
-      background:linear-gradient(180deg,#fff9eb,#f2e0bc);
-    }
+    .piece.white{transform:rotate(180deg)}
     .piece.cooling::after{
       content:"";
       position:absolute;
       inset:-1px;
       border-radius:14px;
-      background:
-        conic-gradient(from -90deg,
-          rgba(255,255,255,.96) 0deg,
-          rgba(255,255,255,.96) calc(var(--p, 1) * 360deg),
-          rgba(255,255,255,.06) 0deg
-        );
+      background:conic-gradient(from -90deg,
+        rgba(255,255,255,.95) 0deg,
+        rgba(255,255,255,.95) calc(var(--p,1) * 360deg),
+        rgba(255,255,255,.05) 0deg
+      );
       -webkit-mask: radial-gradient(circle, transparent 0 63%, #000 64% 100%);
               mask: radial-gradient(circle, transparent 0 63%, #000 64% 100%);
       pointer-events:none;
       opacity:.95;
     }
-    .piece.cooling::before{
-      content:"";
-      position:absolute;
-      inset:0;
-      border-radius:14px;
-      background:rgba(255,255,255,.18);
-      pointer-events:none;
-    }
     .piece.inspect{
       outline:2px solid rgba(255,255,255,.55);
     }
+
+    .hand{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .handBtn{
+      min-width:68px;
+      padding:10px 10px 8px;
+      border-radius:14px;
+      background:#2d2d2d;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:4px;
+      position:relative;
+    }
+    .handBtn .pieceMark{
+      font-size:24px;
+      line-height:1;
+    }
+    .handBtn .count{
+      font-size:11px;
+      color:#dadada;
+    }
+    .handBtn.disabled{
+      opacity:.35;
+      pointer-events:none;
+    }
+    .handBtn.active{
+      outline:2px solid rgba(255,255,255,.7);
+    }
+
     .legend{
       display:flex;
-      gap:8px;
       flex-wrap:wrap;
+      gap:8px;
       margin-top:10px;
       font-size:12px;
       color:var(--muted);
@@ -265,23 +253,21 @@
       width:10px;
       height:10px;
       border-radius:50%;
-      display:inline-block;
       background:#888;
+      display:inline-block;
     }
-    .dot.good{background:#6ff0a0}
-    .dot.warn{background:#ffce5c}
     .dot.blue{background:#7fc8ff}
+    .dot.warn{background:#ffce5c}
+    .dot.good{background:#6ff0a0}
+
     #status{
       min-height:44px;
       display:flex;
       align-items:center;
       gap:8px;
       flex-wrap:wrap;
-      color:#f5f5f5;
     }
-    #statusText{
-      line-height:1.45;
-    }
+    #statusText{line-height:1.45}
 
     .modal{
       position:fixed;
@@ -293,10 +279,10 @@
       padding:16px;
       z-index:50;
     }
-    .modal.show{display:flex;}
+    .modal.show{display:flex}
     .modalCard{
-      width:min(92vw, 360px);
-      background:#222;
+      width:min(92vw,360px);
+      background:#232323;
       border:1px solid rgba(255,255,255,.1);
       border-radius:18px;
       padding:14px;
@@ -324,14 +310,10 @@
         grid-template-columns:1fr;
       }
       #boardShell{
-        width:min(96vw, 560px);
+        width:min(96vw,560px);
       }
-      .sidePanel{
-        order:2;
-      }
-      #boardWrap{
-        order:1;
-      }
+      .sidePanel{order:2}
+      #boardWrap{order:1}
     }
   </style>
 </head>
@@ -374,8 +356,8 @@
         <div class="panelTitle">相手の持ち駒</div>
         <div id="oppHand" class="hand"></div>
         <div class="small" style="margin-top:10px;">
-          駒をタップすると「どう動けるか」だけ見られるよ。<br/>
-          自分の駒はクールダウンが終わるまで動かせない。
+          敵の駒も選択できて、どう動けるか見られる。<br>
+          でも動かせるのは自分の駒だけ。
         </div>
       </div>
     </div>
@@ -390,7 +372,7 @@
 
   <div id="modal" class="modal">
     <div class="modalCard">
-      <h3 id="modalTitle">成りますか？</h3>
+      <h3>成りますか？</h3>
       <p id="modalText">この手は成れるよ。</p>
       <div class="modalActions">
         <button id="modalNo" class="ghost">成らない</button>
@@ -400,35 +382,28 @@
   </div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-    import {
-      getAuth,
-      signInAnonymously,
-      onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-    import {
-      getDatabase,
-      ref,
-      onValue,
-      runTransaction,
-      set,
-      onDisconnect
-    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+    import { getDatabase, ref, onValue, runTransaction, onDisconnect } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
 
-    // ===== Firebase 設定をここに入れてね =====
+    // ===== 君がコピーした Firebase 設定 =====
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "YOUR_PROJECT",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyC-T-apiQQYpou3f5BdMFjglW7uhF0QEUs",
+      authDomain: "shogi-of-speed.firebaseapp.com",
+      projectId: "shogi-of-speed",
+      storageBucket: "shogi-of-speed.firebasestorage.app",
+      messagingSenderId: "161090240863",
+      appId: "1:161090240863:web:2f9f54c8fa57fd9fca76ea",
+      measurementId: "G-S9FD32FECD",
+      databaseURL: "https://shogi-of-speed-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
 
     const app = initializeApp(firebaseConfig);
+    getAnalytics(app);
     const auth = getAuth(app);
     const db = getDatabase(app);
 
-    // ===== DOM =====
     const roomInput = document.getElementById("roomInput");
     const nameInput = document.getElementById("nameInput");
     const connectBtn = document.getElementById("connectBtn");
@@ -443,7 +418,6 @@
     const modalYes = document.getElementById("modalYes");
     const modalNo = document.getElementById("modalNo");
 
-    // ===== Storage =====
     const savedRoom = localStorage.getItem("noTurnShogi.room") || "";
     const savedName = localStorage.getItem("noTurnShogi.name") || "player";
     const savedMode = localStorage.getItem("noTurnShogi.mode") || "tap";
@@ -451,113 +425,72 @@
     roomInput.value = location.hash.replace("#", "") || savedRoom;
     nameInput.value = savedName;
 
-    // ===== Game State =====
+    const PIECE_NAMES = {
+      king:"玉", rook:"飛", bishop:"角", gold:"金",
+      silver:"銀", knight:"桂", lance:"香", pawn:"歩"
+    };
+    const PROMOTED_NAMES = {
+      rook:"龍", bishop:"馬", gold:"金", silver:"全",
+      knight:"圭", lance:"杏", pawn:"と", king:"玉"
+    };
+
     let uid = "";
     let roomId = "";
     let roomRef = null;
     let roomData = null;
-    let mySide = "s"; // b / w / s
-    let mode = savedMode; // tap / slide
-    let selected = null; // {kind:'board', id} or {kind:'hand', type, color}
+    let mySide = "s";
+    let mode = savedMode;
+    let selected = null; // {kind:'board', id} or {kind:'hand', color, type}
     let legalTargets = [];
     let pendingPromote = null;
-    let dragging = null; // {kind, id/type, color}
-    let boardCells = [];
-    let statusTimeout = null;
+    let dragging = null;
+    let statusTimer = null;
 
-    const PIECE_NAMES = {
-      king: "玉",
-      rook: "飛",
-      bishop: "角",
-      gold: "金",
-      silver: "銀",
-      knight: "桂",
-      lance: "香",
-      pawn: "歩"
-    };
-
-    const PROMOTED_NAMES = {
-      rook: "龍",
-      bishop: "馬",
-      silver: "全",
-      knight: "圭",
-      lance: "杏",
-      pawn: "と",
-      gold: "金",
-      king: "玉"
-    };
-
-    function setStatus(msg, kind = "") {
-      statusText.textContent = msg;
-      statusText.style.color =
-        kind === "good" ? "var(--good)" :
-        kind === "bad" ? "var(--bad)" :
-        "var(--text)";
-      clearTimeout(statusTimeout);
-      if (kind) {
-        statusTimeout = setTimeout(() => {
-          statusText.style.color = "var(--text)";
-        }, 1600);
-      }
+    function now(){ return Date.now(); }
+    function cleanRoomId(v){
+      return (v || "").trim().replace(/[^a-zA-Z0-9_-]/g,"").slice(0,32);
     }
 
-    function now() {
-      return Date.now();
+    function defaultHands(){
+      const base = { pawn:0, lance:0, knight:0, silver:0, gold:0, bishop:0, rook:0 };
+      return { b:{...base}, w:{...base} };
     }
 
-    function cleanRoomId(v) {
-      return (v || "")
-        .trim()
-        .replace(/[^a-zA-Z0-9_-]/g, "")
-        .slice(0, 32);
-    }
-
-    function defaultHands() {
-      const base = { pawn: 0, lance: 0, knight: 0, silver: 0, gold: 0, bishop: 0, rook: 0 };
-      return { b: { ...base }, w: { ...base } };
-    }
-
-    function addPiece(list, id, type, color, x, y, promoted = false, cooldownUntil = 0) {
+    function addPiece(list, id, type, color, x, y, promoted=false, cooldownUntil=0){
       list.push({ id, type, color, x, y, promoted, cooldownUntil });
     }
 
-    function initialBoard() {
+    function initialBoard(){
       const p = [];
-      // White top side
-      addPiece(p, "w-lance-1",  "lance",  "w", 0, 0);
-      addPiece(p, "w-knight-1", "knight", "w", 1, 0);
-      addPiece(p, "w-silver-1", "silver", "w", 2, 0);
-      addPiece(p, "w-gold-1",   "gold",   "w", 3, 0);
-      addPiece(p, "w-king",     "king",   "w", 4, 0);
-      addPiece(p, "w-gold-2",   "gold",   "w", 5, 0);
-      addPiece(p, "w-silver-2", "silver", "w", 6, 0);
-      addPiece(p, "w-knight-2", "knight", "w", 7, 0);
-      addPiece(p, "w-lance-2",  "lance",  "w", 8, 0);
-      addPiece(p, "w-rook",     "rook",   "w", 1, 1);
-      addPiece(p, "w-bishop",   "bishop", "w", 7, 1);
-      for (let x = 0; x < 9; x++) {
-        addPiece(p, `w-pawn-${x+1}`, "pawn", "w", x, 2);
-      }
+      addPiece(p,"w-lance-1","lance","w",0,0);
+      addPiece(p,"w-knight-1","knight","w",1,0);
+      addPiece(p,"w-silver-1","silver","w",2,0);
+      addPiece(p,"w-gold-1","gold","w",3,0);
+      addPiece(p,"w-king","king","w",4,0);
+      addPiece(p,"w-gold-2","gold","w",5,0);
+      addPiece(p,"w-silver-2","silver","w",6,0);
+      addPiece(p,"w-knight-2","knight","w",7,0);
+      addPiece(p,"w-lance-2","lance","w",8,0);
+      addPiece(p,"w-rook","rook","w",1,1);
+      addPiece(p,"w-bishop","bishop","w",7,1);
+      for(let x=0;x<9;x++) addPiece(p,`w-pawn-${x+1}`,"pawn","w",x,2);
 
-      // Black bottom side
-      addPiece(p, "b-lance-1",  "lance",  "b", 0, 8);
-      addPiece(p, "b-knight-1", "knight", "b", 1, 8);
-      addPiece(p, "b-silver-1", "silver", "b", 2, 8);
-      addPiece(p, "b-gold-1",   "gold",   "b", 3, 8);
-      addPiece(p, "b-king",     "king",   "b", 4, 8);
-      addPiece(p, "b-gold-2",   "gold",   "b", 5, 8);
-      addPiece(p, "b-silver-2", "silver", "b", 6, 8);
-      addPiece(p, "b-knight-2", "knight", "b", 7, 8);
-      addPiece(p, "b-lance-2",  "lance",  "b", 8, 8);
-      addPiece(p, "b-rook",     "rook",   "b", 7, 7);
-      addPiece(p, "b-bishop",   "bishop", "b", 1, 7);
-      for (let x = 0; x < 9; x++) {
-        addPiece(p, `b-pawn-${x+1}`, "pawn", "b", x, 6);
-      }
+      addPiece(p,"b-lance-1","lance","b",0,8);
+      addPiece(p,"b-knight-1","knight","b",1,8);
+      addPiece(p,"b-silver-1","silver","b",2,8);
+      addPiece(p,"b-gold-1","gold","b",3,8);
+      addPiece(p,"b-king","king","b",4,8);
+      addPiece(p,"b-gold-2","gold","b",5,8);
+      addPiece(p,"b-silver-2","silver","b",6,8);
+      addPiece(p,"b-knight-2","knight","b",7,8);
+      addPiece(p,"b-lance-2","lance","b",8,8);
+      addPiece(p,"b-rook","rook","b",7,7);
+      addPiece(p,"b-bishop","bishop","b",1,7);
+      for(let x=0;x<9;x++) addPiece(p,`b-pawn-${x+1}`,"pawn","b",x,6);
       return p;
     }
 
-    function createInitialRoom() {
+    function createInitialRoom(){
       return {
         createdAt: now(),
         gameOver: false,
@@ -568,280 +501,185 @@
       };
     }
 
-    function inBoard(x, y) {
-      return x >= 0 && x < 9 && y >= 0 && y < 9;
+    function inBoard(x,y){ return x>=0 && x<9 && y>=0 && y<9; }
+    function boardMap(pieces){
+      const m = new Map();
+      for(const p of (pieces || [])) m.set(`${p.x},${p.y}`, p);
+      return m;
     }
-
-    function boardMap(pieces) {
-      const map = new Map();
-      for (const piece of pieces || []) {
-        map.set(`${piece.x},${piece.y}`, piece);
-      }
-      return map;
-    }
-
-    function getPieceAt(pieces, x, y) {
+    function pieceAt(pieces,x,y){
       return (pieces || []).find(p => p.x === x && p.y === y) || null;
     }
-
-    function sameSide(a, b) {
-      return a && b && a.color === b.color;
-    }
-
-    function baseType(piece) {
+    function baseType(piece){
       if (!piece.promoted) return piece.type;
-      switch (piece.type) {
-        case "pawn":
-        case "lance":
-        case "knight":
-        case "silver":
-          return piece.type;
-        case "bishop":
-        case "rook":
-          return piece.type;
-        default:
-          return piece.type;
-      }
+      return piece.type;
     }
-
-    function displayName(piece) {
+    function displayName(piece){
       if (!piece) return "";
       if (piece.promoted) return PROMOTED_NAMES[piece.type] || PIECE_NAMES[piece.type] || "?";
       return PIECE_NAMES[piece.type] || "?";
     }
 
-    function isPromotionZone(color, y) {
+    function isPromotionZone(color, y){
       return color === "b" ? y <= 2 : y >= 6;
     }
-
-    function isForcedPromotion(piece, toY) {
-      if (piece.promoted) return false;
-      if (piece.type === "pawn" || piece.type === "lance") {
-        return piece.color === "b" ? toY === 0 : toY === 8;
-      }
-      if (piece.type === "knight") {
-        return piece.color === "b" ? toY <= 1 : toY >= 7;
-      }
-      return false;
-    }
-
-    function canPromote(piece, fromY, toY) {
+    function canPromote(piece, fromY, toY){
       if (piece.promoted) return false;
       if (piece.type === "king" || piece.type === "gold") return false;
       return isPromotionZone(piece.color, fromY) || isPromotionZone(piece.color, toY);
     }
-
-    function goldLikeMoves(color) {
-      if (color === "b") {
-        return [[0,-1],[-1,-1],[1,-1],[-1,0],[1,0],[0,1]];
-      }
-      return [[0,1],[-1,1],[1,1],[-1,0],[1,0],[0,-1]];
+    function isForcedPromotion(piece, toY){
+      if (piece.promoted) return false;
+      if (piece.type === "pawn" || piece.type === "lance") return piece.color === "b" ? toY === 0 : toY === 8;
+      if (piece.type === "knight") return piece.color === "b" ? toY <= 1 : toY >= 7;
+      return false;
     }
 
-    function silverMoves(color) {
-      if (color === "b") {
-        return [[0,-1],[-1,-1],[1,-1],[-1,1],[1,1]];
-      }
-      return [[0,1],[-1,1],[1,1],[-1,-1],[1,-1]];
+    function goldLikeMoves(color){
+      return color === "b"
+        ? [[0,-1],[-1,-1],[1,-1],[-1,0],[1,0],[0,1]]
+        : [[0,1],[-1,1],[1,1],[-1,0],[1,0],[0,-1]];
+    }
+    function silverMoves(color){
+      return color === "b"
+        ? [[0,-1],[-1,-1],[1,-1],[-1,1],[1,1]]
+        : [[0,1],[-1,1],[1,1],[-1,-1],[1,-1]];
+    }
+    function kingMoves(){
+      return [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
     }
 
-    function kingMoves() {
-      return [
-        [0,-1],[0,1],[-1,0],[1,0],
-        [-1,-1],[1,-1],[-1,1],[1,1]
-      ];
-    }
-
-    function lineMoves(piece, pieces, dirs, max = 8) {
+    function lineMoves(piece, pieces, dirs){
       const map = boardMap(pieces);
       const result = [];
       for (const [dx, dy] of dirs) {
         let x = piece.x + dx;
         let y = piece.y + dy;
-        let steps = 0;
-        while (inBoard(x, y) && steps < max) {
+        while (inBoard(x,y)) {
           const occ = map.get(`${x},${y}`);
           if (occ) {
-            if (occ.color !== piece.color) result.push({ x, y });
+            if (occ.color !== piece.color) result.push({x,y});
             break;
           }
-          result.push({ x, y });
+          result.push({x,y});
           x += dx;
           y += dy;
-          steps++;
         }
       }
       return result;
     }
 
-    function legalBoardTargets(piece, pieces, ignoreCooldown = false) {
+    function legalBoardTargets(piece, pieces){
       if (!piece) return [];
-      if (!ignoreCooldown && piece.color === mySide && piece.cooldownUntil && piece.cooldownUntil > now()) {
-        return [];
-      }
+      if (piece.color === mySide && piece.cooldownUntil && piece.cooldownUntil > now()) return [];
 
-      const map = boardMap(pieces);
-      const moves = [];
-      const f = piece.color === "b" ? -1 : 1;
-
-      const pushIfOk = (x, y) => {
-        if (!inBoard(x, y)) return;
-        const occ = map.get(`${x},${y}`);
-        if (occ && occ.color === piece.color) return;
-        moves.push({ x, y });
-      };
-
-      const slide = (dirs) => {
-        for (const [dx, dy] of dirs) {
-          let x = piece.x + dx;
-          let y = piece.y + dy;
-          while (inBoard(x, y)) {
-            const occ = map.get(`${x},${y}`);
-            if (occ) {
-              if (occ.color !== piece.color) moves.push({ x, y });
-              break;
-            }
-            moves.push({ x, y });
-            x += dx;
-            y += dy;
-          }
-        }
-      };
-
-      const type = piece.type;
-      if (piece.promoted) {
-        if (type === "pawn" || type === "lance" || type === "knight" || type === "silver") {
-          goldLikeMoves(piece.color).forEach(([dx, dy]) => pushIfOk(piece.x + dx, piece.y + dy));
-          return moves;
-        }
-        if (type === "bishop") {
-          slide([[-1,-1],[1,-1],[-1,1],[1,1]]);
-          kingMoves().filter(d => Math.abs(d[0]) + Math.abs(d[1]) === 1).forEach(([dx, dy]) => pushIfOk(piece.x + dx, piece.y + dy));
-          return moves;
-        }
-        if (type === "rook") {
-          slide([[0,-1],[0,1],[-1,0],[1,0]]);
-          kingMoves().filter(d => Math.abs(d[0]) + Math.abs(d[1]) === 2).forEach(([dx, dy]) => pushIfOk(piece.x + dx, piece.y + dy));
-          return moves;
-        }
-      }
-
-      switch (type) {
-        case "pawn":
-          pushIfOk(piece.x, piece.y + f);
-          break;
-        case "lance":
-          slide([[0, f]]);
-          break;
-        case "knight":
-          pushIfOk(piece.x - 1, piece.y + f * 2);
-          pushIfOk(piece.x + 1, piece.y + f * 2);
-          break;
-        case "silver":
-          silverMoves(piece.color).forEach(([dx, dy]) => pushIfOk(piece.x + dx, piece.y + dy));
-          break;
-        case "gold":
-          goldLikeMoves(piece.color).forEach(([dx, dy]) => pushIfOk(piece.x + dx, piece.y + dy));
-          break;
-        case "king":
-          kingMoves().forEach(([dx, dy]) => pushIfOk(piece.x + dx, piece.y + dy));
-          break;
-        case "bishop":
-          slide([[-1,-1],[1,-1],[-1,1],[1,1]]);
-          break;
-        case "rook":
-          slide([[0,-1],[0,1],[-1,0],[1,0]]);
-          break;
-      }
-      return moves;
-    }
-
-    function legalDropTargets(type, color, pieces) {
       const map = boardMap(pieces);
       const result = [];
-      for (let y = 0; y < 9; y++) {
-        for (let x = 0; x < 9; x++) {
+      const f = piece.color === "b" ? -1 : 1;
+
+      const push = (x,y) => {
+        if (!inBoard(x,y)) return;
+        const occ = map.get(`${x},${y}`);
+        if (occ && occ.color === piece.color) return;
+        result.push({x,y});
+      };
+
+      if (piece.promoted) {
+        if (piece.type === "pawn" || piece.type === "lance" || piece.type === "knight" || piece.type === "silver") {
+          goldLikeMoves(piece.color).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
+          return result;
+        }
+        if (piece.type === "bishop") {
+          lineMoves(piece, pieces, [[-1,-1],[1,-1],[-1,1],[1,1]]).forEach(t => result.push(t));
+          kingMoves().filter(d => Math.abs(d[0]) + Math.abs(d[1]) === 1).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
+          return result;
+        }
+        if (piece.type === "rook") {
+          lineMoves(piece, pieces, [[0,-1],[0,1],[-1,0],[1,0]]).forEach(t => result.push(t));
+          kingMoves().filter(d => Math.abs(d[0]) + Math.abs(d[1]) === 2).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
+          return result;
+        }
+      }
+
+      switch(piece.type){
+        case "pawn":
+          push(piece.x, piece.y + f);
+          break;
+        case "lance":
+          lineMoves(piece, pieces, [[0,f]]).forEach(t => result.push(t));
+          break;
+        case "knight":
+          push(piece.x - 1, piece.y + f*2);
+          push(piece.x + 1, piece.y + f*2);
+          break;
+        case "silver":
+          silverMoves(piece.color).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
+          break;
+        case "gold":
+          goldLikeMoves(piece.color).forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
+          break;
+        case "king":
+          kingMoves().forEach(([dx,dy]) => push(piece.x + dx, piece.y + dy));
+          break;
+        case "bishop":
+          lineMoves(piece, pieces, [[-1,-1],[1,-1],[-1,1],[1,1]]).forEach(t => result.push(t));
+          break;
+        case "rook":
+          lineMoves(piece, pieces, [[0,-1],[0,1],[-1,0],[1,0]]).forEach(t => result.push(t));
+          break;
+      }
+      return result;
+    }
+
+    function legalDropTargets(type, color, pieces){
+      const map = boardMap(pieces);
+      const result = [];
+      for(let y=0;y<9;y++){
+        for(let x=0;x<9;x++){
           if (map.has(`${x},${y}`)) continue;
 
           if (type === "pawn") {
-            const fileHasPawn = pieces.some(p =>
-              p.color === color &&
-              !p.promoted &&
-              p.type === "pawn" &&
-              p.x === x
-            );
+            const fileHasPawn = pieces.some(p => p.color === color && !p.promoted && p.type === "pawn" && p.x === x);
             if (fileHasPawn) continue;
             if (color === "b" && y === 0) continue;
             if (color === "w" && y === 8) continue;
           }
-
           if (type === "lance") {
             if (color === "b" && y === 0) continue;
             if (color === "w" && y === 8) continue;
           }
-
           if (type === "knight") {
             if (color === "b" && y <= 1) continue;
             if (color === "w" && y >= 7) continue;
           }
 
-          result.push({ x, y });
+          result.push({x,y});
         }
       }
       return result;
     }
 
-    function handTypes() {
-      return ["pawn", "lance", "knight", "silver", "gold", "bishop", "rook"];
-    }
-
-    function countInHand(room, color, type) {
+    function countInHand(room, color, type){
       return room?.hands?.[color]?.[type] || 0;
     }
 
-    function boardPieceExists(room, pieceId) {
-      return (room?.board || []).some(p => p.id === pieceId);
+    function selectedPieceObject(){
+      if (!roomData || !selected || selected.kind !== "board") return null;
+      return (roomData.board || []).find(p => p.id === selected.id) || null;
     }
 
-    function selectBoardPiece(pieceId) {
-      selected = { kind: "board", id: pieceId };
-      selected = normalizeSelection();
-      updatePreview();
-      render();
-    }
-
-    function selectHandPiece(color, type) {
-      selected = { kind: "hand", color, type };
-      selected = normalizeSelection();
-      updatePreview();
-      render();
-    }
-
-    function clearSelection() {
-      selected = null;
-      legalTargets = [];
-      render();
-    }
-
-    function normalizeSelection() {
+    function normalizeSelection(){
       if (!roomData || !selected) return selected;
       if (selected.kind === "board") {
-        if (!boardPieceExists(roomData, selected.id)) return null;
-      } else if (selected.kind === "hand") {
+        const p = selectedPieceObject();
+        if (!p) return null;
+      } else {
         if (countInHand(roomData, selected.color, selected.type) <= 0) return null;
       }
       return selected;
     }
 
-    function selectedPieceObject() {
-      if (!selected || !roomData) return null;
-      if (selected.kind === "board") {
-        return (roomData.board || []).find(p => p.id === selected.id) || null;
-      }
-      return null;
-    }
-
-    function updatePreview() {
+    function updatePreview(){
       if (!roomData || !selected) {
         legalTargets = [];
         return;
@@ -854,34 +692,51 @@
       }
     }
 
-    function cellIndex(x, y) {
-      return y * 9 + x;
+    function setStatus(msg, kind=""){
+      statusText.textContent = msg;
+      statusText.style.color =
+        kind === "good" ? "var(--good)" :
+        kind === "bad" ? "var(--bad)" :
+        "var(--text)";
+      clearTimeout(statusTimer);
+      if (kind) {
+        statusTimer = setTimeout(() => {
+          statusText.style.color = "var(--text)";
+        }, 1800);
+      }
     }
 
-    function renderBoard() {
+    function renderInfo(){
+      const sideText = mySide === "b" ? "先手(黒)" : mySide === "w" ? "後手(白)" : "観戦";
+      meInfo.textContent = roomId
+        ? `部屋: ${roomId} / ${sideText} / 名前: ${nameInput.value.trim() || "player"}`
+        : `未接続 / ${sideText}`;
+      modeBtn.textContent = `操作: ${mode === "tap" ? "タップ" : "スライド"}`;
+      modeBtn.classList.toggle("selectedBtn", mode === "slide");
+    }
+
+    function renderBoard(){
       const pieces = roomData?.board || [];
       const map = boardMap(pieces);
-
       const selectedPiece = selected && selected.kind === "board" ? selectedPieceObject() : null;
-      const selectedTargetSet = new Set(legalTargets.map(m => `${m.x},${m.y}`));
+      const targetSet = new Set(legalTargets.map(t => `${t.x},${t.y}`));
 
       let html = "";
-      for (let y = 0; y < 9; y++) {
-        for (let x = 0; x < 9; x++) {
+      for(let y=0;y<9;y++){
+        for(let x=0;x<9;x++){
+          const cellClass = ["cell"];
+          if (targetSet.has(`${x},${y}`)) cellClass.push("target");
+          if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) cellClass.push("selected");
+          html += `<div class="${cellClass.join(" ")}" data-x="${x}" data-y="${y}">`;
           const piece = map.get(`${x},${y}`);
-          const cellClasses = ["cell"];
-          if (selectedTargetSet.has(`${x},${y}`)) cellClasses.push("target");
-          if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) cellClasses.push("selected");
-
-          html += `<div class="${cellClasses.join(" ")}" data-x="${x}" data-y="${y}">`;
           if (piece) {
             const cooling = piece.color === mySide && piece.cooldownUntil && piece.cooldownUntil > now();
             const p = cooling ? Math.max(0, Math.min(1, (piece.cooldownUntil - now()) / 1000)) : 0;
-            const pieceClasses = ["piece", piece.color === "w" ? "white" : "black"];
-            if (cooling) pieceClasses.push("cooling");
-            if (selectedPiece && selectedPiece.id === piece.id) pieceClasses.push("inspect");
+            const classes = ["piece", piece.color === "w" ? "white" : "black"];
+            if (cooling) classes.push("cooling");
+            if (selectedPiece && selectedPiece.id === piece.id) classes.push("inspect");
             html += `<button type="button"
-              class="${pieceClasses.join(" ")}"
+              class="${classes.join(" ")}"
               data-piece-id="${piece.id}"
               data-color="${piece.color}"
               data-type="${piece.type}"
@@ -894,23 +749,25 @@
         }
       }
       boardEl.innerHTML = html;
-      boardCells = Array.from(boardEl.querySelectorAll(".cell"));
     }
 
-    function renderHands() {
-      const renderSide = (color, hostEl) => {
+    function handTypes(){
+      return ["pawn","lance","knight","silver","gold","bishop","rook"];
+    }
+
+    function renderHands(){
+      const renderSide = (color, hostEl, selectable) => {
         const counts = roomData?.hands?.[color] || {};
-        const isMine = color === mySide;
         let html = "";
         for (const type of handTypes()) {
           const count = counts[type] || 0;
-          const btnClasses = ["handBtn"];
-          if (isMine && selected && selected.kind === "hand" && selected.color === color && selected.type === type) {
-            btnClasses.push("active");
+          const classes = ["handBtn"];
+          if (selectable && selected && selected.kind === "hand" && selected.color === color && selected.type === type) {
+            classes.push("active");
           }
-          if (count <= 0) btnClasses.push("disabled");
+          if (count <= 0) classes.push("disabled");
           html += `
-            <button type="button" class="${btnClasses.join(" ")}"
+            <button type="button" class="${classes.join(" ")}"
               data-hand-type="${type}"
               data-hand-color="${color}"
               ${count <= 0 ? "disabled" : ""}>
@@ -922,20 +779,11 @@
         hostEl.innerHTML = html;
       };
 
-      renderSide(mySide === "w" ? "w" : "b", myHandEl);
-      renderSide(mySide === "w" ? "b" : "w", oppHandEl);
+      renderSide(mySide === "w" ? "w" : "b", myHandEl, true);
+      renderSide(mySide === "w" ? "b" : "w", oppHandEl, false);
     }
 
-    function renderInfo() {
-      const sideText = mySide === "b" ? "先手(黒)" : mySide === "w" ? "後手(白)" : "観戦";
-      const roomText = roomId ? `部屋: ${roomId}` : "未接続";
-      const name = nameInput.value.trim() || "player";
-      meInfo.textContent = `${roomText} / ${sideText} / 名前: ${name}`;
-      modeBtn.textContent = `操作: ${mode === "tap" ? "タップ" : "スライド"}`;
-      modeBtn.classList.toggle("selectedBtn", mode === "slide");
-    }
-
-    function render() {
+    function render(){
       selected = normalizeSelection();
       updatePreview();
       renderBoard();
@@ -943,36 +791,17 @@
       renderInfo();
     }
 
-    function syncBoardTimer() {
-      if (roomData) {
-        const next = normalizeSelection();
-        if (next !== selected) selected = next;
-        renderBoard();
-        renderHands();
-        renderInfo();
-      }
-      requestAnimationFrame(syncBoardTimer);
-    }
-
-    function boardCoordsFromEvent(ev) {
-      const rect = boardEl.getBoundingClientRect();
-      const x = Math.floor(((ev.clientX - rect.left) / rect.width) * 9);
-      const y = Math.floor(((ev.clientY - rect.top) / rect.height) * 9);
-      if (!inBoard(x, y)) return null;
-      return { x, y, rect };
-    }
-
-    function nearestLegalTargetToPoint(legal, clientX, clientY) {
+    function nearestLegalTargetToPoint(legal, clientX, clientY){
       if (!legal || !legal.length) return null;
       const rect = boardEl.getBoundingClientRect();
-      const cellW = rect.width / 9;
-      const cellH = rect.height / 9;
+      const cw = rect.width / 9;
+      const ch = rect.height / 9;
       let best = legal[0];
       let bestD = Infinity;
       for (const t of legal) {
-        const cx = rect.left + (t.x + 0.5) * cellW;
-        const cy = rect.top + (t.y + 0.5) * cellH;
-        const d = (cx - clientX) ** 2 + (cy - clientY) ** 2;
+        const cx = rect.left + (t.x + 0.5) * cw;
+        const cy = rect.top + (t.y + 0.5) * ch;
+        const d = (cx-clientX)**2 + (cy-clientY)**2;
         if (d < bestD) {
           bestD = d;
           best = t;
@@ -981,13 +810,43 @@
       return best;
     }
 
-    async function commitMove(destX, destY, opts = {}) {
+    function boardCoordsFromEvent(ev){
+      const rect = boardEl.getBoundingClientRect();
+      const x = Math.floor(((ev.clientX - rect.left) / rect.width) * 9);
+      const y = Math.floor(((ev.clientY - rect.top) / rect.height) * 9);
+      if (!inBoard(x,y)) return null;
+      return {x,y};
+    }
+
+    function openPromotionModal(piece){
+      return new Promise(resolve => {
+        pendingPromote = resolve;
+        modalText.textContent = `${displayName(piece)} は成れるよ。成る？`;
+        modalEl.classList.add("show");
+      });
+    }
+    modalYes.addEventListener("click", () => {
+      modalEl.classList.remove("show");
+      if (pendingPromote) {
+        const r = pendingPromote;
+        pendingPromote = null;
+        r(true);
+      }
+    });
+    modalNo.addEventListener("click", () => {
+      modalEl.classList.remove("show");
+      if (pendingPromote) {
+        const r = pendingPromote;
+        pendingPromote = null;
+        r(false);
+      }
+    });
+
+    async function commitMove(destX, destY, opts={}){
       if (!roomRef || !roomData || !selected) return;
+      const ts = now();
 
-      const captureTime = now();
-      const promote = !!opts.promote;
-
-      const result = await runTransaction(roomRef, (room) => {
+      const tx = await runTransaction(roomRef, (room) => {
         if (!room || room.gameOver) return;
         room.board = room.board || [];
         room.hands = room.hands || defaultHands();
@@ -1001,122 +860,75 @@
           if (idx < 0) return;
           const piece = pieces[idx];
           if (piece.color !== mySide) return;
-          if (piece.cooldownUntil && piece.cooldownUntil > captureTime) return;
+          if (piece.cooldownUntil && piece.cooldownUntil > ts) return;
 
-          const targets = legalBoardTargets(piece, pieces);
-          if (!targets.some(t => t.x === destX && t.y === destY)) return;
+          const legal = legalBoardTargets(piece, pieces);
+          if (!legal.some(t => t.x === destX && t.y === destY)) return;
 
           const occ = map.get(`${destX},${destY}`);
           if (occ && occ.color === piece.color) return;
 
-          if (piece.promoted) {
-            // 成り済みならそのまま
-          } else {
-            const promotionAllowed = canPromote(piece, piece.y, destY);
-            const forced = isForcedPromotion(piece, destY);
-            if (forced && !promote) return;
-            if (!forced && promotionAllowed && opts.askPromotion === false) {
-              // 何もしない
-            }
-          }
-
           if (occ && occ.color !== piece.color) {
-            if (occ.type === "king" && !occ.promoted) {
+            if (occ.type === "king") {
               room.gameOver = true;
               room.winner = piece.color;
             }
             const capturedType = baseType(occ);
             room.hands[piece.color][capturedType] = (room.hands[piece.color][capturedType] || 0) + 1;
-            pieces.splice(pieces.findIndex(p => p.id === occ.id), 1);
+            const occIndex = pieces.findIndex(p => p.id === occ.id);
+            if (occIndex >= 0) pieces.splice(occIndex, 1);
           }
 
-          const promotionAllowed = canPromote(piece, piece.y, destY);
           const forced = isForcedPromotion(piece, destY);
-          if (forced || (promotionAllowed && promote)) {
-            if (piece.type !== "king" && piece.type !== "gold") {
-              piece.promoted = true;
-            }
+          const promoAllowed = canPromote(piece, piece.y, destY);
+          if ((forced || (promoAllowed && opts.promote)) && piece.type !== "king" && piece.type !== "gold") {
+            piece.promoted = true;
           }
 
           piece.x = destX;
           piece.y = destY;
-          piece.cooldownUntil = captureTime + 1000;
-          room.lastMoveAt = captureTime;
+          piece.cooldownUntil = ts + 1000;
+          room.lastMoveAt = ts;
           return room;
         }
 
         if (selected.kind === "hand") {
-          const color = selected.color;
-          const type = selected.type;
-          if (color !== mySide) return;
-          if ((room.hands[color][type] || 0) <= 0) return;
+          if (selected.color !== mySide) return;
+          if ((room.hands[selected.color][selected.type] || 0) <= 0) return;
+
           const occ = map.get(`${destX},${destY}`);
           if (occ) return;
 
-          const targets = legalDropTargets(type, color, pieces);
-          if (!targets.some(t => t.x === destX && t.y === destY)) return;
+          const legal = legalDropTargets(selected.type, selected.color, pieces);
+          if (!legal.some(t => t.x === destX && t.y === destY)) return;
 
-          room.hands[color][type] -= 1;
-          const dropId = `${color}-drop-${type}-${captureTime}-${Math.floor(Math.random() * 100000)}`;
+          room.hands[selected.color][selected.type] -= 1;
           pieces.push({
-            id: dropId,
-            type,
-            color,
-            x: destX,
-            y: destY,
-            promoted: false,
-            cooldownUntil: captureTime + 1000
+            id:`${selected.color}-drop-${selected.type}-${ts}-${Math.floor(Math.random()*100000)}`,
+            type:selected.type,
+            color:selected.color,
+            x:destX,
+            y:destY,
+            promoted:false,
+            cooldownUntil:ts + 1000
           });
-          room.lastMoveAt = captureTime;
+          room.lastMoveAt = ts;
           return room;
         }
-
-        return;
       });
 
-      if (result.committed) {
-        setStatus("移動した！", "good");
+      if (tx.committed) {
         selected = null;
         legalTargets = [];
+        setStatus("動かした！", "good");
         render();
       } else {
-        setStatus("その手は動かせなかった。", "bad");
+        setStatus("その手は通らなかった。", "bad");
       }
     }
 
-    function maybePromotion(piece, toY) {
-      const can = canPromote(piece, piece.y, toY);
-      const forced = isForcedPromotion(piece, toY);
-      if (!can) return Promise.resolve(false);
-      if (forced) return Promise.resolve(true);
-
-      return new Promise(resolve => {
-        pendingPromote = resolve;
-        modalText.textContent = `${displayName(piece)} は成れるよ。成る？`;
-        modalEl.classList.add("show");
-      });
-    }
-
-    modalYes.addEventListener("click", () => {
-      modalEl.classList.remove("show");
-      if (pendingPromote) {
-        const resolve = pendingPromote;
-        pendingPromote = null;
-        resolve(true);
-      }
-    });
-    modalNo.addEventListener("click", () => {
-      modalEl.classList.remove("show");
-      if (pendingPromote) {
-        const resolve = pendingPromote;
-        pendingPromote = null;
-        resolve(false);
-      }
-    });
-
-    async function trySelectedMove(x, y) {
+    async function trySelectedMove(x, y){
       if (!selected) return;
-
       if (selected.kind === "board") {
         const piece = selectedPieceObject();
         if (!piece) return;
@@ -1126,9 +938,9 @@
 
         let promote = false;
         if (piece.color === mySide && canPromote(piece, piece.y, y)) {
-          promote = await maybePromotion(piece, y);
+          promote = await openPromotionModal(piece);
         }
-        await commitMove(x, y, { promote, askPromotion: false });
+        await commitMove(x, y, { promote });
         return;
       }
 
@@ -1136,8 +948,14 @@
         const legal = legalDropTargets(selected.type, selected.color, roomData.board || []);
         const target = legal.find(t => t.x === x && t.y === y);
         if (!target) return;
-        await commitMove(x, y, { askPromotion: false });
+        await commitMove(x, y, {});
       }
+    }
+
+    function clearSelection(){
+      selected = null;
+      legalTargets = [];
+      render();
     }
 
     boardEl.addEventListener("click", async (e) => {
@@ -1145,10 +963,7 @@
 
       const pieceBtn = e.target.closest(".piece");
       if (pieceBtn) {
-        const pieceId = pieceBtn.dataset.pieceId;
-        const piece = (roomData?.board || []).find(p => p.id === pieceId);
-        if (!piece) return;
-        selectBoardPiece(pieceId);
+        selectBoardPiece(pieceBtn.dataset.pieceId);
         return;
       }
 
@@ -1156,33 +971,40 @@
       if (handBtn && !handBtn.disabled) {
         const type = handBtn.dataset.handType;
         const color = handBtn.dataset.handColor;
-        selectHandPiece(color, type);
+        if (color === mySide) {
+          selected = { kind:"hand", color, type };
+          selected = normalizeSelection();
+          updatePreview();
+          render();
+        }
         return;
       }
 
       const cell = e.target.closest(".cell");
       if (!cell) return;
-      const x = Number(cell.dataset.x);
-      const y = Number(cell.dataset.y);
-
       if (selected) {
-        await trySelectedMove(x, y);
-        return;
+        await trySelectedMove(Number(cell.dataset.x), Number(cell.dataset.y));
       }
     });
+
+    function selectBoardPiece(id){
+      selected = { kind:"board", id };
+      selected = normalizeSelection();
+      updatePreview();
+      render();
+    }
 
     boardEl.addEventListener("pointerdown", (e) => {
       if (mode !== "slide") return;
       const pieceBtn = e.target.closest(".piece");
       if (pieceBtn) {
-        const pieceId = pieceBtn.dataset.pieceId;
-        const piece = (roomData?.board || []).find(p => p.id === pieceId);
+        const piece = (roomData?.board || []).find(p => p.id === pieceBtn.dataset.pieceId);
         if (!piece) return;
-        selected = { kind: "board", id: pieceId };
+        selected = { kind:"board", id: piece.id };
         selected = normalizeSelection();
         updatePreview();
         render();
-        dragging = { kind: "board", id: pieceId, color: piece.color };
+        dragging = { kind:"board", id: piece.id };
         boardEl.setPointerCapture?.(e.pointerId);
         return;
       }
@@ -1191,11 +1013,12 @@
       if (handBtn && !handBtn.disabled) {
         const type = handBtn.dataset.handType;
         const color = handBtn.dataset.handColor;
-        selected = { kind: "hand", color, type };
+        if (color !== mySide) return;
+        selected = { kind:"hand", color, type };
         selected = normalizeSelection();
         updatePreview();
         render();
-        dragging = { kind: "hand", type, color };
+        dragging = { kind:"hand", color, type };
         boardEl.setPointerCapture?.(e.pointerId);
         return;
       }
@@ -1203,52 +1026,42 @@
 
     document.addEventListener("pointerup", async (e) => {
       if (mode !== "slide" || !dragging) return;
-      const coords = boardCoordsFromEvent(e);
-      const dragNow = dragging;
+      const d = dragging;
       dragging = null;
 
-      if (!coords) {
+      const coords = boardCoordsFromEvent(e);
+      if (!coords || !selected) {
         clearSelection();
         return;
       }
-
-      if (!selected) return;
-      const x = coords.x;
-      const y = coords.y;
 
       if (selected.kind === "board") {
         const piece = selectedPieceObject();
         if (!piece) return;
         const legal = legalBoardTargets(piece, roomData.board || []);
-        let target = legal.find(t => t.x === x && t.y === y);
+        let target = legal.find(t => t.x === coords.x && t.y === coords.y);
         if (!target) target = nearestLegalTargetToPoint(legal, e.clientX, e.clientY);
         if (!target) return;
 
         let promote = false;
         if (piece.color === mySide && canPromote(piece, piece.y, target.y)) {
-          promote = await maybePromotion(piece, target.y);
+          promote = await openPromotionModal(piece);
         }
-        await commitMove(target.x, target.y, { promote, askPromotion: false });
+        await commitMove(target.x, target.y, { promote });
         return;
       }
 
       if (selected.kind === "hand") {
         const legal = legalDropTargets(selected.type, selected.color, roomData.board || []);
-        let target = legal.find(t => t.x === x && t.y === y);
+        let target = legal.find(t => t.x === coords.x && t.y === coords.y);
         if (!target) target = nearestLegalTargetToPoint(legal, e.clientX, e.clientY);
         if (!target) return;
-        await commitMove(target.x, target.y, { askPromotion: false });
+        await commitMove(target.x, target.y, {});
       }
     });
 
     document.addEventListener("pointercancel", () => {
       dragging = null;
-    });
-
-    document.addEventListener("click", (e) => {
-      if (mode !== "slide") return;
-      const handBtn = e.target.closest(".handBtn");
-      if (handBtn) return;
     });
 
     modeBtn.addEventListener("click", () => {
@@ -1258,44 +1071,42 @@
       setStatus(`操作モードを ${mode === "tap" ? "タップ" : "スライド"} に変更した。`, "good");
     });
 
-    async function connectRoom() {
+    async function connectRoom(){
       const rid = cleanRoomId(roomInput.value);
       if (!rid) {
         setStatus("部屋コードを入れてね。", "bad");
         return;
       }
       if (!auth.currentUser) {
-        setStatus("まだ匿名認証の準備中。少し待ってね。", "bad");
+        setStatus("匿名認証の準備中。もう少し待ってね。", "bad");
         return;
       }
 
       roomId = rid;
-      localStorage.setItem("noTurnShogi.room", rid);
-      location.hash = rid;
       roomRef = ref(db, `rooms/${roomId}`);
+      localStorage.setItem("noTurnShogi.room", roomId);
+      location.hash = roomId;
 
-      const username = (nameInput.value.trim() || "player").slice(0, 18);
-      localStorage.setItem("noTurnShogi.name", username);
+      const name = (nameInput.value.trim() || "player").slice(0,18);
+      localStorage.setItem("noTurnShogi.name", name);
 
-      const tx = await runTransaction(roomRef, (room) => {
+      const joined = await runTransaction(roomRef, (room) => {
         if (!room) room = createInitialRoom();
         room.players = room.players || {};
-        room.hands = room.hands || defaultHands();
         room.board = room.board || initialBoard();
-        room.gameOver = !!room.gameOver;
-        room.winner = room.winner || null;
+        room.hands = room.hands || defaultHands();
 
         const existing = room.players[uid];
         if (existing) {
-          existing.name = username;
+          existing.name = name;
           existing.lastSeen = now();
         } else {
-          const sides = Object.values(room.players).map(p => p?.side).filter(Boolean);
+          const sides = Object.values(room.players).map(v => v?.side).filter(Boolean);
           const hasB = sides.includes("b");
           const hasW = sides.includes("w");
           const side = !hasB ? "b" : !hasW ? "w" : "s";
           room.players[uid] = {
-            name: username,
+            name,
             side,
             joinedAt: now(),
             lastSeen: now()
@@ -1304,8 +1115,8 @@
         return room;
       });
 
-      if (!tx.committed) {
-        setStatus("部屋に入れなかった。もう一回試してね。", "bad");
+      if (!joined.committed) {
+        setStatus("部屋に入れなかった。", "bad");
         return;
       }
 
@@ -1313,10 +1124,7 @@
       onDisconnect(playerRef).remove();
 
       onValue(roomRef, (snap) => {
-        roomData = snap.val();
-        if (!roomData) {
-          roomData = createInitialRoom();
-        }
+        roomData = snap.val() || createInitialRoom();
         mySide = roomData.players?.[uid]?.side || "s";
         selected = normalizeSelection();
         updatePreview();
@@ -1328,7 +1136,6 @@
           const sideText = mySide === "b" ? "先手(黒)" : mySide === "w" ? "後手(白)" : "観戦";
           setStatus(`接続中。あなたは ${sideText}。`, "good");
         }
-
         render();
       });
 
@@ -1337,7 +1144,6 @@
     }
 
     connectBtn.addEventListener("click", connectRoom);
-
     roomInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") connectRoom();
     });
@@ -1345,13 +1151,12 @@
       if (e.key === "Enter") connectRoom();
     });
 
-    onAuthStateChanged(auth, async (user) => {
+    onAuthStateChanged(auth, (user) => {
       if (!user) return;
       uid = user.uid;
-      meInfo.textContent = `認証中… ${uid.slice(0, 6)}`;
       connectBtn.disabled = false;
       if (roomInput.value.trim()) {
-        await connectRoom();
+        connectRoom();
       } else {
         setStatus("部屋コードを入れて接続してね。", "");
       }
@@ -1359,21 +1164,26 @@
 
     signInAnonymously(auth).catch((err) => {
       console.error(err);
-      setStatus("匿名認証に失敗した。Firebase の Auth 設定を見てね。", "bad");
+      setStatus("匿名認証に失敗した。Authentication を確認してね。", "bad");
     });
 
-    // 初期描画
-    render();
-    requestAnimationFrame(syncBoardTimer);
-
-    // 画面外クリックで選択解除
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest("#board") && !e.target.closest(".handBtn") && !e.target.closest(".topbar") && !e.target.closest(".modal")) {
-        if (mode === "tap") {
-          clearSelection();
-        }
+    function updateLoop(){
+      if (roomData) {
+        renderBoard();
+        renderHands();
+        renderInfo();
       }
+      requestAnimationFrame(updateLoop);
+    }
+
+    document.addEventListener("click", (e) => {
+      if (mode !== "tap") return;
+      if (e.target.closest("#board") || e.target.closest(".handBtn") || e.target.closest(".topbar") || e.target.closest(".modal")) return;
+      clearSelection();
     });
+
+    render();
+    requestAnimationFrame(updateLoop);
   </script>
 </body>
 </html>
