@@ -209,8 +209,8 @@
     </div>
 
     <div class="panel" id="hint">
-      駒を動かすと1秒だけ再移動できないよ。円が消えていく感じで表示してある。<br>
-      敵の駒も選択できるから、初心者向けの確認もしやすい。
+      相手が来るまでは駒を動かせないよ。白側は盤面が反転するようにしてある。<br>
+      移動先は●で出る。駒のクールダウンも毎フレーム更新するように直してある。
     </div>
   </div>
 
@@ -237,7 +237,7 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    try { getAnalytics(app); } catch (e) {}
+    try { getAnalytics(app); } catch {}
     const db = getFirestore(app);
 
     const boardCanvas = document.getElementById("board");
@@ -286,7 +286,8 @@
       boardReady: false,
       dragPointerId: null,
       dragStart: null,
-      dragging: false
+      dragging: false,
+      suppressClickUntil: 0
     };
     localStorage.setItem("shogi_of_speed_pid", state.playerId);
 
@@ -648,7 +649,7 @@
             if (!interactive || count <= 0) return;
             state.selected = { kind: "hand", side, type: t };
             refreshHands();
-            render();
+            renderFrame();
           });
           el.appendChild(btn);
         }
@@ -673,7 +674,7 @@
       boardCanvas.height = Math.floor(rect.height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       state.boardReady = true;
-      render();
+      renderFrame();
     }
 
     function roundRectPath(context, x, y, w, h, r) {
@@ -685,6 +686,24 @@
       context.arcTo(x, y + h, x, y, rr);
       context.arcTo(x, y, x + w, y, rr);
       context.closePath();
+    }
+
+    function getViewSide() {
+      return state.mySide === "white" ? "white" : "black";
+    }
+
+    function boardToScreen(x, y) {
+      if (getViewSide() === "white") {
+        return { x: 8 - x, y: 8 - y };
+      }
+      return { x, y };
+    }
+
+    function screenToBoard(x, y) {
+      if (getViewSide() === "white") {
+        return { x: 8 - x, y: 8 - y };
+      }
+      return { x, y };
     }
 
     function drawPiece(piece, cell, now, selected) {
@@ -712,32 +731,35 @@
       ctx.closePath();
 
       const grad = ctx.createLinearGradient(cell.x, cell.y, cell.x + s, cell.y + s);
-      if (piece.side === "black") {
-        grad.addColorStop(0, "#d9ba90");
-        grad.addColorStop(1, "#ba905b");
-      } else {
-        grad.addColorStop(0, "#fffaf1");
-        grad.addColorStop(1, "#eadfc9");
-      }
+      grad.addColorStop(0, "#fff8ed");
+      grad.addColorStop(1, "#e8d7bf");
       ctx.fillStyle = grad;
       ctx.strokeStyle = "rgba(65,45,18,.75)";
       ctx.lineWidth = 2;
       ctx.fill();
       ctx.stroke();
 
+      // 先手・後手の向きを文字の向きで表す
+      ctx.save();
+      ctx.translate(x, y);
+      if (piece.side === "white") {
+        ctx.rotate(Math.PI);
+      }
+
       if (piece.type !== baseOf[piece.type]) {
         ctx.fillStyle = "rgba(220,80,40,.9)";
         ctx.font = `700 ${Math.max(11, s * 0.16)}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("+", x + s * 0.17, y - s * 0.16);
+        ctx.fillText("+", s * 0.17, -s * 0.16);
       }
 
       ctx.fillStyle = "#2b1d10";
       ctx.font = `700 ${Math.max(14, s * 0.21)}px "Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(pieceText(piece.type), x, y + 1);
+      ctx.fillText(pieceText(piece.type), 0, 1);
+      ctx.restore();
 
       const remain = Math.max(0, piece.cooldownUntil - now);
       if (remain > 0) {
@@ -759,7 +781,7 @@
       ctx.restore();
     }
 
-    function render() {
+    function renderFrame() {
       if (!state.boardReady) return;
 
       const rect = boardCanvas.getBoundingClientRect();
@@ -770,11 +792,12 @@
 
       ctx.clearRect(0, 0, w, h);
 
-      for (let y = 0; y < 9; y++) {
-        for (let x = 0; x < 9; x++) {
-          const light = (x + y) % 2 === 0;
+      for (let sy = 0; sy < 9; sy++) {
+        for (let sx = 0; sx < 9; sx++) {
+          const board = screenToBoard(sx, sy);
+          const light = (board.x + board.y) % 2 === 0;
           ctx.fillStyle = light ? "#edd9b3" : "#e0c390";
-          ctx.fillRect(x * cell, y * cell, cell, cell);
+          ctx.fillRect(sx * cell, sy * cell, cell, cell);
         }
       }
 
@@ -797,29 +820,37 @@
         ctx.font = "600 16px system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.fillText("ルーム接続待ち", w / 2, h / 2);
+        requestAnimationFrame(renderFrame);
         return;
       }
 
+      const bothReady = !!state.roomData?.players?.black && !!state.roomData?.players?.white;
       const legal = selectedLegalMoves(live);
 
       for (const m of legal) {
-        ctx.fillStyle = "rgba(242,201,76,.34)";
-        ctx.fillRect(m.x * cell + 2, m.y * cell + 2, cell - 4, cell - 4);
-        ctx.strokeStyle = "rgba(242,201,76,.95)";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(m.x * cell + 3, m.y * cell + 3, cell - 6, cell - 6);
+        const s = boardToScreen(m.x, m.y);
+        ctx.fillStyle = "rgba(242,201,76,.24)";
+        ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
+
+        // ● の代わりに黒丸っぽい点
+        ctx.beginPath();
+        ctx.arc(s.x * cell + cell / 2, s.y * cell + cell / 2, cell * 0.085, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(35,25,15,.78)";
+        ctx.fill();
       }
 
       const selectedPiece = selectedPieceObj();
       if (selectedPiece) {
+        const s = boardToScreen(selectedPiece.x, selectedPiece.y);
         ctx.strokeStyle = "rgba(138,180,255,.95)";
         ctx.lineWidth = 4;
-        ctx.strokeRect(selectedPiece.x * cell + 3, selectedPiece.y * cell + 3, cell - 6, cell - 6);
+        ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
       }
 
       for (const p of live.pieces) {
+        const sp = boardToScreen(p.x, p.y);
         const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-        drawPiece(p, { x: p.x * cell, y: p.y * cell, size: cell }, now, isSel);
+        drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
       }
 
       if (live.winner) {
@@ -831,27 +862,49 @@
         ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
         ctx.font = "500 15px system-ui, sans-serif";
         ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
+      } else if (!bothReady) {
+        ctx.fillStyle = "rgba(0,0,0,.28)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 22px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("相手待ち", w / 2, h / 2 - 6);
+        ctx.font = "500 14px system-ui, sans-serif";
+        ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
       }
+
+      requestAnimationFrame(renderFrame);
     }
 
     function pointToSquare(ev) {
       const rect = boardCanvas.getBoundingClientRect();
       const px = (ev.clientX - rect.left) / rect.width * 9;
       const py = (ev.clientY - rect.top) / rect.height * 9;
-      const x = Math.floor(px);
-      const y = Math.floor(py);
-      if (!isInside(x, y)) return null;
-      return { x, y, px, py };
+      const sx = Math.floor(px);
+      const sy = Math.floor(py);
+      if (!isInside(sx, sy)) return null;
+      return { x: sx, y: sy, px, py };
     }
 
     function pieceUnderSquare(x, y) {
       const live = state.roomData?.state;
       if (!live) return null;
-      return live.pieces.find(p => p.x === x && p.y === y) || null;
+      const b = screenToBoard(x, y);
+      return live.pieces.find(p => p.x === b.x && p.y === b.y) || null;
     }
 
-    async function commitSelectionMove(dest) {
+    function canAct() {
+      const room = state.roomData;
+      if (!room || !room.state || room.state.winner) return false;
+      if (state.mySide === "spectator") return false;
+      if (!room.players?.black || !room.players?.white) return false;
+      return true;
+    }
+
+    async function commitSelectionMove(destScreen) {
       if (!state.roomRef || !state.roomData || !state.selected) return;
+
+      const dest = screenToBoard(destScreen.x, destScreen.y);
 
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(state.roomRef);
@@ -860,6 +913,9 @@
         const room = snap.data();
         const live = room.state;
         if (!live || live.winner) return;
+
+        const bothReady = !!room.players?.black && !!room.players?.white;
+        if (!bothReady) return;
 
         const mySide = room.players?.black === state.playerId ? "black"
                      : room.players?.white === state.playerId ? "white"
@@ -942,8 +998,7 @@
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
-          const fallback = uniqueRoomCandidate(roomId.slice(0, 8));
-          roomId = fallback;
+          roomId = uniqueRoomCandidate(roomId.slice(0, 8));
           roomInput.value = roomId;
         }
 
@@ -1030,6 +1085,8 @@
         const live = state.roomData.state || {};
         if (live.winner) {
           setStatus(`勝者は ${live.winner === "black" ? "黒" : "白"} だよ。`);
+        } else if (!players.black || !players.white) {
+          setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
         } else {
           const mine = state.mySide === "black" ? "黒"
                      : state.mySide === "white" ? "白"
@@ -1038,33 +1095,35 @@
         }
 
         refreshHands();
-        render();
       });
 
       setStatus(createdByMe ? `ルーム ${roomId} を作成したよ。` : `ルーム ${roomId} に参加したよ。`);
+      renderFrame();
     }
 
     function clearSelection() {
       state.selected = null;
       refreshHands();
-      render();
+      renderFrame();
     }
 
     function getNearestLegalMove(ev) {
       const live = state.roomData?.state;
       if (!live || !state.selected) return null;
+
       const rect = boardCanvas.getBoundingClientRect();
       const px = (ev.clientX - rect.left) / rect.width * 9;
       const py = (ev.clientY - rect.top) / rect.height * 9;
+
       const legal = selectedLegalMoves(live);
       if (!legal.length) return null;
 
       let best = null;
       let bestD = Infinity;
       for (const m of legal) {
-        const cx = m.x + 0.5;
-        const cy = m.y + 0.5;
-        const d = (cx - px) * (cx - px) + (cy - py) * (cy - py);
+        const sx = m.x + 0.5;
+        const sy = m.y + 0.5;
+        const d = (sx - px) * (sx - px) + (sy - py) * (sy - py);
         if (d < bestD) {
           bestD = d;
           best = m;
@@ -1074,7 +1133,9 @@
     }
 
     boardCanvas.addEventListener("click", async (ev) => {
+      if (performance.now() < state.suppressClickUntil) return;
       if (!state.roomData) return;
+
       const sq = pointToSquare(ev);
       if (!sq) return;
 
@@ -1085,20 +1146,22 @@
         if (clicked) {
           state.selected = { kind: "piece", id: clicked.id };
           refreshHands();
-          render();
+          renderFrame();
           return;
         }
 
         if (!state.selected) return;
+        if (!canAct()) return;
+
         await commitSelectionMove({ x: sq.x, y: sq.y });
         clearSelection();
         return;
       }
 
-      if (clicked) {
+      if (mode === "slide" && clicked) {
         state.selected = { kind: "piece", id: clicked.id };
         refreshHands();
-        render();
+        renderFrame();
       }
     });
 
@@ -1115,7 +1178,7 @@
       if (clicked) {
         state.selected = { kind: "piece", id: clicked.id };
         refreshHands();
-        render();
+        renderFrame();
       }
     });
 
@@ -1131,7 +1194,9 @@
       if (modeSelect.value !== "slide") return;
       if (state.dragPointerId !== ev.pointerId) return;
 
-      if (state.selected && state.dragging) {
+      state.suppressClickUntil = performance.now() + 250;
+
+      if (state.selected && state.dragging && canAct()) {
         const target = getNearestLegalMove(ev);
         if (target) {
           await commitSelectionMove(target);
@@ -1174,7 +1239,7 @@
     modeSelect.addEventListener("change", () => {
       state.selected = null;
       refreshHands();
-      render();
+      renderFrame();
     });
 
     window.addEventListener("resize", resizeCanvas);
@@ -1182,6 +1247,7 @@
     resizeCanvas();
     refreshHands();
     updateMePill();
+    renderFrame();
     setStatus("ルームを作成するか、コードを入れて参加してね。");
   </script>
 </body>
