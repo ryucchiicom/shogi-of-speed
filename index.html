@@ -261,7 +261,7 @@
     <div class="panel" id="topbar">
       <input id="roomInput" maxlength="12" placeholder="ROOM CODE" />
       <button class="primary" id="enterBtn">入室 / 作成</button>
-      <button id="copyBtn">コードを共有</button>
+      <button id="shareBtn">コードを共有</button>
       <label class="pill">操作
         <select id="modeSelect">
           <option value="tap">タップ</option>
@@ -335,7 +335,7 @@
 
     const roomInput = document.getElementById("roomInput");
     const enterBtn = document.getElementById("enterBtn");
-    const copyBtn = document.getElementById("copyBtn");
+    const shareBtn = document.getElementById("shareBtn");
     const modeSelect = document.getElementById("modeSelect");
     const statusEl = document.getElementById("status");
     const mePill = document.getElementById("mePill");
@@ -406,6 +406,9 @@
 
     const savedMode = localStorage.getItem("shogi_of_speed_mode");
     if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
+
+    const initialRoom = new URLSearchParams(location.search).get("room");
+    if (initialRoom) roomInput.value = initialRoom.toUpperCase();
 
     function applyThemeFromCSS(){
       const cs = getComputedStyle(document.documentElement);
@@ -634,12 +637,8 @@
     }
 
     function movementForms(piece) {
-      if (piece.promoMode === "promoted") {
-        return [PROMOTED_MOVE[piece.type] || piece.type];
-      }
-      if (piece.promoMode === "can") {
-        return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
-      }
+      if (piece.promoMode === "promoted") return [PROMOTED_MOVE[piece.type] || piece.type];
+      if (piece.promoMode === "can") return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
       return [piece.type];
     }
 
@@ -745,19 +744,25 @@
       }
 
       if (piece.promoMode === "can") {
+        const inZone = isInPromotionZone(piece.side, dest.y);
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
 
-        if (forced) {
-          if (!promoOK) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
+        if (inZone) {
+          const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
+          const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
+          if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
+          if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
+          if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
+          return null;
         }
 
-        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
+        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "normal");
+        const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "promoted");
+
         if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
-        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
-        if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
+        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "normal" };
+        if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         return null;
       }
 
@@ -1200,7 +1205,7 @@
       roomInput.value = "";
       updateMePill();
       refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね.");
       renderFrame();
     }
 
@@ -1290,73 +1295,46 @@
       });
     }
 
-    function pointFromEvent(ev) {
-      const rect = boardCanvas.getBoundingClientRect();
-      return {
-        x: (ev.clientX - rect.left) / rect.width * 9,
-        y: (ev.clientY - rect.top) / rect.height * 9
-      };
-    }
-
-    function pointInDiamond(px, py, cx, cy, r) {
-      return Math.abs(px - cx) + Math.abs(py - cy) <= r + 1e-6;
-    }
-
-    function segmentIntersectionT(a, b, c, d) {
-      const r = { x: b.x - a.x, y: b.y - a.y };
-      const s = { x: d.x - c.x, y: d.y - c.y };
-      const denom = r.x * s.y - r.y * s.x;
-      if (Math.abs(denom) < 1e-9) return null;
-
-      const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / denom;
-      const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / denom;
-      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return t;
-      return null;
-    }
-
-    function segmentHitsDiamondT(start, end, cx, cy, r) {
-      if (pointInDiamond(end.x, end.y, cx, cy, r)) return 1;
-
-      const top = { x: cx, y: cy - r };
-      const right = { x: cx + r, y: cy };
-      const bottom = { x: cx, y: cy + r };
-      const left = { x: cx - r, y: cy };
-
-      const edges = [
-        [top, right],
-        [right, bottom],
-        [bottom, left],
-        [left, top]
-      ];
-
-      let best = null;
-      for (const [p1, p2] of edges) {
-        const t = segmentIntersectionT(start, end, p1, p2);
-        if (t === null) continue;
-        if (best === null || t < best) best = t;
-      }
-      return best;
-    }
-
     function getSlidePieceTarget(start, end) {
       const live = state.roomData?.state;
-      if (!live || !state.selected || !start) return null;
+      if (!live || !state.selected || state.selected.kind !== "piece") return null;
 
-      const legal = selectedLegalMoves(live);
+      const piece = live.pieces.find(p => p.id === state.selected.id);
+      if (!piece) return null;
+
+      const legal = legalMovesForPiece(live, piece);
       if (!legal.length) return null;
 
+      const pieceCenter = boardToScreen(piece.x, piece.y);
+      const pc = { x: pieceCenter.x + 0.5, y: pieceCenter.y + 0.5 };
+      const dragVec = { x: end.x - pc.x, y: end.y - pc.y };
+      const dragLen = Math.hypot(dragVec.x, dragVec.y);
+      if (dragLen < 0.08) return null;
+
       let best = null;
-      let bestT = Infinity;
+      let bestAngle = Infinity;
+      let bestDist = Infinity;
 
       for (const m of legal) {
-        const screen = boardToScreen(m.x, m.y);
-        const cx = screen.x + 0.5;
-        const cy = screen.y + 0.5;
-        const t = segmentHitsDiamondT(start, end, cx, cy, 0.5);
-        if (t === null) continue;
-        if (t < bestT) {
-          bestT = t;
+        const mc = boardToScreen(m.x, m.y);
+        const center = { x: mc.x + 0.5, y: mc.y + 0.5 };
+        const v = { x: center.x - pc.x, y: center.y - pc.y };
+        const len = Math.hypot(v.x, v.y);
+        if (len < 1e-9) continue;
+
+        const dot = v.x * dragVec.x + v.y * dragVec.y;
+        if (dot <= 0) continue;
+
+        const cos = Math.max(-1, Math.min(1, dot / (len * dragLen)));
+        const angle = Math.acos(cos);
+        if (angle > 0.7) continue;
+
+        const dist = Math.hypot(center.x - end.x, center.y - end.y);
+
+        if (angle < bestAngle - 1e-9 || (Math.abs(angle - bestAngle) < 1e-9 && dist < bestDist)) {
           best = m;
+          bestAngle = angle;
+          bestDist = dist;
         }
       }
 
@@ -1371,6 +1349,14 @@
       if (!live) return null;
       if (pieceAt(live.pieces, board.x, board.y)) return null;
       return board;
+    }
+
+    function eventBoardPoint(ev) {
+      const rect = boardCanvas.getBoundingClientRect();
+      return {
+        x: (ev.clientX - rect.left) / rect.width * 9,
+        y: (ev.clientY - rect.top) / rect.height * 9
+      };
     }
 
     async function attemptMoveToScreen(destScreen) {
@@ -1698,8 +1684,8 @@
       state.suppressClickUntil = performance.now() + 250;
 
       if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const start = pointFromEvent({ clientX: state.dragStart.x, clientY: state.dragStart.y });
-        const end = pointFromEvent(ev);
+        const start = eventBoardPoint({ clientX: state.dragStart.x, clientY: state.dragStart.y });
+        const end = eventBoardPoint(ev);
         const targetMove = getSlidePieceTarget(start, end);
         if (targetMove) {
           const live = state.roomData?.state;
@@ -1716,7 +1702,7 @@
       state.dragging = false;
     });
 
-    window.addEventListener("pointerup", async (ev) => {
+    document.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
       if (!state.selected || state.selected.kind !== "hand") return;
       if (state.dragSource !== "hand") return;
@@ -1741,18 +1727,31 @@
 
     enterBtn.addEventListener("click", enterRoom);
 
-    copyBtn.addEventListener("click", async () => {
+    shareBtn.addEventListener("click", async () => {
       const code = normalizeRoomId(roomInput.value);
       if (!code) {
-        setStatus("コピーするコードがないよ。");
+        setStatus("共有するコードがないよ。");
         return;
       }
-      try {
-        await navigator.clipboard.writeText(code);
-        setStatus(`コードを共有したよ: ${code}`);
-      } catch {
-        setStatus("共有できなかった。手動でコピーしてね。");
+
+      const url = new URL(location.href);
+      url.searchParams.set("room", code);
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "Shogi of Speed",
+            text: `一緒に対戦しよう！\nルームコード: ${code}`,
+            url: url.toString()
+          });
+          setStatus(`共有したよ: ${code}`);
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+        }
       }
+
+      setStatus("この端末では共有シートを開けなかった。");
     });
 
     roomInput.addEventListener("keydown", (e) => {
