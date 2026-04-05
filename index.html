@@ -489,7 +489,8 @@
         hands: makeHands(),
         winner: null,
         updatedAt: Date.now(),
-        rev: 0
+        rev: 0,
+        playerCooldowns: { black: 0, white: 0 }
       };
     }
 
@@ -511,7 +512,8 @@
         hands: JSON.parse(JSON.stringify(s.hands)),
         winner: s.winner || null,
         updatedAt: s.updatedAt || Date.now(),
-        rev: s.rev || 0
+        rev: s.rev || 0,
+        playerCooldowns: JSON.parse(JSON.stringify(s.playerCooldowns || { black: 0, white: 0 }))
       };
     }
 
@@ -806,7 +808,7 @@
             x,
             y,
             kind: "normal",
-            nextMode: isPromotableType(type) && isInPromotionZone(side, y) ? "can" : (isPromotableType(type) ? "normal" : "fixed")
+            nextMode: isPromotableType(type) ? "normal" : "fixed"
           });
         }
       }
@@ -1246,6 +1248,9 @@
         const next = cloneState(live);
         next.rev = (next.rev || 0) + 1;
         next.updatedAt = now;
+        next.playerCooldowns = next.playerCooldowns || { black: 0, white: 0 };
+
+        if ((next.playerCooldowns[mySide] || 0) > now) return;
 
         if (state.selected.kind === "piece") {
           const piece = next.pieces.find(p => p.id === state.selected.id);
@@ -1269,6 +1274,7 @@
           piece.y = destBoard.y;
           piece.cooldownUntil = now + COOLDOWN_MS;
           piece.promoMode = nextMode || "normal";
+          next.playerCooldowns[mySide] = now + COOLDOWN_MS;
         }
 
         if (state.selected.kind === "hand") {
@@ -1276,6 +1282,7 @@
           const type = state.selected.type;
           if (side !== mySide) return;
           if ((next.hands[side]?.[type] || 0) <= 0) return;
+          if ((next.playerCooldowns[side] || 0) > now) return;
 
           const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
           if (occupant) return;
@@ -1287,9 +1294,10 @@
             type,
             x: destBoard.x,
             y: destBoard.y,
-            promoMode: isPromotableType(type) && isInPromotionZone(side, destBoard.y) ? "can" : (isPromotableType(type) ? "normal" : "fixed"),
+            promoMode: isPromotableType(type) ? "normal" : "fixed",
             cooldownUntil: now + COOLDOWN_MS
           });
+          next.playerCooldowns[side] = now + COOLDOWN_MS;
         }
 
         tx.update(state.roomRef, { state: next, updatedAt: now });
@@ -1665,46 +1673,41 @@
       if (Math.hypot(dx, dy) > 6) state.dragging = true;
     });
 
-    boardCanvas.addEventListener("pointerup", async (ev) => {
+    function finishSlidePointer(ev) {
       if (modeSelect.value !== "slide") return;
       if (state.dragPointerId != null && state.dragPointerId !== ev.pointerId) return;
 
       state.suppressClickUntil = performance.now() + 250;
 
       if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const releasePoint = pointToSquare(ev) ? pointFromEvent(ev) : pointFromEvent(ev);
+        const releasePoint = pointFromEvent(ev);
         const targetMove = getSlidePieceTarget(releasePoint);
         if (targetMove) {
           const live = state.roomData?.state;
           const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
           if (selectedPiece && selectedPiece.side === state.mySide) {
-            await applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode);
-            clearSelection();
+            applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode).then(() => {
+              clearSelection();
+            });
           }
         }
       }
 
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-    });
-
-    window.addEventListener("pointerup", async (ev) => {
-      if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId != null && state.dragPointerId !== ev.pointerId) return;
-
       if (state.selected && state.selected.kind === "hand" && state.dragSource === "hand") {
         const targetBoard = getHandDropTarget(ev);
         if (targetBoard) {
-          await applyMoveTransaction(targetBoard, "normal");
-          clearSelection();
+          applyMoveTransaction(targetBoard, "normal").then(() => {
+            clearSelection();
+          });
         }
       }
 
       state.dragPointerId = null;
       state.dragStart = null;
       state.dragging = false;
-    });
+    }
+
+    document.addEventListener("pointerup", finishSlidePointer, true);
 
     boardCanvas.addEventListener("pointercancel", () => {
       state.dragPointerId = null;
