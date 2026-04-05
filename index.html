@@ -1337,12 +1337,11 @@
       return best;
     }
 
-    function getHandDropTarget(ev) {
-      const sq = pointToSquare(ev);
+    function getHandDropTargetFromSquare(sq) {
       if (!sq) return null;
-      const board = screenToBoard(sq.x, sq.y);
       const live = state.roomData?.state;
       if (!live) return null;
+      const board = screenToBoard(sq.x, sq.y);
       if (pieceAt(live.pieces, board.x, board.y)) return null;
       return board;
     }
@@ -1355,224 +1354,6 @@
       };
     }
 
-    async function attemptMoveToScreen(destScreen) {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return;
-
-      if (state.selected.kind === "piece") {
-        const selectedPiece = live.pieces.find(p => p.id === state.selected.id);
-        if (!selectedPiece) return;
-        if (selectedPiece.side !== state.mySide) return;
-        if (!canAct()) return;
-
-        const destBoard = screenToBoard(destScreen.x, destScreen.y);
-        const legal = legalMovesForPiece(live, selectedPiece);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        if (!move) return;
-
-        await applyMoveTransaction(destBoard, move.nextMode);
-        clearSelection();
-        return;
-      }
-
-      if (state.selected.kind === "hand") {
-        if (state.selected.side !== state.mySide) return;
-        if (!canAct()) return;
-
-        const destBoard = screenToBoard(destScreen.x, destScreen.y);
-        await applyMoveTransaction(destBoard, "normal");
-        clearSelection();
-      }
-    }
-
-    async function enterRoom() {
-      try {
-        let roomId = normalizeRoomId(roomInput.value);
-        if (!roomId) {
-          roomId = randRoomId();
-          roomInput.value = roomId;
-        }
-
-        const ref = doc(db, "rooms", roomId);
-        const snap = await getDoc(ref);
-
-        if (!snap.exists()) {
-          await setDoc(ref, makeRoomDoc(state.playerId));
-        }
-
-        await connectRoom(roomId);
-      } catch (err) {
-        setStatus(`入室に失敗した: ${err.message}`);
-      }
-    }
-
-    async function connectRoom(roomId) {
-      roomId = normalizeRoomId(roomId);
-      if (!roomId) return;
-
-      if (state.unsub) state.unsub();
-      if (state.heartbeat) {
-        clearInterval(state.heartbeat);
-        state.heartbeat = null;
-      }
-
-      state.roomId = roomId;
-      state.roomRef = doc(db, "rooms", roomId);
-      state.selected = null;
-      updateMePill();
-
-      await runTransaction(db, async (tx) => {
-        const now = Date.now();
-        const snap = await tx.get(state.roomRef);
-
-        if (!snap.exists()) {
-          tx.set(state.roomRef, makeRoomDoc(state.playerId));
-          return;
-        }
-
-        const data = snap.data() || {};
-        let players = data.players || { black: null, white: null };
-        let presence = data.presence || {};
-        let roomState = data.state || freshState();
-        let matchStartAt = data.matchStartAt || null;
-        let rematchVotes = data.rematchVotes || {};
-        let forceHomeAt = data.forceHomeAt || null;
-
-        const currentAlready = players.black === state.playerId || players.white === state.playerId;
-
-        const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < PRESENCE_STALE_MS);
-        const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < PRESENCE_STALE_MS);
-        const bothInactive = !blackActive && !whiteActive;
-
-        if (forceHomeAt) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          matchStartAt = null;
-          rematchVotes = {};
-          forceHomeAt = null;
-        } else if (bothInactive && !roomState.winner) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (roomState.winner && bothInactive) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (!currentAlready) {
-          if (!blackActive) {
-            players.black = state.playerId;
-            presence[state.playerId] = { side: "black", lastSeen: now };
-          } else if (!whiteActive) {
-            players.white = state.playerId;
-            presence[state.playerId] = { side: "white", lastSeen: now };
-          } else {
-            presence[state.playerId] = { side: "spectator", lastSeen: now };
-          }
-        } else {
-          const side = players.black === state.playerId ? "black" : "white";
-          presence[state.playerId] = { side, lastSeen: now };
-        }
-
-        const bothReady = !!players.black && !!players.white;
-        if (bothReady && !matchStartAt && !roomState.winner) {
-          matchStartAt = now + COUNTDOWN_MS;
-        }
-
-        tx.update(state.roomRef, {
-          players,
-          presence,
-          state: roomState,
-          matchStartAt,
-          rematchVotes,
-          forceHomeAt,
-          updatedAt: now
-        });
-      });
-
-      state.unsub = onSnapshot(state.roomRef, (snap) => {
-        if (!snap.exists()) {
-          setStatus("ルームが見つからないよ。");
-          return;
-        }
-
-        const data = snap.data();
-        if (data.forceHomeAt) {
-          leaveToHome();
-          return;
-        }
-
-        state.roomData = data;
-
-        const players = state.roomData.players || {};
-        state.mySide =
-          players.black === state.playerId ? "black" :
-          players.white === state.playerId ? "white" :
-          "spectator";
-
-        if (state.selected?.kind === "piece") {
-          const stillThere = state.roomData.state?.pieces?.some(p => p.id === state.selected.id);
-          if (!stillThere) state.selected = null;
-        }
-
-        updateMePill();
-
-        const live = state.roomData.state || {};
-        if (live.winner) {
-          setStatus(`勝者は ${live.winner === "black" ? "黒" : "白"} だよ。`);
-        } else if (!players.black || !players.white) {
-          setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
-        } else {
-          const mine = state.mySide === "black" ? "黒"
-                     : state.mySide === "white" ? "白"
-                     : "観戦";
-          const now = Date.now();
-          if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-            setStatus(`ルーム ${state.roomId} に接続中。${mine}。開始カウントダウン中。`);
-          } else {
-            setStatus(`ルーム ${state.roomId} に接続中。あなたは ${mine}。`);
-          }
-        }
-
-        refreshHands();
-        updateRematchOverlay();
-      });
-
-      state.heartbeat = setInterval(() => {
-        if (!state.roomRef || !state.roomData || state.mySide === "spectator") return;
-        runTransaction(db, async (tx) => {
-          const snap = await tx.get(state.roomRef);
-          if (!snap.exists()) return;
-
-          const data = snap.data() || {};
-          const presence = data.presence || {};
-          const players = data.players || {};
-          const now = Date.now();
-
-          presence[state.playerId] = { side: state.mySide, lastSeen: now };
-
-          let matchStartAt = data.matchStartAt || null;
-          const bothReady = !!players.black && !!players.white;
-          if (bothReady && !matchStartAt && !(data.state && data.state.winner)) {
-            matchStartAt = now + COUNTDOWN_MS;
-          }
-
-          tx.update(state.roomRef, {
-            presence,
-            matchStartAt,
-            updatedAt: now
-          });
-        }).catch(() => {});
-      }, 8000);
-
-      setStatus(`ルーム ${roomId} に接続したよ。`);
-      renderFrame();
-    }
-
     boardCanvas.addEventListener("click", async (ev) => {
       if (performance.now() < state.suppressClickUntil) return;
       if (!state.roomData) return;
@@ -1583,6 +1364,15 @@
       const clicked = pieceUnderSquare(sq.x, sq.y);
       const mode = modeSelect.value;
       const live = state.roomData.state;
+
+      if (state.selected?.kind === "hand") {
+        const targetBoard = getHandDropTargetFromSquare(sq);
+        if (targetBoard && state.selected.side === state.mySide && canAct()) {
+          await applyMoveTransaction(targetBoard, "normal");
+          clearSelection();
+        }
+        return;
+      }
 
       if (mode === "tap") {
         if (!state.selected) {
@@ -1618,25 +1408,8 @@
           }
 
           clearSelection();
-          return;
         }
-
-        if (state.selected.kind === "hand") {
-          const destBoard = screenToBoard(sq.x, sq.y);
-          await applyMoveTransaction(destBoard, "normal");
-          clearSelection();
-          return;
-        }
-      }
-
-      if (mode === "slide") {
-        if (state.selected?.kind === "hand") {
-          const destBoard = screenToBoard(sq.x, sq.y);
-          await applyMoveTransaction(destBoard, "normal");
-          clearSelection();
-          return;
-        }
-
+      } else {
         if (clicked) {
           state.selected = { kind: "piece", id: clicked.id };
           state.dragSource = "board";
@@ -1646,16 +1419,29 @@
       }
     });
 
-    boardCanvas.addEventListener("pointerdown", (ev) => {
+    boardCanvas.addEventListener("pointerdown", async (ev) => {
       if (modeSelect.value !== "slide") return;
       boardCanvas.setPointerCapture(ev.pointerId);
+
+      const sq = pointToSquare(ev);
+      if (!sq) return;
+
+      if (state.selected?.kind === "hand") {
+        if (state.selected.side !== state.mySide || !canAct()) return;
+        const targetBoard = getHandDropTargetFromSquare(sq);
+        if (targetBoard) {
+          state.suppressClickUntil = performance.now() + 250;
+          await applyMoveTransaction(targetBoard, "normal");
+          clearSelection();
+        }
+        return;
+      }
+
       state.dragPointerId = ev.pointerId;
       state.dragStart = { x: ev.clientX, y: ev.clientY };
       state.dragging = false;
       state.dragSource = "board";
 
-      const sq = pointToSquare(ev);
-      if (!sq) return;
       const clicked = pieceUnderSquare(sq.x, sq.y);
       if (clicked) {
         state.selected = { kind: "piece", id: clicked.id };
@@ -1673,7 +1459,7 @@
       if (Math.hypot(dx, dy) > 6) state.dragging = true;
     });
 
-    function finishSlidePointer(ev) {
+    boardCanvas.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
       if (state.dragPointerId != null && state.dragPointerId !== ev.pointerId) return;
 
@@ -1686,28 +1472,16 @@
           const live = state.roomData?.state;
           const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
           if (selectedPiece && selectedPiece.side === state.mySide) {
-            applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode).then(() => {
-              clearSelection();
-            });
-          }
-        }
-      }
-
-      if (state.selected && state.selected.kind === "hand" && state.dragSource === "hand") {
-        const targetBoard = getHandDropTarget(ev);
-        if (targetBoard) {
-          applyMoveTransaction(targetBoard, "normal").then(() => {
+            await applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode);
             clearSelection();
-          });
+          }
         }
       }
 
       state.dragPointerId = null;
       state.dragStart = null;
       state.dragging = false;
-    }
-
-    document.addEventListener("pointerup", finishSlidePointer, true);
+    });
 
     boardCanvas.addEventListener("pointercancel", () => {
       state.dragPointerId = null;
