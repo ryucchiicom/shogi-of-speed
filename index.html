@@ -261,7 +261,7 @@
     <div class="panel" id="topbar">
       <input id="roomInput" maxlength="12" placeholder="ROOM CODE" />
       <button class="primary" id="enterBtn">入室 / 作成</button>
-      <button id="copyBtn">コードコピー</button>
+      <button id="copyBtn">コードを共有</button>
       <label class="pill">操作
         <select id="modeSelect">
           <option value="tap">タップ</option>
@@ -735,8 +735,8 @@
           const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
           const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
           if (!promoReach) return null;
-          if (!simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+          if (!simulateMoveAndCheck(stateObj, piece, dest, "can")) return null;
+          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
         }
 
         const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
@@ -747,17 +747,17 @@
       if (piece.promoMode === "can") {
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "promoted");
+        const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
 
         if (forced) {
           if (!promoOK) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
         }
 
-        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "normal");
+        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
         if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
-        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "normal" };
-        if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
+        if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
         return null;
       }
 
@@ -972,12 +972,6 @@
       if (kind === "base") return "rgba(216,75,67,.34)";
       if (kind === "promo") return "rgba(53,105,214,.30)";
       return "rgba(242,201,76,.34)";
-    }
-
-    function moveDotColor(kind) {
-      if (kind === "base") return "rgba(180,40,34,.96)";
-      if (kind === "promo") return "rgba(45,86,190,.96)";
-      return "rgba(35,25,15,.78)";
     }
 
     function drawPiece(piece, cell, now, selected) {
@@ -1344,15 +1338,12 @@
       return best;
     }
 
-    function getSlideTargetMove(start, end) {
+    function getSlidePieceTarget(start, end) {
       const live = state.roomData?.state;
       if (!live || !state.selected || !start) return null;
 
       const legal = selectedLegalMoves(live);
       if (!legal.length) return null;
-
-      const startBoard = { x: start.x, y: start.y };
-      const endBoard = { x: end.x, y: end.y };
 
       let best = null;
       let bestT = Infinity;
@@ -1361,7 +1352,7 @@
         const screen = boardToScreen(m.x, m.y);
         const cx = screen.x + 0.5;
         const cy = screen.y + 0.5;
-        const t = segmentHitsDiamondT(startBoard, endBoard, cx, cy, 0.5);
+        const t = segmentHitsDiamondT(start, end, cx, cy, 0.5);
         if (t === null) continue;
         if (t < bestT) {
           bestT = t;
@@ -1370,6 +1361,16 @@
       }
 
       return best;
+    }
+
+    function getHandDropTarget(ev) {
+      const sq = pointToSquare(ev);
+      if (!sq) return null;
+      const board = screenToBoard(sq.x, sq.y);
+      const live = state.roomData?.state;
+      if (!live) return null;
+      if (pieceAt(live.pieces, board.x, board.y)) return null;
+      return board;
     }
 
     async function attemptMoveToScreen(destScreen) {
@@ -1590,13 +1591,6 @@
       renderFrame();
     }
 
-    function getTargetMoveFromSlide(ev) {
-      if (!state.dragStart) return null;
-      const start = pointFromEvent({ clientX: state.dragStart.x, clientY: state.dragStart.y });
-      const end = pointFromEvent(ev);
-      return getSlideTargetMove(start, end);
-    }
-
     boardCanvas.addEventListener("click", async (ev) => {
       if (performance.now() < state.suppressClickUntil) return;
       if (!state.roomData) return;
@@ -1704,7 +1698,9 @@
       state.suppressClickUntil = performance.now() + 250;
 
       if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const targetMove = getTargetMoveFromSlide(ev);
+        const start = pointFromEvent({ clientX: state.dragStart.x, clientY: state.dragStart.y });
+        const end = pointFromEvent(ev);
+        const targetMove = getSlidePieceTarget(start, end);
         if (targetMove) {
           const live = state.roomData?.state;
           const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
@@ -1725,9 +1721,9 @@
       if (!state.selected || state.selected.kind !== "hand") return;
       if (state.dragSource !== "hand") return;
 
-      const targetMove = getTargetMoveFromSlide(ev);
-      if (targetMove) {
-        await applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, "normal");
+      const targetBoard = getHandDropTarget(ev);
+      if (targetBoard) {
+        await applyMoveTransaction(targetBoard, "normal");
         clearSelection();
       }
       state.suppressClickUntil = performance.now() + 250;
@@ -1753,9 +1749,9 @@
       }
       try {
         await navigator.clipboard.writeText(code);
-        setStatus(`コードをコピーしたよ: ${code}`);
+        setStatus(`コードを共有したよ: ${code}`);
       } catch {
-        setStatus("コピーできなかった。手動でコピーしてね。");
+        setStatus("共有できなかった。手動でコピーしてね。");
       }
     });
 
