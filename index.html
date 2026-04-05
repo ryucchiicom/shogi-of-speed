@@ -184,13 +184,6 @@
       touch-action:none;
     }
 
-    #hint{
-      padding:8px 10px;
-      font-size:12px;
-      opacity:.85;
-      line-height:1.5;
-    }
-
     .pill{
       display:inline-flex;
       align-items:center;
@@ -296,16 +289,11 @@
         <div class="handRow" id="myHands"></div>
       </div>
     </div>
-
-    <div class="panel" id="hint">
-      相手が来るまで駒は動かせない。白側は盤面が反転する。<br>
-      不成は黒、可成は青で不成/成が 0.25 秒ごとに切り替わる、成は赤。
-    </div>
   </div>
 
   <div id="rematchOverlay">
     <div id="rematchCard">
-      <div id="rematchWinner">勝者: -</div>
+      <div id="rematchWinner">勝敗: -</div>
       <div id="rematchTitle">再戦しますか？</div>
       <div id="rematchDesc">はいを両方が押すと、同じ相手ともう一回始まるよ。</div>
       <div id="rematchButtons">
@@ -883,8 +871,13 @@
         return;
       }
 
-      const winner = room.state?.winner === "black" ? "黒" : "白";
-      rematchWinner.textContent = `勝者: ${winner}`;
+      const winner = room.state?.winner === "black"
+        ? (state.mySide === "black" ? "あなたの勝ち" : "あなたの負け")
+        : room.state?.winner === "white"
+          ? (state.mySide === "white" ? "あなたの勝ち" : "あなたの負け")
+          : "決着";
+
+      rematchWinner.textContent = winner;
 
       const votes = room.rematchVotes || {};
       const me = votes[state.playerId] ? "はいを押してあるよ。" : "まだ返事してないよ。";
@@ -1672,6 +1665,17 @@
       const sq = pointToSquare(ev);
       if (!sq) return;
       const clicked = pieceUnderSquare(sq.x, sq.y);
+      const board = screenToBoard(sq.x, sq.y);
+
+      if (state.selected?.kind === "hand") {
+        const live = state.roomData?.state;
+        const empty = live && !pieceAt(live.pieces, board.x, board.y);
+        if (empty) {
+          applyMoveTransaction(board, "normal").then(() => clearSelection());
+          return;
+        }
+      }
+
       if (clicked) {
         state.selected = { kind: "piece", id: clicked.id };
         state.dragSource = "board";
