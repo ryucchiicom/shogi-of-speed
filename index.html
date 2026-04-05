@@ -531,6 +531,17 @@
       return PROMOTION_ZONE[side].includes(y);
     }
 
+    function forcePromoteNeeded(piece, destY) {
+      const base = piece.type;
+      if (base === "pawn" || base === "lance") {
+        return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
+      }
+      if (base === "knight") {
+        return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
+      }
+      return false;
+    }
+
     function boardMap(pieces) {
       const map = new Map();
       for (const p of pieces) map.set(`${p.x},${p.y}`, p);
@@ -700,6 +711,7 @@
 
       const basePseudo = pseudoMovesForType(piece.side, baseType, piece.x, piece.y, stateObj.pieces);
       const baseReach = basePseudo.some(m => m.x === dest.x && m.y === dest.y);
+      const forced = promotable && forcePromoteNeeded(piece, dest.y);
 
       if (piece.promoMode === "fixed") {
         if (!baseReach) return null;
@@ -718,17 +730,31 @@
 
       if (piece.promoMode === "normal") {
         if (!baseReach) return null;
+
+        if (forced) {
+          const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
+          const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
+          if (!promoReach) return null;
+          if (!simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+        }
+
         const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
         if (!simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode };
       }
 
       if (piece.promoMode === "can") {
-        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "normal");
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "promoted");
 
+        if (forced) {
+          if (!promoOK) return null;
+          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+        }
+
+        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "normal");
         if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
         if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "normal" };
         if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
@@ -1079,11 +1105,6 @@
         const s = boardToScreen(m.x, m.y);
         ctx.fillStyle = moveColor(m.kind);
         ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
-
-        ctx.beginPath();
-        ctx.arc(s.x * cell + cell / 2, s.y * cell + cell / 2, cell * 0.085, 0, Math.PI * 2);
-        ctx.fillStyle = moveDotColor(m.kind);
-        ctx.fill();
       }
 
       const selectedPiece = selectedPieceObj();
@@ -1275,6 +1296,82 @@
       });
     }
 
+    function pointFromEvent(ev) {
+      const rect = boardCanvas.getBoundingClientRect();
+      return {
+        x: (ev.clientX - rect.left) / rect.width * 9,
+        y: (ev.clientY - rect.top) / rect.height * 9
+      };
+    }
+
+    function pointInDiamond(px, py, cx, cy, r) {
+      return Math.abs(px - cx) + Math.abs(py - cy) <= r + 1e-6;
+    }
+
+    function segmentIntersectionT(a, b, c, d) {
+      const r = { x: b.x - a.x, y: b.y - a.y };
+      const s = { x: d.x - c.x, y: d.y - c.y };
+      const denom = r.x * s.y - r.y * s.x;
+      if (Math.abs(denom) < 1e-9) return null;
+
+      const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / denom;
+      const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / denom;
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return t;
+      return null;
+    }
+
+    function segmentHitsDiamondT(start, end, cx, cy, r) {
+      if (pointInDiamond(end.x, end.y, cx, cy, r)) return 1;
+
+      const top = { x: cx, y: cy - r };
+      const right = { x: cx + r, y: cy };
+      const bottom = { x: cx, y: cy + r };
+      const left = { x: cx - r, y: cy };
+
+      const edges = [
+        [top, right],
+        [right, bottom],
+        [bottom, left],
+        [left, top]
+      ];
+
+      let best = null;
+      for (const [p1, p2] of edges) {
+        const t = segmentIntersectionT(start, end, p1, p2);
+        if (t === null) continue;
+        if (best === null || t < best) best = t;
+      }
+      return best;
+    }
+
+    function getSlideTargetMove(start, end) {
+      const live = state.roomData?.state;
+      if (!live || !state.selected || !start) return null;
+
+      const legal = selectedLegalMoves(live);
+      if (!legal.length) return null;
+
+      const startBoard = { x: start.x, y: start.y };
+      const endBoard = { x: end.x, y: end.y };
+
+      let best = null;
+      let bestT = Infinity;
+
+      for (const m of legal) {
+        const screen = boardToScreen(m.x, m.y);
+        const cx = screen.x + 0.5;
+        const cy = screen.y + 0.5;
+        const t = segmentHitsDiamondT(startBoard, endBoard, cx, cy, 0.5);
+        if (t === null) continue;
+        if (t < bestT) {
+          bestT = t;
+          best = m;
+        }
+      }
+
+      return best;
+    }
+
     async function attemptMoveToScreen(destScreen) {
       const live = state.roomData?.state;
       if (!live || !state.selected) return;
@@ -1358,14 +1455,13 @@
         let rematchVotes = data.rematchVotes || {};
         let forceHomeAt = data.forceHomeAt || null;
 
-        const forceHome = !!forceHomeAt;
         const currentAlready = players.black === state.playerId || players.white === state.playerId;
 
         const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < PRESENCE_STALE_MS);
         const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < PRESENCE_STALE_MS);
         const bothInactive = !blackActive && !whiteActive;
 
-        if (forceHome) {
+        if (forceHomeAt) {
           players = { black: state.playerId, white: null };
           presence = { [state.playerId]: { side: "black", lastSeen: now } };
           roomState = freshState();
@@ -1494,30 +1590,11 @@
       renderFrame();
     }
 
-    function getClosestLegalMove(ev) {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return null;
-
-      const rect = boardCanvas.getBoundingClientRect();
-      const px = (ev.clientX - rect.left) / rect.width * 9;
-      const py = (ev.clientY - rect.top) / rect.height * 9;
-
-      const legal = selectedLegalMoves(live);
-      if (!legal.length) return null;
-
-      let best = null;
-      let bestD = Infinity;
-      for (const m of legal) {
-        const s = boardToScreen(m.x, m.y);
-        const cx = s.x + 0.5;
-        const cy = s.y + 0.5;
-        const d = (cx - px) * (cx - px) + (cy - py) * (cy - py);
-        if (d < bestD) {
-          bestD = d;
-          best = m;
-        }
-      }
-      return best;
+    function getTargetMoveFromSlide(ev) {
+      if (!state.dragStart) return null;
+      const start = pointFromEvent({ clientX: state.dragStart.x, clientY: state.dragStart.y });
+      const end = pointFromEvent(ev);
+      return getSlideTargetMove(start, end);
     }
 
     boardCanvas.addEventListener("click", async (ev) => {
@@ -1622,12 +1699,12 @@
 
     boardCanvas.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId !== ev.pointerId && !(state.selected?.kind === "hand" && state.dragSource === "hand")) return;
+      if (state.dragPointerId !== ev.pointerId && !(state.selected?.kind === "piece")) return;
 
       state.suppressClickUntil = performance.now() + 250;
 
       if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const targetMove = getClosestLegalMove(ev);
+        const targetMove = getTargetMoveFromSlide(ev);
         if (targetMove) {
           const live = state.roomData?.state;
           const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
@@ -1648,13 +1725,15 @@
       if (!state.selected || state.selected.kind !== "hand") return;
       if (state.dragSource !== "hand") return;
 
-      const sq = pointToSquare(ev);
-      if (!sq) return;
-
-      const destBoard = screenToBoard(sq.x, sq.y);
-      await applyMoveTransaction(destBoard, "normal");
-      clearSelection();
+      const targetMove = getTargetMoveFromSlide(ev);
+      if (targetMove) {
+        await applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, "normal");
+        clearSelection();
+      }
       state.suppressClickUntil = performance.now() + 250;
+      state.dragPointerId = null;
+      state.dragStart = null;
+      state.dragging = false;
     });
 
     boardCanvas.addEventListener("pointercancel", () => {
