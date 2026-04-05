@@ -18,6 +18,7 @@
       --overlay:#0000005c;
       --overlay-card:#fffaf2;
       --ui-btn:#ffffff;
+      --primary-text:#2f2618;
     }
 
     @media (prefers-color-scheme: dark){
@@ -34,6 +35,7 @@
         --overlay:#0000007a;
         --overlay-card:#241c16;
         --ui-btn:#2c231c;
+        --primary-text:#1e140c;
       }
     }
 
@@ -106,6 +108,13 @@
     button.primary{
       background:linear-gradient(180deg,#fff3bf,#ffe08c);
       border-color:#d8b84a;
+      color:var(--primary-text);
+      font-weight:800;
+    }
+
+    #rematchButtons button.primary{
+      color:var(--primary-text);
+      font-weight:800;
     }
 
     button:disabled{
@@ -390,6 +399,7 @@
       dragPointerId: null,
       dragStart: null,
       dragging: false,
+      dragSource: null,
       suppressClickUntil: 0
     };
     localStorage.setItem("shogi_of_speed_pid", state.playerId);
@@ -827,10 +837,14 @@
       return isBothPlayersReady(roomData);
     }
 
+    function hideRematchOverlay() {
+      rematchOverlay.classList.remove("show");
+    }
+
     function updateRematchOverlay() {
       const room = state.roomData;
       if (!shouldShowRematch(room)) {
-        rematchOverlay.classList.remove("show");
+        hideRematchOverlay();
         return;
       }
 
@@ -870,6 +884,7 @@
           btn.addEventListener("pointerdown", (e) => {
             if (!interactive || count <= 0 || state.mySide === "spectator") return;
             state.selected = { kind: "hand", side, type: t };
+            state.dragSource = "hand";
             if (modeSelect.value === "slide") {
               state.dragPointerId = e.pointerId;
               state.dragStart = { x: e.clientX, y: e.clientY };
@@ -882,6 +897,7 @@
           btn.addEventListener("click", () => {
             if (!interactive || count <= 0 || state.mySide === "spectator") return;
             state.selected = { kind: "hand", side, type: t };
+            state.dragSource = "hand";
             refreshHands();
             renderFrame();
           });
@@ -1147,11 +1163,38 @@
       return true;
     }
 
+    function leaveToHome() {
+      if (state.unsub) {
+        state.unsub();
+        state.unsub = null;
+      }
+      if (state.heartbeat) {
+        clearInterval(state.heartbeat);
+        state.heartbeat = null;
+      }
+      state.roomId = "";
+      state.roomRef = null;
+      state.roomData = null;
+      state.mySide = "spectator";
+      state.selected = null;
+      state.dragPointerId = null;
+      state.dragStart = null;
+      state.dragging = false;
+      state.dragSource = null;
+      hideRematchOverlay();
+      roomInput.value = "";
+      updateMePill();
+      refreshHands();
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+      renderFrame();
+    }
+
     function clearSelection() {
       state.selected = null;
       state.dragPointerId = null;
       state.dragStart = null;
       state.dragging = false;
+      state.dragSource = null;
       refreshHands();
       renderFrame();
     }
@@ -1313,14 +1356,23 @@
         let roomState = data.state || freshState();
         let matchStartAt = data.matchStartAt || null;
         let rematchVotes = data.rematchVotes || {};
+        let forceHomeAt = data.forceHomeAt || null;
 
+        const forceHome = !!forceHomeAt;
         const currentAlready = players.black === state.playerId || players.white === state.playerId;
 
         const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < PRESENCE_STALE_MS);
         const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < PRESENCE_STALE_MS);
         const bothInactive = !blackActive && !whiteActive;
 
-        if (bothInactive && !roomState.winner) {
+        if (forceHome) {
+          players = { black: state.playerId, white: null };
+          presence = { [state.playerId]: { side: "black", lastSeen: now } };
+          roomState = freshState();
+          matchStartAt = null;
+          rematchVotes = {};
+          forceHomeAt = null;
+        } else if (bothInactive && !roomState.winner) {
           players = { black: state.playerId, white: null };
           presence = { [state.playerId]: { side: "black", lastSeen: now } };
           roomState = freshState();
@@ -1358,6 +1410,7 @@
           state: roomState,
           matchStartAt,
           rematchVotes,
+          forceHomeAt,
           updatedAt: now
         });
       });
@@ -1368,7 +1421,13 @@
           return;
         }
 
-        state.roomData = snap.data();
+        const data = snap.data();
+        if (data.forceHomeAt) {
+          leaveToHome();
+          return;
+        }
+
+        state.roomData = data;
 
         const players = state.roomData.players || {};
         state.mySide =
@@ -1476,6 +1535,7 @@
         if (!state.selected) {
           if (clicked) {
             state.selected = { kind: "piece", id: clicked.id };
+            state.dragSource = "board";
             refreshHands();
             renderFrame();
           }
@@ -1498,6 +1558,7 @@
 
           if (clicked) {
             state.selected = { kind: "piece", id: clicked.id };
+            state.dragSource = "board";
             refreshHands();
             renderFrame();
             return;
@@ -1525,6 +1586,7 @@
 
         if (clicked) {
           state.selected = { kind: "piece", id: clicked.id };
+          state.dragSource = "board";
           refreshHands();
           renderFrame();
         }
@@ -1537,12 +1599,14 @@
       state.dragPointerId = ev.pointerId;
       state.dragStart = { x: ev.clientX, y: ev.clientY };
       state.dragging = false;
+      state.dragSource = "board";
 
       const sq = pointToSquare(ev);
       if (!sq) return;
       const clicked = pieceUnderSquare(sq.x, sq.y);
       if (clicked) {
         state.selected = { kind: "piece", id: clicked.id };
+        state.dragSource = "board";
         refreshHands();
         renderFrame();
       }
@@ -1558,7 +1622,7 @@
 
     boardCanvas.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId !== ev.pointerId && state.selected?.kind !== "piece") return;
+      if (state.dragPointerId !== ev.pointerId && !(state.selected?.kind === "hand" && state.dragSource === "hand")) return;
 
       state.suppressClickUntil = performance.now() + 250;
 
@@ -1582,15 +1646,10 @@
     window.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
       if (!state.selected || state.selected.kind !== "hand") return;
-      if (!state.dragging) return;
+      if (state.dragSource !== "hand") return;
 
       const sq = pointToSquare(ev);
-      if (!sq) {
-        state.dragPointerId = null;
-        state.dragStart = null;
-        state.dragging = false;
-        return;
-      }
+      if (!sq) return;
 
       const destBoard = screenToBoard(sq.x, sq.y);
       await applyMoveTransaction(destBoard, "normal");
@@ -1602,6 +1661,7 @@
       state.dragPointerId = null;
       state.dragStart = null;
       state.dragging = false;
+      state.dragSource = null;
     });
 
     enterBtn.addEventListener("click", enterRoom);
@@ -1627,6 +1687,7 @@
     modeSelect.addEventListener("change", () => {
       localStorage.setItem("shogi_of_speed_mode", modeSelect.value);
       state.selected = null;
+      state.dragSource = null;
       refreshHands();
       renderFrame();
     });
@@ -1665,6 +1726,16 @@
             state: freshState(),
             matchStartAt: now + COUNTDOWN_MS,
             rematchVotes: {},
+            forceHomeAt: null,
+            updatedAt: now
+          });
+          return;
+        }
+
+        if (!yes) {
+          tx.update(state.roomRef, {
+            rematchVotes: {},
+            forceHomeAt: now,
             updatedAt: now
           });
           return;
@@ -1677,6 +1748,10 @@
       }).catch(err => {
         setStatus(`リマッチの処理に失敗した: ${err.message}`);
       });
+
+      if (!yes) {
+        leaveToHome();
+      }
     }
 
     rematchYes.addEventListener("click", () => voteRematch(true));
