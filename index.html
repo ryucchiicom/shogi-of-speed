@@ -969,6 +969,19 @@
       return "rgba(242,201,76,.34)";
     }
 
+    function octantFromVector(dx, dy) {
+      if (dx === 0 && dy === 0) return null;
+      const angle = Math.atan2(dy, dx);
+      let idx = Math.round(angle / (Math.PI / 4));
+      idx = ((idx % 8) + 8) % 8;
+      return idx;
+    }
+
+    function pieceScreenCenter(piece) {
+      const s = boardToScreen(piece.x, piece.y);
+      return { x: s.x + 0.5, y: s.y + 0.5 };
+    }
+
     function drawPiece(piece, cell, now, selected) {
       const x = cell.x + cell.size / 2;
       const y = cell.y + cell.size / 2;
@@ -1659,7 +1672,7 @@
       state.suppressClickUntil = performance.now() + 250;
 
       if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const releasePoint = pointFromEvent(ev);
+        const releasePoint = pointToSquare(ev) ? pointFromEvent(ev) : pointFromEvent(ev);
         const targetMove = getSlidePieceTarget(releasePoint);
         if (targetMove) {
           const live = state.roomData?.state;
