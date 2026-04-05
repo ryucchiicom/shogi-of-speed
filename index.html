@@ -27,8 +27,8 @@
         --ink:#f2eadf;
         --line:#4f4031;
         --accent:#d9b14f;
-        --board-dark:#463626;
-        --board-light:#2a1d13;
+        --board-dark:#4a3927;
+        --board-light:#37281c;
         --piece-fill-1:#8e6b45;
         --piece-fill-2:#674b2e;
         --overlay:#0000007a;
@@ -287,7 +287,7 @@
   <div id="rematchOverlay">
     <div id="rematchCard">
       <div id="rematchTitle">続けて対戦しますか？</div>
-      <div id="rematchDesc">はいを両方が押すと、同じ相手でもう一回すぐ始まるよ。</div>
+      <div id="rematchDesc">はいを両方が押すと、同じ相手ともう一回始まるよ。</div>
       <div id="rematchButtons">
         <button class="primary" id="rematchYes">はい</button>
         <button id="rematchNo">いいえ</button>
@@ -390,8 +390,7 @@
       dragPointerId: null,
       dragStart: null,
       dragging: false,
-      suppressClickUntil: 0,
-      rematchVote: false
+      suppressClickUntil: 0
     };
     localStorage.setItem("shogi_of_speed_pid", state.playerId);
 
@@ -902,12 +901,26 @@
           }
           btn.disabled = !interactive || count <= 0 || state.mySide === "spectator";
           btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span>`;
+
+          btn.addEventListener("pointerdown", (e) => {
+            if (!interactive || count <= 0 || state.mySide === "spectator") return;
+            state.selected = { kind: "hand", side, type: t };
+            if (modeSelect.value === "slide") {
+              state.dragPointerId = e.pointerId;
+              state.dragStart = { x: e.clientX, y: e.clientY };
+              state.dragging = true;
+            }
+            refreshHands();
+            renderFrame();
+          });
+
           btn.addEventListener("click", () => {
-            if (!interactive || count <= 0) return;
+            if (!interactive || count <= 0 || state.mySide === "spectator") return;
             state.selected = { kind: "hand", side, type: t };
             refreshHands();
             renderFrame();
           });
+
           el.appendChild(btn);
         }
       };
@@ -1171,6 +1184,9 @@
 
     function clearSelection() {
       state.selected = null;
+      state.dragPointerId = null;
+      state.dragStart = null;
+      state.dragging = false;
       refreshHands();
       renderFrame();
     }
@@ -1535,10 +1551,17 @@
         }
       }
 
-      if (mode === "slide" && clicked) {
-        state.selected = { kind: "piece", id: clicked.id };
-        refreshHands();
-        renderFrame();
+      if (mode === "slide") {
+        if (state.selected?.kind === "hand") {
+          await attemptMoveToScreen({ x: sq.x, y: sq.y });
+          return;
+        }
+
+        if (clicked) {
+          state.selected = { kind: "piece", id: clicked.id };
+          refreshHands();
+          renderFrame();
+        }
       }
     });
 
@@ -1569,11 +1592,11 @@
 
     boardCanvas.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId !== ev.pointerId) return;
+      if (state.dragPointerId !== ev.pointerId && !(state.selected?.kind === "hand" && state.dragging)) return;
 
       state.suppressClickUntil = performance.now() + 250;
 
-      if (state.selected && state.dragging) {
+      if (state.selected && (state.dragging || state.selected.kind === "hand")) {
         const targetMove = getClosestLegalMove(ev);
         if (targetMove) {
           if (state.selected.kind === "piece") {
