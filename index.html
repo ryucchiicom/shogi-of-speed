@@ -146,10 +146,40 @@
       align-items:center;
     }
 
+    .handHeader{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      width:100%;
+      margin-bottom:6px;
+    }
+
     .handLabel{
       font-weight:700;
-      min-width:74px;
       font-size:13px;
+    }
+
+    .cooldownRing{
+      width:18px;
+      height:18px;
+      border-radius:50%;
+      position:relative;
+      display:none;
+      background:conic-gradient(from -90deg, rgba(127,166,255,.95) calc(var(--p, 0) * 1turn), rgba(0,0,0,.12) 0);
+      box-shadow:0 0 0 1px rgba(0,0,0,.12) inset;
+      flex:0 0 auto;
+    }
+
+    .cooldownRing.show{
+      display:block;
+    }
+
+    .cooldownRing::after{
+      content:"";
+      position:absolute;
+      inset:4px;
+      border-radius:50%;
+      background:var(--panel);
     }
 
     .handBtn{
@@ -844,10 +874,7 @@
         mePill.textContent = "未接続";
         return;
       }
-      const label = state.mySide === "black" ? "あなた: 先手(黒)"
-                   : state.mySide === "white" ? "あなた: 後手(白)"
-                   : "あなた: 観戦";
-      mePill.textContent = `${state.roomId} / ${label}`;
+      mePill.textContent = `${state.roomId} / あなた`;
     }
 
     function isBothPlayersReady(roomData) {
@@ -871,11 +898,10 @@
         return;
       }
 
-      const winner = room.state?.winner === "black"
-        ? (state.mySide === "black" ? "あなたの勝ち" : "あなたの負け")
-        : room.state?.winner === "white"
-          ? (state.mySide === "white" ? "あなたの勝ち" : "あなたの負け")
-          : "決着";
+      const winnerSide = room.state?.winner || null;
+      const winner = winnerSide
+        ? (winnerSide === state.mySide ? "あなたの勝ち" : "あなたの負け")
+        : "決着";
 
       rematchWinner.textContent = winner;
 
@@ -889,16 +915,38 @@
       rematchOverlay.classList.add("show");
     }
 
+    function cooldownProgressFromUntil(until) {
+      if (!until) return 0;
+      const remain = Math.max(0, until - Date.now());
+      return Math.min(1, remain / COOLDOWN_MS);
+    }
+
     function refreshHands() {
       const live = state.roomData?.state;
       const hands = live?.hands || makeHands();
+      const cooldowns = live?.playerCooldowns || { black: 0, white: 0 };
 
       const renderHandArea = (el, side, interactive) => {
         el.innerHTML = "";
+
+        const header = document.createElement("div");
+        header.className = "handHeader";
+
         const label = document.createElement("div");
         label.className = "handLabel";
-        label.textContent = side === "black" ? "黒の持ち駒" : "白の持ち駒";
-        el.appendChild(label);
+        label.textContent = side === state.mySide ? "自分の持ち駒" : "相手の持ち駒";
+        header.appendChild(label);
+
+        const ring = document.createElement("div");
+        ring.className = "cooldownRing";
+        const until = cooldowns?.[side] || 0;
+        const progress = cooldownProgressFromUntil(until);
+        if (side === state.mySide && progress > 0) {
+          ring.classList.add("show");
+          ring.style.setProperty("--p", String(progress));
+        }
+        header.appendChild(ring);
+        el.appendChild(header);
 
         for (const t of pieceOrder) {
           const count = hands[side]?.[t] || 0;
@@ -909,11 +957,11 @@
           if (state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) {
             btn.classList.add("selected");
           }
-          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator";
+          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator" || progress > 0;
           btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span>`;
 
           btn.addEventListener("pointerdown", (e) => {
-            if (!interactive || count <= 0 || state.mySide === "spectator") return;
+            if (!interactive || count <= 0 || state.mySide === "spectator" || progress > 0) return;
             e.preventDefault();
             e.stopPropagation();
             state.selected = { kind: "hand", side, type: t };
@@ -926,7 +974,7 @@
           });
 
           btn.addEventListener("click", () => {
-            if (!interactive || count <= 0 || state.mySide === "spectator") return;
+            if (!interactive || count <= 0 || state.mySide === "spectator" || progress > 0) return;
             state.selected = { kind: "hand", side, type: t };
             state.dragSource = "hand";
             refreshHands();
@@ -1142,7 +1190,7 @@
         ctx.fillStyle = "#fff";
         ctx.font = "800 26px system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
+        ctx.fillText(`勝者: ${live.winner === state.mySide ? "あなたの勝ち" : "あなたの負け"}`, w / 2, h / 2 - 4);
         ctx.font = "500 15px system-ui, sans-serif";
         ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
       } else if (!bothReady) {
@@ -1531,18 +1579,16 @@
 
         const live = state.roomData.state || {};
         if (live.winner) {
-          setStatus(`勝者は ${live.winner === "black" ? "黒" : "白"} だよ。`);
+          const winText = live.winner === state.mySide ? "あなたの勝ち" : "あなたの負け";
+          setStatus(winText);
         } else if (!players.black || !players.white) {
           setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
         } else {
-          const mine = state.mySide === "black" ? "黒"
-                     : state.mySide === "white" ? "白"
-                     : "観戦";
           const now = Date.now();
           if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-            setStatus(`ルーム ${state.roomId} に接続中。${mine}。開始カウントダウン中。`);
+            setStatus(`ルーム ${state.roomId} に接続中。開始カウントダウン中。`);
           } else {
-            setStatus(`ルーム ${state.roomId} に接続中。あなたは ${mine}。`);
+            setStatus(`ルーム ${state.roomId} に接続中。あなたの番。`);
           }
         }
 
