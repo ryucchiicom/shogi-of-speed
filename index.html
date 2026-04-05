@@ -12,8 +12,8 @@
       --line:#d9c8a6;
       --accent:#f2c94c;
       --accent2:#8ab4ff;
-      --accent3:#e46a5d;
-      --cool:#6f95ff;
+      --danger:#f08a8a;
+      --eligible:#6d8ff0;
     }
 
     html,body{
@@ -176,24 +176,6 @@
       background:#fff;
       font-size:12px;
     }
-
-    #choiceBar{
-      display:none;
-      padding:8px 10px;
-      margin-bottom:8px;
-      gap:8px;
-      align-items:center;
-      flex-wrap:wrap;
-    }
-
-    #choiceBar.show{
-      display:flex;
-    }
-
-    #choiceBar .label{
-      font-size:13px;
-      font-weight:700;
-    }
   </style>
 </head>
 <body>
@@ -213,13 +195,6 @@
 
     <div class="panel" id="status">ルームコードを入れて「入室 / 作成」を押してね。</div>
 
-    <div class="panel" id="choiceBar">
-      <span class="label">成る？</span>
-      <button class="primary" id="promoteBtn">成る</button>
-      <button id="notPromoteBtn">不成</button>
-      <button id="cancelPromoteBtn">キャンセル</button>
-    </div>
-
     <div id="layout">
       <div class="panel" id="handsTop">
         <div class="handRow" id="enemyHands"></div>
@@ -235,8 +210,8 @@
     </div>
 
     <div class="panel" id="hint">
-      相手が来るまで駒は動かせない。白側は盤面が反転する。<br>
-      敵駒は180°回転、可成は青文字、成は赤文字、不成は黒文字。移動先は●で色分けしてあるよ。
+      相手がそろってから3秒カウントダウンして開始。白側は盤面が反転する。<br>
+      移動先は●で表示。可成は青、不成は黒、成は赤。
     </div>
   </div>
 
@@ -246,6 +221,8 @@
     import {
       getFirestore,
       doc,
+      setDoc,
+      getDoc,
       onSnapshot,
       runTransaction
     } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
@@ -275,37 +252,30 @@
     const mePill = document.getElementById("mePill");
     const myHandsEl = document.getElementById("myHands");
     const enemyHandsEl = document.getElementById("enemyHands");
-    const choiceBar = document.getElementById("choiceBar");
-    const promoteBtn = document.getElementById("promoteBtn");
-    const notPromoteBtn = document.getElementById("notPromoteBtn");
-    const cancelPromoteBtn = document.getElementById("cancelPromoteBtn");
 
     const COOLDOWN_MS = 3000;
-    const START_COUNTDOWN_MS = 3000;
+    const COUNTDOWN_MS = 3000;
+    const ROOM_STALE_MS = 30 * 60 * 1000;
+
     const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
-
     const typeLabel = {
       pawn:"歩", lance:"香", knight:"桂", silver:"銀", gold:"金",
       bishop:"角", rook:"飛", king:"玉",
       tokin:"と", proLance:"成香", proKnight:"成桂", proSilver:"成銀",
       horse:"馬", dragon:"龍"
     };
-
     const baseOf = {
       pawn:"pawn", lance:"lance", knight:"knight", silver:"silver", gold:"gold",
       bishop:"bishop", rook:"rook", king:"king",
       tokin:"pawn", proLance:"lance", proKnight:"knight", proSilver:"silver",
       horse:"bishop", dragon:"rook"
     };
-
     const promotedTo = {
       pawn:"tokin", lance:"proLance", knight:"proKnight", silver:"proSilver",
       bishop:"horse", rook:"dragon"
     };
-
-    const PROMOTED_TYPES = new Set(["tokin","proLance","proKnight","proSilver","horse","dragon"]);
 
     const state = {
       roomId: "",
@@ -319,9 +289,7 @@
       dragPointerId: null,
       dragStart: null,
       dragging: false,
-      suppressClickUntil: 0,
-      phaseSyncLock: false,
-      lastCountdownShown: null
+      suppressClickUntil: 0
     };
     localStorage.setItem("shogi_of_speed_pid", state.playerId);
 
@@ -350,12 +318,8 @@
       let n = 1;
       const add = (side, type, x, y) => pieces.push({
         id: `${side}_${type}_${n++}_${Math.random().toString(16).slice(2)}`,
-        side,
-        type,
-        x,
-        y,
-        cooldownUntil: 0,
-        promotable: false
+        side, type, x, y,
+        cooldownUntil: 0
       });
 
       ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("white", t, x, 0));
@@ -376,8 +340,6 @@
         pieces: initialPieces(),
         hands: makeHands(),
         winner: null,
-        phase: "waiting",
-        countdownEndsAt: null,
         updatedAt: Date.now(),
         rev: 0
       };
@@ -386,6 +348,7 @@
     function makeRoomDoc(playerId) {
       return {
         players: { black: playerId, white: null },
+        countdownEndsAt: null,
         state: freshState(),
         createdAt: Date.now(),
         updatedAt: Date.now()
@@ -394,12 +357,9 @@
 
     function cloneState(s) {
       return {
-        ...s,
-        pieces: (s.pieces || []).map(p => ({ ...p })),
-        hands: JSON.parse(JSON.stringify(s.hands || makeHands())),
+        pieces: s.pieces.map(p => ({ ...p })),
+        hands: JSON.parse(JSON.stringify(s.hands)),
         winner: s.winner || null,
-        phase: s.phase || "waiting",
-        countdownEndsAt: s.countdownEndsAt ?? null,
         updatedAt: s.updatedAt || Date.now(),
         rev: s.rev || 0
       };
@@ -421,24 +381,16 @@
       return PROMOTION_ZONE[side].includes(y);
     }
 
-    function baseType(type) {
-      return baseOf[type] || type;
-    }
-
-    function isPromotedType(type) {
-      return PROMOTED_TYPES.has(type);
-    }
-
-    function canEverPromote(type) {
-      return !!promotedTo[type];
-    }
-
     function demote(type) {
       return baseOf[type] || type;
     }
 
+    function canPromote(type) {
+      return !!promotedTo[baseOf[type] || type];
+    }
+
     function promotedType(type) {
-      return promotedTo[type] || type;
+      return promotedTo[baseOf[type] || type] || type;
     }
 
     function pieceText(type) {
@@ -452,7 +404,7 @@
     }
 
     function pieceAt(pieces, x, y) {
-      return pieces.find(p => p.x === x && p.y === y) || null;
+      return pieces.find(p => p.x === x && p.y === y);
     }
 
     function kingPos(pieces, side) {
@@ -553,78 +505,88 @@
       return isSquareAttacked(pieces, kp.x, kp.y, opposite(side));
     }
 
-    function forcedPromotionByDestination(piece, destY) {
-      const b = baseType(piece.type);
-      if (b === "pawn" || b === "lance") {
+    function isPromotedPieceType(type) {
+      return baseOf[type] !== type;
+    }
+
+    function getPieceVisualState(piece) {
+      if (isPromotedPieceType(piece.type)) return "promoted";
+      if (canPromote(piece.type) && promotionZone(piece.side, piece.y)) return "eligible";
+      return "normal";
+    }
+
+    function mustPromoteForMove(piece, destY) {
+      const base = baseOf[piece.type];
+      if (piece.type !== base) return false;
+      if (piece.type === "pawn" || piece.type === "lance") {
         return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
       }
-      if (b === "knight") {
+      if (piece.type === "knight") {
         return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
       }
       return false;
     }
 
-    function moveMeta(piece, dest) {
-      const base = baseType(piece.type);
-      const promotablePiece = !isPromotedType(piece.type) && canEverPromote(base);
-      const destInZone = promotionZone(piece.side, dest.y);
-      const willBePromotable = promotablePiece && (piece.promotable || destInZone);
-      const forcePromote = promotablePiece && willBePromotable && forcedPromotionByDestination(piece, dest.y);
-      const choosePromotion = promotablePiece && willBePromotable && destInZone && !forcePromote;
+    function canChoosePromotion(piece, destY) {
+      return canPromote(piece.type) && (promotionZone(piece.side, piece.y) || promotionZone(piece.side, destY));
+    }
 
-      let color = "yellow";
-      if (promotablePiece) {
-        if (piece.promotable && !destInZone) {
-          color = "blue";
-        } else if (!piece.promotable && !destInZone) {
-          color = "yellow";
-        } else if (forcePromote) {
-          color = "red";
-        } else if (destInZone) {
-          color = "yellow";
-        } else {
-          color = "blue";
+    function simulateMove(stateObj, pieceId, dest, promoteFlag) {
+      const sim = cloneState(stateObj);
+      const sp = sim.pieces.find(p => p.id === pieceId);
+      if (!sp) return false;
+
+      const now = Date.now();
+      if (sp.cooldownUntil && now < sp.cooldownUntil) return false;
+
+      const occupant = pieceAt(sim.pieces, dest.x, dest.y);
+      if (occupant && occupant.side === sp.side) return false;
+
+      if (occupant) {
+        sim.pieces = sim.pieces.filter(p => p.id !== occupant.id);
+        sim.hands[sp.side][demote(occupant.type)] += 1;
+        if (occupant.type === "king") {
+          // capture is winning; still treat as legal if own king safe
         }
       }
 
-      return { color, forcePromote, choosePromotion, willBePromotable, destInZone };
+      if (promoteFlag) {
+        if (!canChoosePromotion(sp, dest.y)) return false;
+        sp.type = promotedType(sp.type);
+      } else {
+        if (mustPromoteForMove(sp, dest.y)) return false;
+      }
+
+      sp.x = dest.x;
+      sp.y = dest.y;
+      sp.cooldownUntil = now + COOLDOWN_MS;
+
+      if (isKingInCheck(sim.pieces, sp.side)) return false;
+      return true;
     }
 
-    function legalMovesForPieceWithMeta(stateObj, piece) {
+    function buildMoveOptions(stateObj, piece) {
       if (!piece || stateObj.winner) return [];
       if (piece.cooldownUntil && Date.now() < piece.cooldownUntil) return [];
 
       const pseudo = pseudoMovesForPiece(piece, stateObj.pieces);
-      const legal = [];
-      const now = Date.now();
+      const out = [];
 
       for (const mv of pseudo) {
-        const sim = cloneState(stateObj);
-        const sp = sim.pieces.find(p => p.id === piece.id);
-        if (!sp) continue;
+        const stayLegal = simulateMove(stateObj, piece.id, mv, false);
+        const promoteLegal = canChoosePromotion(piece, mv.y) ? simulateMove(stateObj, piece.id, mv, true) : false;
 
-        const occupant = pieceAt(sim.pieces, mv.x, mv.y);
-        if (occupant && occupant.side === sp.side) continue;
+        if (!stayLegal && !promoteLegal) continue;
 
-        if (occupant) {
-          const capturedBase = demote(occupant.type);
-          sim.pieces = sim.pieces.filter(p => p.id !== occupant.id);
-          sim.hands[sp.side][capturedBase] += 1;
-        }
+        let kind = "stay";
+        if (stayLegal && promoteLegal) kind = "both";
+        else if (promoteLegal) kind = "promote";
+        else kind = "stay";
 
-        sp.x = mv.x;
-        sp.y = mv.y;
-        sp.cooldownUntil = now + COOLDOWN_MS;
-
-        if (!isKingInCheck(sim.pieces, sp.side)) {
-          legal.push({
-            ...mv,
-            ...moveMeta(piece, mv),
-            kind: "piece"
-          });
-        }
+        out.push({ x: mv.x, y: mv.y, kind });
       }
-      return legal;
+
+      return out;
     }
 
     function dropLegalSquares(stateObj, side, type) {
@@ -664,28 +626,25 @@
             type,
             x,
             y,
-            cooldownUntil: Date.now() + COOLDOWN_MS,
-            promotable: false
+            cooldownUntil: Date.now() + COOLDOWN_MS
           });
 
-          if (!isKingInCheck(sim.pieces, side)) {
-            out.push({ x, y, color: "yellow", kind: "drop", type });
-          }
+          if (!isKingInCheck(sim.pieces, side)) out.push({ x, y });
         }
       }
       return out;
     }
 
-    function selectedLegalMoves(live) {
+    function selectedMoveOptions(live) {
       if (!live || !state.selected || live.winner) return [];
       if (state.selected.kind === "piece") {
         const piece = live.pieces.find(p => p.id === state.selected.id);
         if (!piece) return [];
-        return legalMovesForPieceWithMeta(live, piece);
+        return buildMoveOptions(live, piece);
       }
       if (state.selected.kind === "hand") {
         if (state.selected.side !== state.mySide) return [];
-        return dropLegalSquares(live, state.selected.side, state.selected.type);
+        return dropLegalSquares(live, state.selected.side, state.selected.type).map(m => ({ ...m, kind: "stay" }));
       }
       return [];
     }
@@ -694,11 +653,6 @@
       const live = state.roomData?.state;
       if (!live || !state.selected || state.selected.kind !== "piece") return null;
       return live.pieces.find(p => p.id === state.selected.id) || null;
-    }
-
-    function selectedIsMine() {
-      const p = selectedPieceObj();
-      return !!p && p.side === state.mySide;
     }
 
     function setStatus(msg) {
@@ -714,6 +668,14 @@
                    : state.mySide === "white" ? "あなた: 後手(白)"
                    : "あなた: 観戦";
       mePill.textContent = `${state.roomId} / ${label}`;
+    }
+
+    function roomIsResettable(data) {
+      if (!data) return true;
+      const now = Date.now();
+      if (data.state?.winner) return true;
+      if (typeof data.updatedAt === "number" && now - data.updatedAt > ROOM_STALE_MS) return true;
+      return false;
     }
 
     function refreshHands() {
@@ -789,18 +751,19 @@
     }
 
     function pieceTextColor(piece) {
-      if (isPromotedType(piece.type)) return "#cf2d2d";
-      if (!isPromotedType(piece.type) && piece.promotable && canEverPromote(baseType(piece.type))) return "#2e5fd6";
-      return "#20160d";
+      const vis = getPieceVisualState(piece);
+      if (vis === "promoted") return "#d34b3e";
+      if (vis === "eligible") return "#316fe6";
+      return "#1f1810";
     }
 
     function drawPiece(piece, cell, now, selected) {
       const x = cell.x + cell.size / 2;
       const y = cell.y + cell.size / 2;
       const s = cell.size;
+
       const w = s * 0.62;
       const h = s * 0.72;
-      const flip = piece.side !== getViewSide();
 
       ctx.save();
 
@@ -810,25 +773,27 @@
         ctx.strokeRect(cell.x + 3, cell.y + 3, s - 6, s - 6);
       }
 
-      ctx.translate(x, y);
-      if (flip) ctx.rotate(Math.PI);
-
       ctx.beginPath();
-      ctx.moveTo(0, -h * 0.48);
-      ctx.lineTo(w * 0.34, -h * 0.16);
-      ctx.lineTo(w * 0.26, h * 0.42);
-      ctx.lineTo(-w * 0.26, h * 0.42);
-      ctx.lineTo(-w * 0.34, -h * 0.16);
+      ctx.moveTo(x, y - h * 0.48);
+      ctx.lineTo(x + w * 0.34, y - h * 0.16);
+      ctx.lineTo(x + w * 0.26, y + h * 0.42);
+      ctx.lineTo(x - w * 0.26, y + h * 0.42);
+      ctx.lineTo(x - w * 0.34, y - h * 0.16);
       ctx.closePath();
 
-      const grad = ctx.createLinearGradient(-s/2, -s/2, s/2, s/2);
-      grad.addColorStop(0, "#d9ba90");
-      grad.addColorStop(1, "#ba905b");
+      const grad = ctx.createLinearGradient(cell.x, cell.y, cell.x + s, cell.y + s);
+      grad.addColorStop(0, "#f9f0de");
+      grad.addColorStop(1, "#d8bf9b");
       ctx.fillStyle = grad;
-      ctx.strokeStyle = "rgba(65,45,18,.75)";
+      ctx.strokeStyle = "rgba(65,45,18,.72)";
       ctx.lineWidth = 2;
       ctx.fill();
       ctx.stroke();
+
+      ctx.translate(x, y);
+      if (piece.side !== getViewSide()) {
+        ctx.rotate(Math.PI);
+      }
 
       ctx.fillStyle = pieceTextColor(piece);
       ctx.font = `700 ${Math.max(14, s * 0.21)}px "Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif`;
@@ -856,64 +821,14 @@
       ctx.restore();
     }
 
-    function maybeUpdatePhase() {
-      if (!state.roomRef || state.phaseSyncLock || !state.roomData) return;
-
-      const live = state.roomData.state || {};
-      const players = state.roomData.players || {};
-      const now = Date.now();
-      const full = !!players.black && !!players.white;
-
-      const shouldStartCountdown = full && (!live.phase || live.phase === "waiting");
-      const shouldStartPlaying = live.phase === "countdown" && live.countdownEndsAt && now >= live.countdownEndsAt;
-
-      if (!shouldStartCountdown && !shouldStartPlaying) return;
-
-      state.phaseSyncLock = true;
-      runTransaction(db, async (tx) => {
-        const snap = await tx.get(state.roomRef);
-        if (!snap.exists()) return;
-
-        const room = snap.data();
-        const s = room.state || {};
-        const p = room.players || {};
-        const fullNow = !!p.black && !!p.white;
-        const n = Date.now();
-
-        if (fullNow && (!s.phase || s.phase === "waiting")) {
-          tx.update(state.roomRef, {
-            state: {
-              ...s,
-              phase: "countdown",
-              countdownEndsAt: n + START_COUNTDOWN_MS,
-              updatedAt: n
-            },
-            updatedAt: n
-          });
-          return;
-        }
-
-        if (s.phase === "countdown" && s.countdownEndsAt && n >= s.countdownEndsAt) {
-          tx.update(state.roomRef, {
-            state: {
-              ...s,
-              phase: "playing",
-              countdownEndsAt: null,
-              updatedAt: n
-            },
-            updatedAt: n
-          });
-        }
-      }).catch(() => {}).finally(() => {
-        state.phaseSyncLock = false;
-      });
+    function moveMarkerColor(kind) {
+      if (kind === "promote") return { fill: "rgba(240,138,138,.34)", dot: "rgba(176,48,48,.9)" };
+      if (kind === "stay") return { fill: "rgba(109,143,240,.34)", dot: "rgba(47,86,204,.92)" };
+      return { fill: "rgba(242,201,76,.34)", dot: "rgba(35,25,15,.78)" };
     }
 
     function renderFrame() {
-      if (!state.boardReady) {
-        requestAnimationFrame(renderFrame);
-        return;
-      }
+      if (!state.boardReady) return;
 
       const rect = boardCanvas.getBoundingClientRect();
       const w = rect.width;
@@ -955,23 +870,21 @@
         return;
       }
 
-      const bothReady = !!state.roomData?.players?.black && !!state.roomData?.players?.white;
-      const legal = selectedLegalMoves(live);
+      const players = state.roomData.players || {};
+      const bothReady = !!players.black && !!players.white;
+      const countdownEndsAt = state.roomData.countdownEndsAt || null;
+      const countdownLeft = countdownEndsAt ? countdownEndsAt - now : null;
 
-      for (const m of legal) {
+      const moveOptions = selectedMoveOptions(live);
+      for (const m of moveOptions) {
         const s = boardToScreen(m.x, m.y);
-        let fill = "rgba(242,201,76,.28)";
-        if (m.color === "red") fill = "rgba(228,106,93,.34)";
-        if (m.color === "blue") fill = "rgba(111,149,255,.34)";
-
-        ctx.fillStyle = fill;
+        const colors = moveMarkerColor(m.kind);
+        ctx.fillStyle = colors.fill;
         ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
 
         ctx.beginPath();
         ctx.arc(s.x * cell + cell / 2, s.y * cell + cell / 2, cell * 0.085, 0, Math.PI * 2);
-        if (m.color === "red") ctx.fillStyle = "rgba(196,55,42,.9)";
-        else if (m.color === "blue") ctx.fillStyle = "rgba(55,98,208,.9)";
-        else ctx.fillStyle = "rgba(35,25,15,.78)";
+        ctx.fillStyle = colors.dot;
         ctx.fill();
       }
 
@@ -989,46 +902,41 @@
         drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
       }
 
-      if (live.phase === "countdown" && live.countdownEndsAt) {
-        const remain = Math.max(0, live.countdownEndsAt - now);
-        const sec = Math.max(1, Math.ceil(remain / 1000));
-
-        if (state.lastCountdownShown !== sec) {
-          state.lastCountdownShown = sec;
-          setStatus(`開始まで ${sec} 秒`);
-        }
-
+      if (live.winner) {
+        ctx.fillStyle = "rgba(0,0,0,.35)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 26px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
+        ctx.font = "500 15px system-ui, sans-serif";
+        ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
+      } else if (bothReady && countdownLeft !== null && countdownLeft > 0) {
+        const sec = Math.ceil(countdownLeft / 1000);
         ctx.fillStyle = "rgba(0,0,0,.34)";
         ctx.fillRect(0, 0, w, h);
         ctx.fillStyle = "#fff";
-        ctx.font = "800 28px system-ui, sans-serif";
+        ctx.font = "900 28px system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(sec > 0 ? `${sec}` : "開始!", w / 2, h / 2 - 6);
+        ctx.fillText(`開始まで ${sec}`, w / 2, h / 2 - 4);
         ctx.font = "600 15px system-ui, sans-serif";
-        ctx.fillText("まもなく開始", w / 2, h / 2 + 22);
-      } else {
-        if (state.lastCountdownShown !== null) {
-          state.lastCountdownShown = null;
-        }
-        if (live.winner) {
-          ctx.fillStyle = "rgba(0,0,0,.35)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 26px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
-          ctx.font = "500 15px system-ui, sans-serif";
-          ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
-        } else if (!bothReady) {
-          ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 22px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("相手待ち", w / 2, h / 2 - 6);
-          ctx.font = "500 14px system-ui, sans-serif";
-          ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
-        }
+        ctx.fillText("マッチング完了", w / 2, h / 2 + 22);
+      } else if (bothReady && countdownEndsAt && countdownLeft !== null && countdownLeft <= 0 && countdownLeft > -700) {
+        ctx.fillStyle = "rgba(0,0,0,.24)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "900 30px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("開始", w / 2, h / 2 + 5);
+      } else if (!bothReady) {
+        ctx.fillStyle = "rgba(0,0,0,.28)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 22px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("相手待ち", w / 2, h / 2 - 6);
+        ctx.font = "500 14px system-ui, sans-serif";
+        ctx.fillText("両方そろうまで開始しない", w / 2, h / 2 + 20);
       }
 
       requestAnimationFrame(renderFrame);
@@ -1053,56 +961,43 @@
 
     function canAct() {
       const room = state.roomData;
-      const live = room?.state;
-      if (!room || !live || live.winner) return false;
+      if (!room || !room.state || room.state.winner) return false;
       if (state.mySide === "spectator") return false;
       if (!room.players?.black || !room.players?.white) return false;
-      if (live.phase !== "playing") return false;
+      const endsAt = room.countdownEndsAt || 0;
+      if (!endsAt || Date.now() < endsAt) return false;
       return true;
     }
 
-    function getSelectedMoveOptions() {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return [];
-      if (state.selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === state.selected.id);
-        if (!piece) return [];
-        return legalMovesForPieceWithMeta(live, piece);
-      }
-      if (state.selected.kind === "hand") {
-        if (state.selected.side !== state.mySide) return [];
-        return dropLegalSquares(live, state.selected.side, state.selected.type);
-      }
-      return [];
+    function findOptionAt(live, piece, dest) {
+      const opts = buildMoveOptions(live, piece);
+      return opts.find(o => o.x === dest.x && o.y === dest.y) || null;
     }
 
-    async function commitSelectionMove(destScreen, forcedPromoteChoice = null) {
-      if (!state.roomRef || !state.roomData || !state.selected) return false;
-      if (state.selected.kind === "piece" && !selectedIsMine()) return false;
-      if (state.selected.kind === "hand" && state.selected.side !== state.mySide) return false;
-      if (!canAct()) return false;
+    async function commitSelectionMove(destScreen) {
+      if (!state.roomRef || !state.roomData || !state.selected) return;
 
-      const dest = screenToBoard(destScreen.x, destScreen.y);
-      const options = getSelectedMoveOptions();
-      const option = options.find(m => m.x === dest.x && m.y === dest.y);
-      if (!option) return false;
+      const liveNow = state.roomData.state;
+      if (!liveNow) return;
 
-      let shouldPromote = false;
+      let promoteChoice = false;
+
       if (state.selected.kind === "piece") {
-        if (option.forcePromote) {
-          shouldPromote = true;
-        } else if (option.choosePromotion) {
-          if (forcedPromoteChoice === null) {
-            shouldPromote = window.confirm("成りますか？");
-          } else {
-            shouldPromote = !!forcedPromoteChoice;
-          }
+        const piece = liveNow.pieces.find(p => p.id === state.selected.id);
+        if (!piece) return;
+
+        const dest = screenToBoard(destScreen.x, destScreen.y);
+        const option = findOptionAt(liveNow, piece, dest);
+        if (!option) return;
+
+        if (option.kind === "both") {
+          promoteChoice = window.confirm("成りますか？");
+        } else if (option.kind === "promote") {
+          promoteChoice = true;
         } else {
-          shouldPromote = false;
+          promoteChoice = false;
         }
       }
-
-      let success = false;
 
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(state.roomRef);
@@ -1110,10 +1005,17 @@
 
         const room = snap.data();
         const live = room.state;
-        if (!live || live.winner || live.phase !== "playing") return;
+        if (!live || live.winner) return;
 
-        const mySide = room.players?.black === state.playerId ? "black"
-                     : room.players?.white === state.playerId ? "white"
+        const players = room.players || {};
+        const bothReady = !!players.black && !!players.white;
+        if (!bothReady) return;
+
+        const endsAt = room.countdownEndsAt || 0;
+        if (!endsAt || Date.now() < endsAt) return;
+
+        const mySide = players.black === state.playerId ? "black"
+                     : players.white === state.playerId ? "white"
                      : "spectator";
         if (mySide === "spectator") return;
 
@@ -1127,33 +1029,37 @@
           if (!piece || piece.side !== mySide) return;
           if (piece.cooldownUntil && now < piece.cooldownUntil) return;
 
-          const moveList = legalMovesForPieceWithMeta(next, piece);
-          const ok = moveList.find(m => m.x === dest.x && m.y === dest.y);
-          if (!ok) return;
+          const dest = screenToBoard(destScreen.x, destScreen.y);
+          const option = findOptionAt(next, piece, dest);
+          if (!option) return;
+
+          const shouldPromote = option.kind === "promote" ? true
+                              : option.kind === "stay" ? false
+                              : promoteChoice;
 
           const occupant = pieceAt(next.pieces, dest.x, dest.y);
           if (occupant && occupant.side === piece.side) return;
 
           if (occupant) {
-            const capturedBase = demote(occupant.type);
             next.pieces = next.pieces.filter(p => p.id !== occupant.id);
-            next.hands[piece.side][capturedBase] += 1;
+            next.hands[piece.side][demote(occupant.type)] += 1;
             if (occupant.type === "king") {
               next.winner = piece.side;
             }
+          }
+
+          if (shouldPromote) {
+            if (!canChoosePromotion(piece, dest.y)) return;
+            piece.type = promotedType(piece.type);
+          } else {
+            if (mustPromoteForMove(piece, dest.y)) return;
           }
 
           piece.x = dest.x;
           piece.y = dest.y;
           piece.cooldownUntil = now + COOLDOWN_MS;
 
-          const meta = moveMeta(piece, dest);
-          if (piece.promotable || meta.destInZone) {
-            piece.promotable = true;
-          }
-          if (shouldPromote && canEverPromote(baseType(piece.type)) && !isPromotedType(piece.type)) {
-            piece.type = promotedType(piece.type);
-          }
+          if (isKingInCheck(next.pieces, piece.side)) return;
         }
 
         if (state.selected.kind === "hand") {
@@ -1162,6 +1068,7 @@
           if (side !== mySide) return;
           if ((next.hands[side]?.[type] || 0) <= 0) return;
 
+          const dest = screenToBoard(destScreen.x, destScreen.y);
           const legal = dropLegalSquares(next, side, type);
           const ok = legal.find(m => m.x === dest.x && m.y === dest.y);
           if (!ok) return;
@@ -1173,18 +1080,30 @@
             type,
             x: dest.x,
             y: dest.y,
-            cooldownUntil: now + COOLDOWN_MS,
-            promotable: false
+            cooldownUntil: now + COOLDOWN_MS
           });
         }
 
         tx.update(state.roomRef, { state: next, updatedAt: now });
-        success = true;
       }).catch(err => {
         setStatus(`動かせなかった: ${err.message}`);
       });
+    }
 
-      return success;
+    async function ensureRoom(roomId) {
+      const ref = doc(db, "rooms", roomId);
+      const snap = await getDoc(ref);
+      const now = Date.now();
+
+      if (!snap.exists()) {
+        await setDoc(ref, makeRoomDoc(state.playerId));
+        return;
+      }
+
+      const data = snap.data() || {};
+      if (roomIsResettable(data)) {
+        await setDoc(ref, makeRoomDoc(state.playerId));
+      }
     }
 
     async function enterRoom() {
@@ -1194,6 +1113,8 @@
           roomId = randRoomId();
           roomInput.value = roomId;
         }
+
+        await ensureRoom(roomId);
         await connectRoom(roomId);
       } catch (err) {
         setStatus(`入室に失敗した: ${err.message}`);
@@ -1209,12 +1130,10 @@
       state.roomId = roomId;
       state.roomRef = doc(db, "rooms", roomId);
       state.selected = null;
-      state.lastCountdownShown = null;
       updateMePill();
 
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(state.roomRef);
-
         if (!snap.exists()) {
           tx.set(state.roomRef, makeRoomDoc(state.playerId));
           return;
@@ -1222,30 +1141,24 @@
 
         const data = snap.data() || {};
         const players = data.players || { black: null, white: null };
-        const live = data.state || freshState();
+        let countdownEndsAt = data.countdownEndsAt || null;
+        const now = Date.now();
 
         if (players.black === state.playerId || players.white === state.playerId) {
-          // 既に席にいる
+          // keep
         } else if (!players.black) {
           players.black = state.playerId;
         } else if (!players.white) {
           players.white = state.playerId;
         }
 
-        const now = Date.now();
-        if (players.black && players.white) {
-          if (!live.phase || live.phase === "waiting") {
-            live.phase = "countdown";
-            live.countdownEndsAt = now + START_COUNTDOWN_MS;
-          }
+        if (players.black && players.white && !countdownEndsAt) {
+          countdownEndsAt = now + COUNTDOWN_MS;
         }
 
         tx.update(state.roomRef, {
           players,
-          state: {
-            ...live,
-            updatedAt: now
-          },
+          countdownEndsAt,
           updatedAt: now
         });
       });
@@ -1272,13 +1185,16 @@
         updateMePill();
 
         const live = state.roomData.state || {};
+        const bothReady = !!players.black && !!players.white;
+        const endsAt = state.roomData.countdownEndsAt || 0;
+        const now = Date.now();
+
         if (live.winner) {
           setStatus(`勝者は ${live.winner === "black" ? "黒" : "白"} だよ。`);
-        } else if (live.phase === "countdown" && live.countdownEndsAt) {
-          const sec = Math.max(1, Math.ceil((live.countdownEndsAt - Date.now()) / 1000));
-          setStatus(`開始まで ${sec} 秒`);
-        } else if (!players.black || !players.white) {
+        } else if (!bothReady) {
           setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
+        } else if (endsAt && now < endsAt) {
+          setStatus(`ルーム ${state.roomId} に接続中。開始まで ${Math.ceil((endsAt - now) / 1000)} 秒。`);
         } else {
           const mine = state.mySide === "black" ? "黒"
                      : state.mySide === "white" ? "白"
@@ -1287,44 +1203,40 @@
         }
 
         refreshHands();
-        maybeUpdatePhase();
       });
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
-      refreshHands();
-      maybeUpdatePhase();
       renderFrame();
     }
 
     function clearSelection() {
       state.selected = null;
-      choiceBar.classList.remove("show");
       refreshHands();
       renderFrame();
     }
 
-    function openPromotionChoice() {
-      choiceBar.classList.add("show");
-    }
-
-    function closePromotionChoice() {
-      choiceBar.classList.remove("show");
+    function getExactLegalMove(ev) {
+      const live = state.roomData?.state;
+      if (!live || !state.selected) return null;
+      const sq = pointToSquare(ev);
+      if (!sq) return null;
+      const board = screenToBoard(sq.x, sq.y);
+      const opts = selectedMoveOptions(live);
+      return opts.find(m => m.x === board.x && m.y === board.y) || null;
     }
 
     function getNearestLegalMove(ev) {
       const live = state.roomData?.state;
       if (!live || !state.selected) return null;
-
       const rect = boardCanvas.getBoundingClientRect();
       const px = (ev.clientX - rect.left) / rect.width * 9;
       const py = (ev.clientY - rect.top) / rect.height * 9;
-
-      const legal = getSelectedMoveOptions();
-      if (!legal.length) return null;
+      const opts = selectedMoveOptions(live);
+      if (!opts.length) return null;
 
       let best = null;
       let bestD = Infinity;
-      for (const m of legal) {
+      for (const m of opts) {
         const s = boardToScreen(m.x, m.y);
         const cx = s.x + 0.5;
         const cy = s.y + 0.5;
@@ -1348,63 +1260,51 @@
       const mode = modeSelect.value;
 
       if (mode === "tap") {
-        if (!state.selected) {
-          if (clicked) {
-            state.selected = { kind: "piece", id: clicked.id };
-            refreshHands();
-            renderFrame();
-          }
-          return;
-        }
+        const live = state.roomData.state;
+        if (!live) return;
 
-        if (state.selected.kind === "piece") {
-          const selPiece = selectedPieceObj();
-          if (!selPiece) {
-            state.selected = null;
-            refreshHands();
-            renderFrame();
-            return;
-          }
-
-          if (clicked) {
-            if (selPiece.side === state.mySide && clicked.side !== state.mySide) {
-              const ok = await commitSelectionMove({ x: sq.x, y: sq.y });
-              if (ok) clearSelection();
-              return;
-            }
-
-            state.selected = { kind: "piece", id: clicked.id };
-            refreshHands();
-            renderFrame();
-            return;
-          }
-
-          if (selPiece.side === state.mySide) {
-            const move = getSelectedMoveOptions().find(m => m.x === sq.x && m.y === sq.y);
-            if (move && move.kind === "piece") {
-              if (move.choosePromotion) {
-                openPromotionChoice();
-                state.pendingPromotionMove = { x: sq.x, y: sq.y };
+        if (state.selected) {
+          if (state.selected.kind === "piece") {
+            const selPiece = live.pieces.find(p => p.id === state.selected.id);
+            if (selPiece) {
+              const board = screenToBoard(sq.x, sq.y);
+              const opt = selectedMoveOptions(live).find(m => m.x === board.x && m.y === board.y);
+              if (opt) {
+                if (!canAct()) return;
+                await commitSelectionMove({ x: sq.x, y: sq.y });
+                clearSelection();
                 return;
               }
-              const ok = await commitSelectionMove({ x: sq.x, y: sq.y });
-              if (ok) clearSelection();
             }
-          } else {
-            state.selected = null;
+          }
+
+          if (clicked && clicked.side === state.mySide) {
+            state.selected = { kind: "piece", id: clicked.id };
             refreshHands();
             renderFrame();
+            return;
+          }
+
+          if (clicked) {
+            state.selected = { kind: "piece", id: clicked.id };
+            refreshHands();
+            renderFrame();
+            return;
+          }
+
+          if (canAct()) {
+            await commitSelectionMove({ x: sq.x, y: sq.y });
+            clearSelection();
           }
           return;
         }
 
-        if (state.selected.kind === "hand") {
-          if (!clicked) {
-            const ok = await commitSelectionMove({ x: sq.x, y: sq.y });
-            if (ok) clearSelection();
-          }
-          return;
+        if (clicked) {
+          state.selected = { kind: "piece", id: clicked.id };
+          refreshHands();
+          renderFrame();
         }
+        return;
       }
 
       if (mode === "slide" && clicked) {
@@ -1446,15 +1346,11 @@
       state.suppressClickUntil = performance.now() + 250;
 
       if (state.selected && state.dragging && canAct()) {
-        const target = getNearestLegalMove(ev);
+        let target = getExactLegalMove(ev);
+        if (!target) target = getNearestLegalMove(ev);
         if (target) {
-          if (target.kind === "piece" && target.choosePromotion) {
-            state.pendingPromotionMove = target;
-            openPromotionChoice();
-          } else {
-            const ok = await commitSelectionMove(target);
-            if (ok) clearSelection();
-          }
+          await commitSelectionMove(target);
+          clearSelection();
         }
       }
 
@@ -1491,41 +1387,11 @@
 
     modeSelect.addEventListener("change", () => {
       state.selected = null;
-      closePromotionChoice();
       refreshHands();
       renderFrame();
     });
 
-    promoteBtn.addEventListener("click", async () => {
-      if (!state.pendingPromotionMove) return;
-      const ok = await commitSelectionMove(state.pendingPromotionMove, true);
-      if (ok) {
-        state.pendingPromotionMove = null;
-        closePromotionChoice();
-        clearSelection();
-      }
-    });
-
-    notPromoteBtn.addEventListener("click", async () => {
-      if (!state.pendingPromotionMove) return;
-      const ok = await commitSelectionMove(state.pendingPromotionMove, false);
-      if (ok) {
-        state.pendingPromotionMove = null;
-        closePromotionChoice();
-        clearSelection();
-      }
-    });
-
-    cancelPromoteBtn.addEventListener("click", () => {
-      state.pendingPromotionMove = null;
-      closePromotionChoice();
-    });
-
     window.addEventListener("resize", resizeCanvas);
-
-    setInterval(() => {
-      maybeUpdatePhase();
-    }, 250);
 
     resizeCanvas();
     refreshHands();
