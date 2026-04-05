@@ -969,19 +969,6 @@
       return "rgba(242,201,76,.34)";
     }
 
-    function octantFromVector(dx, dy) {
-      if (dx === 0 && dy === 0) return null;
-      const angle = Math.atan2(dy, dx);
-      let idx = Math.round(angle / (Math.PI / 4));
-      idx = ((idx % 8) + 8) % 8;
-      return idx;
-    }
-
-    function pieceScreenCenter(piece) {
-      const s = boardToScreen(piece.x, piece.y);
-      return { x: s.x + 0.5, y: s.y + 0.5 };
-    }
-
     function drawPiece(piece, cell, now, selected) {
       const x = cell.x + cell.size / 2;
       const y = cell.y + cell.size / 2;
@@ -1722,19 +1709,13 @@
         return;
       }
 
-      const shareData = {
-        title: "Shogi of Speed",
-        text: `対戦コード: ${code}`,
-        url: location.href
-      };
-
       if (!navigator.share) {
         setStatus("この端末は共有に対応していないよ。");
         return;
       }
 
       try {
-        await navigator.share(shareData);
+        await navigator.share({ text: code });
         setStatus(`コードを共有したよ: ${code}`);
       } catch (err) {
         if (err && err.name !== "AbortError") {
