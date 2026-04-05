@@ -27,8 +27,8 @@
         --ink:#f2eadf;
         --line:#4f4031;
         --accent:#d9b14f;
-        --board-dark:#4a3927;
-        --board-light:#37281c;
+        --board-dark:#52402d;
+        --board-light:#67523c;
         --piece-fill-1:#8e6b45;
         --piece-fill-2:#674b2e;
         --overlay:#0000007a;
@@ -771,47 +771,12 @@
       for (let y = 0; y < 9; y++) {
         for (let x = 0; x < 9; x++) {
           if (occ.has(`${x},${y}`)) continue;
-
-          if (type === "pawn") {
-            let nifu = false;
-            for (const p of stateObj.pieces) {
-              if (p.side === side && p.type === "pawn" && p.x === x) {
-                nifu = true;
-                break;
-              }
-            }
-            if (nifu) continue;
-            if ((side === "black" && y === 0) || (side === "white" && y === 8)) continue;
-          }
-
-          if (type === "lance") {
-            if ((side === "black" && y === 0) || (side === "white" && y === 8)) continue;
-          }
-
-          if (type === "knight") {
-            if ((side === "black" && y <= 1) || (side === "white" && y >= 7)) continue;
-          }
-
-          const sim = cloneState(stateObj);
-          sim.hands[side][type] -= 1;
-          sim.pieces.push({
-            id: `drop_${side}_${type}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-            side,
-            type,
+          out.push({
             x,
             y,
-            promoMode: isPromotableType(type) ? "normal" : "fixed",
-            cooldownUntil: Date.now() + COOLDOWN_MS
+            kind: "normal",
+            nextMode: isPromotableType(type) && isInPromotionZone(side, y) ? "can" : (isPromotableType(type) ? "normal" : "fixed")
           });
-
-          if (!isKingInCheck(sim.pieces, side)) {
-            out.push({
-              x,
-              y,
-              kind: "normal",
-              nextMode: isPromotableType(type) && isInPromotionZone(side, y) ? "can" : (isPromotableType(type) ? "normal" : "fixed")
-            });
-          }
         }
       }
       return out;
@@ -1246,9 +1211,8 @@
           if (side !== mySide) return;
           if ((next.hands[side]?.[type] || 0) <= 0) return;
 
-          const legal = dropLegalSquares(next, side, type);
-          const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-          if (!move) return;
+          const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
+          if (occupant) return;
 
           next.hands[side][type] -= 1;
           next.pieces.push({
@@ -1257,7 +1221,7 @@
             type,
             x: destBoard.x,
             y: destBoard.y,
-            promoMode: isPromotableType(type) ? "normal" : "fixed",
+            promoMode: isPromotableType(type) && isInPromotionZone(side, destBoard.y) ? "can" : (isPromotableType(type) ? "normal" : "fixed"),
             cooldownUntil: now + COOLDOWN_MS
           });
         }
@@ -1553,7 +1517,9 @@
 
       if (mode === "slide") {
         if (state.selected?.kind === "hand") {
-          await attemptMoveToScreen({ x: sq.x, y: sq.y });
+          const destBoard = screenToBoard(sq.x, sq.y);
+          await applyMoveTransaction(destBoard, "normal");
+          clearSelection();
           return;
         }
 
@@ -1592,22 +1558,17 @@
 
     boardCanvas.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId !== ev.pointerId && !(state.selected?.kind === "hand" && state.dragging)) return;
+      if (state.dragPointerId !== ev.pointerId && state.selected?.kind !== "piece") return;
 
       state.suppressClickUntil = performance.now() + 250;
 
-      if (state.selected && (state.dragging || state.selected.kind === "hand")) {
+      if (state.selected && state.selected.kind === "piece" && state.dragging) {
         const targetMove = getClosestLegalMove(ev);
         if (targetMove) {
-          if (state.selected.kind === "piece") {
-            const live = state.roomData?.state;
-            const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
-            if (selectedPiece && selectedPiece.side === state.mySide) {
-              await applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode);
-              clearSelection();
-            }
-          } else if (state.selected.kind === "hand") {
-            await applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, "normal");
+          const live = state.roomData?.state;
+          const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
+          if (selectedPiece && selectedPiece.side === state.mySide) {
+            await applyMoveTransaction({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode);
             clearSelection();
           }
         }
@@ -1616,6 +1577,25 @@
       state.dragPointerId = null;
       state.dragStart = null;
       state.dragging = false;
+    });
+
+    window.addEventListener("pointerup", async (ev) => {
+      if (modeSelect.value !== "slide") return;
+      if (!state.selected || state.selected.kind !== "hand") return;
+      if (!state.dragging) return;
+
+      const sq = pointToSquare(ev);
+      if (!sq) {
+        state.dragPointerId = null;
+        state.dragStart = null;
+        state.dragging = false;
+        return;
+      }
+
+      const destBoard = screenToBoard(sq.x, sq.y);
+      await applyMoveTransaction(destBoard, "normal");
+      clearSelection();
+      state.suppressClickUntil = performance.now() + 250;
     });
 
     boardCanvas.addEventListener("pointercancel", () => {
