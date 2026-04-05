@@ -6,35 +6,34 @@
   <title>Shogi of Speed</title>
   <style>
     :root{
-      color-scheme: light dark;
-
       --bg:#f7f2e8;
       --panel:#fffaf2;
       --ink:#2f2618;
       --line:#d9c8a6;
-
-      --board-light:#edd9b3;
-      --board-dark:#e0c390;
-
       --accent:#f2c94c;
-      --accent2:#8ab4ff;
-      --red:#d84b43;
-      --blue:#3569d6;
-      --overlay: rgba(0,0,0,.38);
+      --board-dark:#e0c390;
+      --board-light:#edd9b3;
+      --piece-fill-1:#d9ba90;
+      --piece-fill-2:#ba905b;
+      --overlay:#0000005c;
+      --overlay-card:#fffaf2;
+      --ui-btn:#ffffff;
     }
 
     @media (prefers-color-scheme: dark){
       :root{
-        --bg:#15100c;
-        --panel:#221a14;
-        --ink:#f1e7da;
-        --line:#5e4a37;
-
-        /* こっちは「薄い方」がさらに濃い色 */
-        --board-light:#38291c;
-        --board-dark:#4b3826;
-
-        --overlay: rgba(0,0,0,.52);
+        --bg:#15110d;
+        --panel:#211914;
+        --ink:#f2eadf;
+        --line:#4f4031;
+        --accent:#d9b14f;
+        --board-dark:#463626;
+        --board-light:#2a1d13;
+        --piece-fill-1:#8e6b45;
+        --piece-fill-2:#674b2e;
+        --overlay:#0000007a;
+        --overlay-card:#241c16;
+        --ui-btn:#2c231c;
       }
     }
 
@@ -83,7 +82,7 @@
       border-radius:11px;
       border:1px solid var(--line);
       font-size:15px;
-      background:#fff;
+      background:var(--ui-btn);
       color:var(--ink);
       outline:none;
       box-sizing:border-box;
@@ -94,7 +93,7 @@
       padding:9px 11px;
       border-radius:11px;
       border:1px solid var(--line);
-      background:#fff;
+      background:var(--ui-btn);
       color:var(--ink);
       font-size:14px;
       outline:none;
@@ -176,12 +175,6 @@
       touch-action:none;
     }
 
-    @media (prefers-color-scheme: dark){
-      canvas{
-        background:#2b2018;
-      }
-    }
-
     #hint{
       padding:8px 10px;
       font-size:12px;
@@ -196,7 +189,7 @@
       padding:6px 9px;
       border-radius:999px;
       border:1px solid var(--line);
-      background:#fff;
+      background:var(--ui-btn);
       font-size:12px;
     }
 
@@ -207,7 +200,7 @@
       display:none;
       align-items:center;
       justify-content:center;
-      z-index:50;
+      z-index:60;
       padding:18px;
       box-sizing:border-box;
     }
@@ -218,10 +211,11 @@
 
     #rematchCard{
       width:min(92vw,380px);
-      background:var(--panel);
+      background:var(--overlay-card);
+      color:var(--ink);
       border:1px solid var(--line);
       border-radius:18px;
-      box-shadow:0 16px 40px rgba(0,0,0,.2);
+      box-shadow:0 16px 40px rgba(0,0,0,.25);
       padding:16px;
       box-sizing:border-box;
     }
@@ -234,9 +228,9 @@
 
     #rematchDesc{
       font-size:13px;
-      line-height:1.6;
+      line-height:1.55;
       margin-bottom:14px;
-      opacity:.92;
+      opacity:.95;
       white-space:pre-line;
     }
 
@@ -250,16 +244,6 @@
       flex:1 1 100px;
       min-width:100px;
       font-weight:700;
-    }
-
-    #rematchYes{
-      background:linear-gradient(180deg,#d9f6e8,#b9efd2);
-      border-color:#90d4b0;
-    }
-
-    #rematchNo{
-      background:linear-gradient(180deg,#fde2dd,#f7c1b7);
-      border-color:#e6a89b;
     }
   </style>
 </head>
@@ -297,16 +281,15 @@
     <div class="panel" id="hint">
       相手が来るまで駒は動かせない。白側は盤面が反転する。<br>
       不成は黒、可成は青で不成/成が 0.25 秒ごとに切り替わる、成は赤。
-      操作方法はページ更新しても保存される。
     </div>
   </div>
 
   <div id="rematchOverlay">
     <div id="rematchCard">
       <div id="rematchTitle">続けて対戦しますか？</div>
-      <div id="rematchDesc">まだ回答はありません。</div>
+      <div id="rematchDesc">はいを両方が押すと、同じ相手でもう一回すぐ始まるよ。</div>
       <div id="rematchButtons">
-        <button id="rematchYes">はい</button>
+        <button class="primary" id="rematchYes">はい</button>
         <button id="rematchNo">いいえ</button>
       </div>
     </div>
@@ -351,16 +334,14 @@
     const enemyHandsEl = document.getElementById("enemyHands");
 
     const rematchOverlay = document.getElementById("rematchOverlay");
-    const rematchDesc = document.getElementById("rematchDesc");
     const rematchYes = document.getElementById("rematchYes");
     const rematchNo = document.getElementById("rematchNo");
+    const rematchDesc = document.getElementById("rematchDesc");
 
     const COOLDOWN_MS = 3000;
     const COUNTDOWN_MS = 3000;
     const PRESENCE_STALE_MS = 30000;
     const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
-
-    const MODE_KEY = "shogi_of_speed_mode";
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
 
@@ -389,6 +370,13 @@
       rook:"dragon"
     };
 
+    const theme = {
+      boardDark: "#e0c390",
+      boardLight: "#edd9b3",
+      piece1: "#d9ba90",
+      piece2: "#ba905b"
+    };
+
     const state = {
       roomId: "",
       roomRef: null,
@@ -402,13 +390,35 @@
       dragPointerId: null,
       dragStart: null,
       dragging: false,
-      suppressClickUntil: 0
+      suppressClickUntil: 0,
+      rematchVote: false
     };
     localStorage.setItem("shogi_of_speed_pid", state.playerId);
 
-    const savedMode = localStorage.getItem(MODE_KEY);
-    if (savedMode === "tap" || savedMode === "slide") {
-      modeSelect.value = savedMode;
+    const savedMode = localStorage.getItem("shogi_of_speed_mode");
+    if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
+
+    function applyThemeFromCSS(){
+      const cs = getComputedStyle(document.documentElement);
+      theme.boardDark = (cs.getPropertyValue("--board-dark") || "#e0c390").trim();
+      theme.boardLight = (cs.getPropertyValue("--board-light") || "#edd9b3").trim();
+      theme.piece1 = (cs.getPropertyValue("--piece-fill-1") || "#d9ba90").trim();
+      theme.piece2 = (cs.getPropertyValue("--piece-fill-2") || "#ba905b").trim();
+    }
+
+    applyThemeFromCSS();
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    if (mq.addEventListener) {
+      mq.addEventListener("change", () => {
+        applyThemeFromCSS();
+        renderFrame();
+      });
+    } else if (mq.addListener) {
+      mq.addListener(() => {
+        applyThemeFromCSS();
+        renderFrame();
+      });
     }
 
     function randRoomId() {
@@ -480,7 +490,7 @@
         presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
         state: freshState(),
         matchStartAt: null,
-        rematch: null,
+        rematchVotes: {},
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
@@ -603,23 +613,23 @@
       return [];
     }
 
+    function movementForms(piece) {
+      if (piece.promoMode === "promoted") {
+        return [PROMOTED_MOVE[piece.type] || piece.type];
+      }
+      if (piece.promoMode === "can") {
+        return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
+      }
+      return [piece.type];
+    }
+
     function isSquareAttacked(pieces, x, y, bySide) {
       for (const p of pieces) {
         if (p.side !== bySide) continue;
-
-        const modes = [];
-        if (p.promoMode === "can" && isPromotableType(p.type)) {
-          modes.push(p.type, PROMOTED_MOVE[p.type]);
-        } else if (p.promoMode === "promoted") {
-          modes.push(PROMOTED_MOVE[p.type] || p.type);
-        } else {
-          modes.push(p.type);
-        }
-
-        for (const mt of modes) {
-          if (!mt) continue;
-          const moves = pseudoMovesForType(p.side, mt, p.x, p.y, pieces);
-          if (moves.some(m => m.x === x && m.y === y)) return true;
+        for (const moveType of movementForms(p)) {
+          for (const m of pseudoMovesForType(p.side, moveType, p.x, p.y, pieces)) {
+            if (m.x === x && m.y === y) return true;
+          }
         }
       }
       return false;
@@ -631,21 +641,14 @@
       return isSquareAttacked(pieces, kp.x, kp.y, opposite(side));
     }
 
-    function canPieceHavePromotion(piece) {
-      return isPromotableType(piece.type);
-    }
-
     function moveTextLabel(piece, now) {
       if (!piece) return "?";
-      const base = TYPE_LABEL[piece.type] || "?";
-      const promoted = PROMOTED_LABEL[piece.type] || base;
-
-      if (piece.promoMode === "promoted") return promoted;
+      if (piece.promoMode === "promoted") return PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?";
       if (piece.promoMode === "can") {
         const blink = Math.floor(now / 250) % 2 === 0;
-        return blink ? base : promoted;
+        return blink ? (TYPE_LABEL[piece.type] || "?") : (PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?");
       }
-      return base;
+      return TYPE_LABEL[piece.type] || "?";
     }
 
     function pieceTextColor(piece) {
@@ -655,9 +658,8 @@
       return "#111";
     }
 
-    function promoteModeAfterNormalMove(piece, destY) {
-      if (!canPieceHavePromotion(piece)) return piece.promoMode;
-      return isInPromotionZone(piece.side, destY) ? "can" : "normal";
+    function canPieceHavePromotion(piece) {
+      return isPromotableType(piece.type);
     }
 
     function simulateMoveAndCheck(stateObj, piece, dest, nextPromoMode) {
@@ -683,42 +685,39 @@
       if (!piece || stateObj.winner) return null;
       if (piece.cooldownUntil && Date.now() < piece.cooldownUntil) return null;
 
+      const promotable = canPieceHavePromotion(piece);
+      const baseType = piece.type;
+      const promoType = PROMOTED_MOVE[baseType];
+
+      const basePseudo = pseudoMovesForType(piece.side, baseType, piece.x, piece.y, stateObj.pieces);
+      const baseReach = basePseudo.some(m => m.x === dest.x && m.y === dest.y);
+
       if (piece.promoMode === "fixed") {
-        const baseReach = pseudoMovesForType(piece.side, piece.type, piece.x, piece.y, stateObj.pieces)
-          .some(m => m.x === dest.x && m.y === dest.y);
         if (!baseReach) return null;
         if (!simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
-        return { x: dest.x, y: dest.y, kind: "base", nextMode: "fixed" };
+        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
       }
 
       if (piece.promoMode === "promoted") {
-        const promoType = PROMOTED_MOVE[piece.type] || piece.type;
-        const promoReach = pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces)
-          .some(m => m.x === dest.x && m.y === dest.y);
+        const pm = promoType || baseType;
+        const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
+        const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         if (!promoReach) return null;
         if (!simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-        return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "promoted" };
       }
 
       if (piece.promoMode === "normal") {
-        const baseReach = pseudoMovesForType(piece.side, piece.type, piece.x, piece.y, stateObj.pieces)
-          .some(m => m.x === dest.x && m.y === dest.y);
         if (!baseReach) return null;
-        const nextMode = promoteModeAfterNormalMove(piece, dest.y);
+        const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
         if (!simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
-        return { x: dest.x, y: dest.y, kind: "base", nextMode };
+        return { x: dest.x, y: dest.y, kind: "normal", nextMode };
       }
 
       if (piece.promoMode === "can") {
-        const baseReach = pseudoMovesForType(piece.side, piece.type, piece.x, piece.y, stateObj.pieces)
-          .some(m => m.x === dest.x && m.y === dest.y);
-        const promoType = PROMOTED_MOVE[piece.type];
-        const promoReach = promoType
-          ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces)
-              .some(m => m.x === dest.x && m.y === dest.y)
-          : false;
-
         const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "normal");
+        const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
+        const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "promoted");
 
         if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
@@ -735,18 +734,19 @@
       const out = [];
       const seen = new Set();
 
-      const moveTypes = [];
+      const forms = [];
       if (piece.promoMode === "can" && canPieceHavePromotion(piece)) {
-        moveTypes.push(piece.type, PROMOTED_MOVE[piece.type]);
+        forms.push({ moveType: piece.type });
+        forms.push({ moveType: PROMOTED_MOVE[piece.type] });
       } else if (piece.promoMode === "promoted") {
-        moveTypes.push(PROMOTED_MOVE[piece.type] || piece.type);
+        forms.push({ moveType: PROMOTED_MOVE[piece.type] || piece.type });
       } else {
-        moveTypes.push(piece.type);
+        forms.push({ moveType: piece.type });
       }
 
-      for (const mt of moveTypes) {
-        if (!mt) continue;
-        const pseudo = pseudoMovesForType(piece.side, mt, piece.x, piece.y, stateObj.pieces);
+      for (const form of forms) {
+        if (!form.moveType) continue;
+        const pseudo = pseudoMovesForType(piece.side, form.moveType, piece.x, piece.y, stateObj.pieces);
         for (const mv of pseudo) {
           const c = classifyMoveForPiece(stateObj, piece, mv);
           if (!c) continue;
@@ -801,7 +801,7 @@
             type,
             x,
             y,
-            promoMode: isPromotableType(type) ? (isInPromotionZone(side, y) ? "can" : "normal") : "fixed",
+            promoMode: isPromotableType(type) ? "normal" : "fixed",
             cooldownUntil: Date.now() + COOLDOWN_MS
           });
 
@@ -810,12 +810,11 @@
               x,
               y,
               kind: "normal",
-              nextMode: isPromotableType(type) ? (isInPromotionZone(side, y) ? "can" : "normal") : "fixed"
+              nextMode: isPromotableType(type) && isInPromotionZone(side, y) ? "can" : (isPromotableType(type) ? "normal" : "fixed")
             });
           }
         }
       }
-
       return out;
     }
 
@@ -852,6 +851,33 @@
                    : state.mySide === "white" ? "あなた: 後手(白)"
                    : "あなた: 観戦";
       mePill.textContent = `${state.roomId} / ${label}`;
+    }
+
+    function isBothPlayersReady(roomData) {
+      return !!roomData?.players?.black && !!roomData?.players?.white;
+    }
+
+    function shouldShowRematch(roomData) {
+      if (!roomData) return false;
+      if (!roomData.state?.winner) return false;
+      return isBothPlayersReady(roomData);
+    }
+
+    function updateRematchOverlay() {
+      const room = state.roomData;
+      if (!shouldShowRematch(room)) {
+        rematchOverlay.classList.remove("show");
+        return;
+      }
+
+      const votes = room.rematchVotes || {};
+      const me = votes[state.playerId] ? "はいを押してあるよ。" : "まだ返事してないよ。";
+      const otherSide = state.mySide === "black" ? "white" : "black";
+      const otherPid = room.players?.[otherSide];
+      const otherVote = otherPid ? !!votes[otherPid] : false;
+      const other = otherVote ? "相手もはいを押してるよ。" : "相手の返事待ちだよ。";
+      rematchDesc.textContent = `はいを両方が押すと、同じ相手ともう一回始まるよ。\n${me}\n${other}`;
+      rematchOverlay.classList.add("show");
     }
 
     function refreshHands() {
@@ -962,8 +988,8 @@
       ctx.closePath();
 
       const grad = ctx.createLinearGradient(-s/2, -s/2, s/2, s/2);
-      grad.addColorStop(0, "#d9ba90");
-      grad.addColorStop(1, "#ba905b");
+      grad.addColorStop(0, theme.piece1);
+      grad.addColorStop(1, theme.piece2);
       ctx.fillStyle = grad;
       ctx.strokeStyle = "rgba(65,45,18,.75)";
       ctx.lineWidth = 2;
@@ -1008,32 +1034,6 @@
       return "1";
     }
 
-    function updateRematchOverlay() {
-      const room = state.roomData;
-      const live = room?.state;
-      const players = room?.players || {};
-      const mySide = state.mySide;
-      const canSee = live && live.winner && mySide !== "spectator" && (mySide === "black" || mySide === "white");
-
-      if (!canSee) {
-        rematchOverlay.classList.remove("show");
-        return;
-      }
-
-      const rematch = room.rematch || { answers: { black: null, white: null } };
-      const myAnswer = rematch.answers?.[mySide];
-      const oppSide = mySide === "black" ? "white" : "black";
-      const oppAnswer = rematch.answers?.[oppSide];
-
-      const toText = (v) => v === true ? "はい" : v === false ? "いいえ" : "未回答";
-      rematchDesc.textContent =
-        `あなた: ${toText(myAnswer)}\n` +
-        `相手: ${toText(oppAnswer)}\n\n` +
-        `両方が「はい」なら、同じ部屋でもう1戦始まるよ。`;
-
-      rematchOverlay.classList.add("show");
-    }
-
     function renderFrame() {
       if (!state.boardReady) return;
 
@@ -1043,17 +1043,13 @@
       const cell = w / 9;
       const now = Date.now();
 
-      const cs = getComputedStyle(document.documentElement);
-      const boardLight = cs.getPropertyValue("--board-light").trim() || "#edd9b3";
-      const boardDark = cs.getPropertyValue("--board-dark").trim() || "#e0c390";
-
       ctx.clearRect(0, 0, w, h);
 
       for (let sy = 0; sy < 9; sy++) {
         for (let sx = 0; sx < 9; sx++) {
           const board = screenToBoard(sx, sy);
           const light = (board.x + board.y) % 2 === 0;
-          ctx.fillStyle = light ? boardLight : boardDark;
+          ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
           ctx.fillRect(sx * cell, sy * cell, cell, cell);
         }
       }
@@ -1110,7 +1106,7 @@
         drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
       }
 
-      const bothReady = !!room?.players?.black && !!room?.players?.white;
+      const bothReady = isBothPlayersReady(room);
       const countdownText = bothReady ? getCountdownText(room.matchStartAt, now) : null;
 
       if (live.winner) {
@@ -1191,7 +1187,7 @@
         if (!live || live.winner) return;
 
         const now = Date.now();
-        const bothReady = !!room.players?.black && !!room.players?.white;
+        const bothReady = isBothPlayersReady(room);
         if (!bothReady) return;
         if (room.matchStartAt && now < room.matchStartAt) return;
 
@@ -1219,19 +1215,13 @@
           if (occupant) {
             next.pieces = next.pieces.filter(p => p.id !== occupant.id);
             next.hands[piece.side][occupant.type] += 1;
-            if (occupant.type === "king") {
-              next.winner = piece.side;
-            }
+            if (occupant.type === "king") next.winner = piece.side;
           }
 
           piece.x = destBoard.x;
           piece.y = destBoard.y;
           piece.cooldownUntil = now + COOLDOWN_MS;
           piece.promoMode = nextMode || "normal";
-
-          if (!piece.canPromote && canPieceHavePromotion(piece)) {
-            // no-op
-          }
         }
 
         if (state.selected.kind === "hand") {
@@ -1251,24 +1241,12 @@
             type,
             x: destBoard.x,
             y: destBoard.y,
-            promoMode: isPromotableType(type) ? (isInPromotionZone(side, destBoard.y) ? "can" : "normal") : "fixed",
+            promoMode: isPromotableType(type) ? "normal" : "fixed",
             cooldownUntil: now + COOLDOWN_MS
           });
         }
 
-        const updates = {
-          state: next,
-          updatedAt: now
-        };
-
-        if (next.winner) {
-          updates.rematch = {
-            answers: { black: null, white: null },
-            requestedAt: now
-          };
-        }
-
-        tx.update(state.roomRef, updates);
+        tx.update(state.roomRef, { state: next, updatedAt: now });
       }).catch(err => {
         setStatus(`動かせなかった: ${err.message}`);
       });
@@ -1354,21 +1332,26 @@
         let presence = data.presence || {};
         let roomState = data.state || freshState();
         let matchStartAt = data.matchStartAt || null;
-        let rematch = data.rematch || null;
+        let rematchVotes = data.rematchVotes || {};
 
         const currentAlready = players.black === state.playerId || players.white === state.playerId;
 
         const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < PRESENCE_STALE_MS);
         const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < PRESENCE_STALE_MS);
-        const abandoned = !blackActive && !whiteActive;
-        const finished = !!roomState.winner;
+        const bothInactive = !blackActive && !whiteActive;
 
-        if (!finished && abandoned) {
+        if (bothInactive && !roomState.winner) {
           players = { black: state.playerId, white: null };
           presence = { [state.playerId]: { side: "black", lastSeen: now } };
           roomState = freshState();
           matchStartAt = null;
-          rematch = null;
+          rematchVotes = {};
+        } else if (roomState.winner && bothInactive) {
+          players = { black: state.playerId, white: null };
+          presence = { [state.playerId]: { side: "black", lastSeen: now } };
+          roomState = freshState();
+          matchStartAt = null;
+          rematchVotes = {};
         } else if (!currentAlready) {
           if (!blackActive) {
             players.black = state.playerId;
@@ -1394,7 +1377,7 @@
           presence,
           state: roomState,
           matchStartAt,
-          rematch,
+          rematchVotes,
           updatedAt: now
         });
       });
@@ -1639,66 +1622,62 @@
     });
 
     modeSelect.addEventListener("change", () => {
-      localStorage.setItem(MODE_KEY, modeSelect.value);
+      localStorage.setItem("shogi_of_speed_mode", modeSelect.value);
       state.selected = null;
       refreshHands();
       renderFrame();
     });
 
-    async function setRematchAnswer(answer) {
+    async function voteRematch(yes) {
       if (!state.roomRef || !state.roomData) return;
+      const room = state.roomData;
+      if (!room.state?.winner || !isBothPlayersReady(room)) return;
 
       await runTransaction(db, async (tx) => {
-        const now = Date.now();
         const snap = await tx.get(state.roomRef);
         if (!snap.exists()) return;
 
-        const room = snap.data() || {};
-        const live = room.state || {};
-        if (!live.winner) return;
+        const data = snap.data() || {};
+        const live = data.state || {};
+        const players = data.players || {};
+        const rematchVotes = data.rematchVotes || {};
+        const now = Date.now();
 
-        const players = room.players || {};
-        const side = players.black === state.playerId ? "black"
-                   : players.white === state.playerId ? "white"
-                   : null;
-        if (!side) return;
+        const mySide = players.black === state.playerId ? "black"
+                     : players.white === state.playerId ? "white"
+                     : "spectator";
+        if (mySide === "spectator") return;
 
-        const rematch = room.rematch || {
-          answers: { black: null, white: null },
-          requestedAt: now
-        };
-        rematch.answers = rematch.answers || { black: null, white: null };
-        rematch.answers[side] = answer;
+        if (!live.winner || !players.black || !players.white) return;
 
-        const blackYes = rematch.answers.black === true;
-        const whiteYes = rematch.answers.white === true;
+        if (yes) rematchVotes[state.playerId] = true;
+        else delete rematchVotes[state.playerId];
 
-        if (blackYes && whiteYes) {
+        const blackPid = players.black;
+        const whitePid = players.white;
+        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
+
+        if (bothYes) {
           tx.update(state.roomRef, {
             state: freshState(),
             matchStartAt: now + COUNTDOWN_MS,
-            rematch: null,
+            rematchVotes: {},
             updatedAt: now
           });
           return;
         }
 
         tx.update(state.roomRef, {
-          rematch,
+          rematchVotes,
           updatedAt: now
         });
       }).catch(err => {
-        setStatus(`再戦の送信に失敗した: ${err.message}`);
+        setStatus(`リマッチの処理に失敗した: ${err.message}`);
       });
     }
 
-    rematchYes.addEventListener("click", async () => {
-      await setRematchAnswer(true);
-    });
-
-    rematchNo.addEventListener("click", async () => {
-      await setRematchAnswer(false);
-    });
+    rematchYes.addEventListener("click", () => voteRematch(true));
+    rematchNo.addEventListener("click", () => voteRematch(false));
 
     window.addEventListener("resize", resizeCanvas);
 
