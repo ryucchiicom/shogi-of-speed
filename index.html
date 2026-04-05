@@ -407,9 +407,6 @@
     const savedMode = localStorage.getItem("shogi_of_speed_mode");
     if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
 
-    const initialRoom = new URLSearchParams(location.search).get("room");
-    if (initialRoom) roomInput.value = initialRoom.toUpperCase();
-
     function applyThemeFromCSS(){
       const cs = getComputedStyle(document.documentElement);
       theme.boardDark = (cs.getPropertyValue("--board-dark") || "#e0c390").trim();
@@ -637,8 +634,12 @@
     }
 
     function movementForms(piece) {
-      if (piece.promoMode === "promoted") return [PROMOTED_MOVE[piece.type] || piece.type];
-      if (piece.promoMode === "can") return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
+      if (piece.promoMode === "promoted") {
+        return [PROMOTED_MOVE[piece.type] || piece.type];
+      }
+      if (piece.promoMode === "can") {
+        return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
+      }
       return [piece.type];
     }
 
@@ -744,25 +745,14 @@
       }
 
       if (piece.promoMode === "can") {
-        const inZone = isInPromotionZone(piece.side, dest.y);
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-
-        if (inZone) {
-          const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
-          const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
-          if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
-          if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
-          if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
-          return null;
-        }
-
-        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "normal");
         const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "promoted");
+        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
 
         if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
-        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "normal" };
         if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
         return null;
       }
 
@@ -914,13 +904,13 @@
 
           btn.addEventListener("pointerdown", (e) => {
             if (!interactive || count <= 0 || state.mySide === "spectator") return;
+            e.preventDefault();
+            e.stopPropagation();
             state.selected = { kind: "hand", side, type: t };
             state.dragSource = "hand";
-            if (modeSelect.value === "slide") {
-              state.dragPointerId = e.pointerId;
-              state.dragStart = { x: e.clientX, y: e.clientY };
-              state.dragging = true;
-            }
+            state.dragPointerId = e.pointerId;
+            state.dragStart = { x: e.clientX, y: e.clientY };
+            state.dragging = true;
             refreshHands();
             renderFrame();
           });
@@ -977,6 +967,19 @@
       if (kind === "base") return "rgba(216,75,67,.34)";
       if (kind === "promo") return "rgba(53,105,214,.30)";
       return "rgba(242,201,76,.34)";
+    }
+
+    function octantFromVector(dx, dy) {
+      if (dx === 0 && dy === 0) return null;
+      const angle = Math.atan2(dy, dx);
+      let idx = Math.round(angle / (Math.PI / 4));
+      idx = ((idx % 8) + 8) % 8;
+      return idx;
+    }
+
+    function pieceScreenCenter(piece) {
+      const s = boardToScreen(piece.x, piece.y);
+      return { x: s.x + 0.5, y: s.y + 0.5 };
     }
 
     function drawPiece(piece, cell, now, selected) {
@@ -1205,7 +1208,7 @@
       roomInput.value = "";
       updateMePill();
       refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね.");
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
       renderFrame();
     }
 
@@ -1295,46 +1298,31 @@
       });
     }
 
-    function getSlidePieceTarget(start, end) {
+    function getSlidePieceTarget(releasePoint) {
       const live = state.roomData?.state;
-      if (!live || !state.selected || state.selected.kind !== "piece") return null;
+      const piece = selectedPieceObj();
+      if (!live || !piece) return null;
 
-      const piece = live.pieces.find(p => p.id === state.selected.id);
-      if (!piece) return null;
+      const start = pieceScreenCenter(piece);
+      const dragOct = octantFromVector(releasePoint.x - start.x, releasePoint.y - start.y);
+      if (dragOct === null) return null;
 
-      const legal = legalMovesForPiece(live, piece);
+      const legal = selectedLegalMoves(live);
       if (!legal.length) return null;
 
-      const pieceCenter = boardToScreen(piece.x, piece.y);
-      const pc = { x: pieceCenter.x + 0.5, y: pieceCenter.y + 0.5 };
-      const dragVec = { x: end.x - pc.x, y: end.y - pc.y };
-      const dragLen = Math.hypot(dragVec.x, dragVec.y);
-      if (dragLen < 0.08) return null;
-
       let best = null;
-      let bestAngle = Infinity;
-      let bestDist = Infinity;
+      let bestD = Infinity;
 
       for (const m of legal) {
-        const mc = boardToScreen(m.x, m.y);
-        const center = { x: mc.x + 0.5, y: mc.y + 0.5 };
-        const v = { x: center.x - pc.x, y: center.y - pc.y };
-        const len = Math.hypot(v.x, v.y);
-        if (len < 1e-9) continue;
+        const s = boardToScreen(m.x, m.y);
+        const center = { x: s.x + 0.5, y: s.y + 0.5 };
+        const moveOct = octantFromVector(center.x - start.x, center.y - start.y);
+        if (moveOct !== dragOct) continue;
 
-        const dot = v.x * dragVec.x + v.y * dragVec.y;
-        if (dot <= 0) continue;
-
-        const cos = Math.max(-1, Math.min(1, dot / (len * dragLen)));
-        const angle = Math.acos(cos);
-        if (angle > 0.7) continue;
-
-        const dist = Math.hypot(center.x - end.x, center.y - end.y);
-
-        if (angle < bestAngle - 1e-9 || (Math.abs(angle - bestAngle) < 1e-9 && dist < bestDist)) {
+        const d = (center.x - releasePoint.x) ** 2 + (center.y - releasePoint.y) ** 2;
+        if (d < bestD) {
+          bestD = d;
           best = m;
-          bestAngle = angle;
-          bestDist = dist;
         }
       }
 
@@ -1351,7 +1339,7 @@
       return board;
     }
 
-    function eventBoardPoint(ev) {
+    function pointFromEvent(ev) {
       const rect = boardCanvas.getBoundingClientRect();
       return {
         x: (ev.clientX - rect.left) / rect.width * 9,
@@ -1679,14 +1667,13 @@
 
     boardCanvas.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId !== ev.pointerId && !(state.selected?.kind === "piece")) return;
+      if (state.dragPointerId != null && state.dragPointerId !== ev.pointerId) return;
 
       state.suppressClickUntil = performance.now() + 250;
 
       if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const start = eventBoardPoint({ clientX: state.dragStart.x, clientY: state.dragStart.y });
-        const end = eventBoardPoint(ev);
-        const targetMove = getSlidePieceTarget(start, end);
+        const releasePoint = pointFromEvent(ev);
+        const targetMove = getSlidePieceTarget(releasePoint);
         if (targetMove) {
           const live = state.roomData?.state;
           const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
@@ -1702,17 +1689,18 @@
       state.dragging = false;
     });
 
-    document.addEventListener("pointerup", async (ev) => {
+    window.addEventListener("pointerup", async (ev) => {
       if (modeSelect.value !== "slide") return;
-      if (!state.selected || state.selected.kind !== "hand") return;
-      if (state.dragSource !== "hand") return;
+      if (state.dragPointerId != null && state.dragPointerId !== ev.pointerId) return;
 
-      const targetBoard = getHandDropTarget(ev);
-      if (targetBoard) {
-        await applyMoveTransaction(targetBoard, "normal");
-        clearSelection();
+      if (state.selected && state.selected.kind === "hand" && state.dragSource === "hand") {
+        const targetBoard = getHandDropTarget(ev);
+        if (targetBoard) {
+          await applyMoveTransaction(targetBoard, "normal");
+          clearSelection();
+        }
       }
-      state.suppressClickUntil = performance.now() + 250;
+
       state.dragPointerId = null;
       state.dragStart = null;
       state.dragging = false;
@@ -1728,30 +1716,31 @@
     enterBtn.addEventListener("click", enterRoom);
 
     shareBtn.addEventListener("click", async () => {
-      const code = normalizeRoomId(roomInput.value);
+      const code = normalizeRoomId(roomInput.value || state.roomId);
       if (!code) {
         setStatus("共有するコードがないよ。");
         return;
       }
 
-      const url = new URL(location.href);
-      url.searchParams.set("room", code);
+      const shareData = {
+        title: "Shogi of Speed",
+        text: `対戦コード: ${code}`,
+        url: location.href
+      };
 
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: "Shogi of Speed",
-            text: `一緒に対戦しよう！\nルームコード: ${code}`,
-            url: url.toString()
-          });
-          setStatus(`共有したよ: ${code}`);
-          return;
-        } catch (err) {
-          if (err && err.name === "AbortError") return;
-        }
+      if (!navigator.share) {
+        setStatus("この端末は共有に対応していないよ。");
+        return;
       }
 
-      setStatus("この端末では共有シートを開けなかった。");
+      try {
+        await navigator.share(shareData);
+        setStatus(`コードを共有したよ: ${code}`);
+      } catch (err) {
+        if (err && err.name !== "AbortError") {
+          setStatus(`共有できなかった: ${err.message}`);
+        }
+      }
     });
 
     roomInput.addEventListener("keydown", (e) => {
