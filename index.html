@@ -146,52 +146,40 @@
       align-items:center;
     }
 
-    .handHeader{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      width:100%;
-      margin-bottom:6px;
-    }
-
     .handLabel{
       font-weight:700;
+      min-width:96px;
       font-size:13px;
-    }
-
-    .cooldownRing{
-      width:18px;
-      height:18px;
-      border-radius:50%;
-      position:relative;
-      display:none;
-      background:conic-gradient(from -90deg, rgba(127,166,255,.95) calc(var(--p, 0) * 1turn), rgba(0,0,0,.12) 0);
-      box-shadow:0 0 0 1px rgba(0,0,0,.12) inset;
-      flex:0 0 auto;
-    }
-
-    .cooldownRing.show{
-      display:block;
-    }
-
-    .cooldownRing::after{
-      content:"";
-      position:absolute;
-      inset:4px;
-      border-radius:50%;
-      background:var(--panel);
     }
 
     .handBtn{
       min-width:64px;
       text-align:center;
       padding:8px 9px;
+      padding-right:34px;
       font-size:13px;
+      position:relative;
+      overflow:hidden;
     }
 
     .handBtn.selected{
       outline:3px solid rgba(138,180,255,.9);
       border-color:#7aa4f5;
+    }
+
+    .handCooldown{
+      position:absolute;
+      right:8px;
+      top:50%;
+      transform:translateY(-50%);
+      width:18px;
+      height:18px;
+      border-radius:50%;
+      opacity:0;
+      pointer-events:none;
+      background:conic-gradient(from -90deg, rgba(255,255,255,.95) 0 calc(var(--cd, 0) * 1turn), rgba(0,0,0,.14) 0 1turn);
+      -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+      mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
     }
 
     #boardWrap{
@@ -874,7 +862,7 @@
         mePill.textContent = "未接続";
         return;
       }
-      mePill.textContent = `${state.roomId} / あなた`;
+      mePill.textContent = `${state.roomId} / 接続中`;
     }
 
     function isBothPlayersReady(roomData) {
@@ -898,11 +886,11 @@
         return;
       }
 
-      const winnerSide = room.state?.winner || null;
-      const winner = winnerSide
-        ? (winnerSide === state.mySide ? "あなたの勝ち" : "あなたの負け")
-        : "決着";
-
+      const winner = room.state?.winner === "black"
+        ? (state.mySide === "black" ? "あなたの勝ち" : "あなたの負け")
+        : room.state?.winner === "white"
+          ? (state.mySide === "white" ? "あなたの勝ち" : "あなたの負け")
+          : "決着";
       rematchWinner.textContent = winner;
 
       const votes = room.rematchVotes || {};
@@ -915,38 +903,54 @@
       rematchOverlay.classList.add("show");
     }
 
-    function cooldownProgressFromUntil(until) {
-      if (!until) return 0;
-      const remain = Math.max(0, until - Date.now());
-      return Math.min(1, remain / COOLDOWN_MS);
+    function handAreaLabel(side) {
+      if (state.mySide === "spectator") return "持ち駒";
+      return side === state.mySide ? "自分の持ち駒" : "相手の持ち駒";
+    }
+
+    function getPlayerDropCooldownRemaining(side, now) {
+      const live = state.roomData?.state;
+      const until = live?.playerCooldowns?.[side] || 0;
+      return Math.max(0, until - now);
+    }
+
+    function updateHandCooldownIndicators(now) {
+      const live = state.roomData?.state;
+      const currentSide = state.mySide;
+      const remaining = currentSide === "spectator" ? 0 : getPlayerDropCooldownRemaining(currentSide, now);
+
+      const areas = [
+        { el: myHandsEl, side: state.mySide, interactive: state.mySide !== "spectator" },
+        { el: enemyHandsEl, side: state.mySide === "black" ? "white" : "black", interactive: false }
+      ];
+
+      for (const area of areas) {
+        const buttons = area.el.querySelectorAll(".handBtn");
+        buttons.forEach(btn => {
+          const ring = btn.querySelector(".handCooldown");
+          if (!ring) return;
+          if (area.interactive && remaining > 0) {
+            ring.style.opacity = "1";
+            ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
+            btn.disabled = true;
+          } else {
+            ring.style.opacity = "0";
+            btn.disabled = btn.dataset.interactive !== "1" ? true : (state.mySide === "spectator");
+          }
+        });
+      }
     }
 
     function refreshHands() {
       const live = state.roomData?.state;
       const hands = live?.hands || makeHands();
-      const cooldowns = live?.playerCooldowns || { black: 0, white: 0 };
 
       const renderHandArea = (el, side, interactive) => {
         el.innerHTML = "";
-
-        const header = document.createElement("div");
-        header.className = "handHeader";
-
         const label = document.createElement("div");
         label.className = "handLabel";
-        label.textContent = side === state.mySide ? "自分の持ち駒" : "相手の持ち駒";
-        header.appendChild(label);
-
-        const ring = document.createElement("div");
-        ring.className = "cooldownRing";
-        const until = cooldowns?.[side] || 0;
-        const progress = cooldownProgressFromUntil(until);
-        if (side === state.mySide && progress > 0) {
-          ring.classList.add("show");
-          ring.style.setProperty("--p", String(progress));
-        }
-        header.appendChild(ring);
-        el.appendChild(header);
+        label.textContent = handAreaLabel(side);
+        el.appendChild(label);
 
         for (const t of pieceOrder) {
           const count = hands[side]?.[t] || 0;
@@ -954,14 +958,35 @@
 
           const btn = document.createElement("button");
           btn.className = "handBtn";
+          btn.dataset.interactive = interactive ? "1" : "0";
+          btn.dataset.side = side;
+          btn.dataset.type = t;
+
           if (state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) {
             btn.classList.add("selected");
           }
-          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator" || progress > 0;
-          btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span>`;
+
+          const now = Date.now();
+          const remaining = (interactive && state.mySide !== "spectator" && side === state.mySide)
+            ? getPlayerDropCooldownRemaining(side, now)
+            : 0;
+
+          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator" || remaining > 0;
+
+          btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span><span class="handCooldown" aria-hidden="true"></span>`;
+
+          const ring = btn.querySelector(".handCooldown");
+          if (ring) {
+            if (remaining > 0) {
+              ring.style.opacity = "1";
+              ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
+            } else {
+              ring.style.opacity = "0";
+            }
+          }
 
           btn.addEventListener("pointerdown", (e) => {
-            if (!interactive || count <= 0 || state.mySide === "spectator" || progress > 0) return;
+            if (!interactive || count <= 0 || state.mySide === "spectator" || remaining > 0) return;
             e.preventDefault();
             e.stopPropagation();
             state.selected = { kind: "hand", side, type: t };
@@ -974,7 +999,7 @@
           });
 
           btn.addEventListener("click", () => {
-            if (!interactive || count <= 0 || state.mySide === "spectator" || progress > 0) return;
+            if (!interactive || count <= 0 || state.mySide === "spectator" || remaining > 0) return;
             state.selected = { kind: "hand", side, type: t };
             state.dragSource = "hand";
             refreshHands();
@@ -1123,6 +1148,8 @@
       const cell = w / 9;
       const now = Date.now();
 
+      updateHandCooldownIndicators(now);
+
       ctx.clearRect(0, 0, w, h);
 
       for (let sy = 0; sy < 9; sy++) {
@@ -1190,7 +1217,7 @@
         ctx.fillStyle = "#fff";
         ctx.font = "800 26px system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(`勝者: ${live.winner === state.mySide ? "あなたの勝ち" : "あなたの負け"}`, w / 2, h / 2 - 4);
+        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
         ctx.font = "500 15px system-ui, sans-serif";
         ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
       } else if (!bothReady) {
@@ -1579,16 +1606,18 @@
 
         const live = state.roomData.state || {};
         if (live.winner) {
-          const winText = live.winner === state.mySide ? "あなたの勝ち" : "あなたの負け";
-          setStatus(winText);
+          setStatus(`勝敗がついたよ。`);
         } else if (!players.black || !players.white) {
           setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
         } else {
+          const mine = state.mySide === "black" ? "先手"
+                     : state.mySide === "white" ? "後手"
+                     : "観戦";
           const now = Date.now();
           if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-            setStatus(`ルーム ${state.roomId} に接続中。開始カウントダウン中。`);
+            setStatus(`ルーム ${state.roomId} に接続中。${mine}。開始カウントダウン中。`);
           } else {
-            setStatus(`ルーム ${state.roomId} に接続中。あなたの番。`);
+            setStatus(`ルーム ${state.roomId} に接続中。あなたは ${mine}。`);
           }
         }
 
