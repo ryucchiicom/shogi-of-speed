@@ -363,7 +363,6 @@
 
     const COOLDOWN_MS = 3000;
     const COUNTDOWN_MS = 3000;
-    const PRESENCE_STALE_MS = 30000;
     const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
@@ -729,8 +728,14 @@
       const baseReach = basePseudo.some(m => m.x === dest.x && m.y === dest.y);
       const forced = promotable && forcePromoteNeeded(piece, dest.y);
 
+      if (!baseReach) return null;
+
+      if (forced) {
+        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+        return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
+      }
+
       if (piece.promoMode === "fixed") {
-        if (!baseReach) return null;
         if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
       }
@@ -745,16 +750,6 @@
       }
 
       if (piece.promoMode === "normal") {
-        if (!baseReach) return null;
-
-        if (forced) {
-          const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
-          const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-          if (!promoReach) return null;
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "can")) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
-        }
-
         const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
         if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode };
@@ -764,8 +759,7 @@
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         const promoOK = promoReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
-        const baseOK = baseReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
-
+        const baseOK = (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
         if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
         if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
@@ -834,7 +828,7 @@
       if (state.selected.kind === "piece") {
         const piece = live.pieces.find(p => p.id === state.selected.id);
         if (!piece) return [];
-        return legalMovesForPiece(live, piece, false);
+        return legalMovesForPiece(live, piece, true);
       }
       if (state.selected.kind === "hand") {
         if (state.selected.side !== state.mySide) return [];
@@ -910,6 +904,34 @@
       return Math.max(0, until - now);
     }
 
+    function updateHandCooldownIndicators(now) {
+      const live = state.roomData?.state;
+      if (!live) return;
+
+      const ownSide = state.mySide;
+      const remaining = (ownSide === "black" || ownSide === "white")
+        ? Math.max(0, (live.handCooldownUntil?.[ownSide] || 0) - now)
+        : 0;
+
+      const handButtons = myHandsEl.querySelectorAll(".handBtn");
+      handButtons.forEach(btn => {
+        const ring = btn.querySelector(".handCooldown");
+        const count = Number(btn.dataset.count || "0");
+        const interactive = btn.dataset.interactive === "1";
+
+        if (!ring) return;
+
+        if (remaining > 0) {
+          ring.style.opacity = "1";
+          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
+          btn.disabled = true;
+        } else {
+          ring.style.opacity = "0";
+          btn.disabled = !interactive || state.mySide === "spectator" || count <= 0;
+        }
+      });
+    }
+
     function refreshHands() {
       const live = state.roomData?.state;
       const hands = live?.hands || makeHands();
@@ -930,6 +952,7 @@
           btn.dataset.interactive = interactive ? "1" : "0";
           btn.dataset.side = side;
           btn.dataset.type = t;
+          btn.dataset.count = String(count);
 
           if (state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) {
             btn.classList.add("selected");
@@ -1097,29 +1120,6 @@
       if (remain > 2000) return "3";
       if (remain > 1000) return "2";
       return "1";
-    }
-
-    function updateHandCooldownIndicators(now) {
-      const live = state.roomData?.state;
-      if (!live) return;
-
-      const ownSide = state.mySide;
-      const remaining = (ownSide === "black" || ownSide === "white")
-        ? Math.max(0, (live.handCooldownUntil?.[ownSide] || 0) - now)
-        : 0;
-
-      const handButtons = myHandsEl.querySelectorAll(".handBtn");
-      handButtons.forEach(btn => {
-        const ring = btn.querySelector(".handCooldown");
-        if (!ring) return;
-        if (remaining > 0) {
-          ring.style.opacity = "1";
-          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
-          btn.disabled = true;
-        } else {
-          ring.style.opacity = "0";
-        }
-      });
     }
 
     function renderFrame() {
@@ -1316,6 +1316,9 @@
         next.updatedAt = now;
         next.handCooldownUntil = next.handCooldownUntil || { black: 0, white: 0 };
 
+        const nextPresence = { ...(room.presence || {}) };
+        nextPresence[state.playerId] = { side: mySide, lastSeen: now };
+
         if (state.selected.kind === "piece") {
           const piece = next.pieces.find(p => p.id === state.selected.id);
           if (!piece || piece.side !== mySide) return;
@@ -1363,7 +1366,11 @@
           next.handCooldownUntil[side] = now + COOLDOWN_MS;
         }
 
-        tx.update(state.roomRef, { state: next, updatedAt: now });
+        tx.update(state.roomRef, {
+          state: next,
+          presence: nextPresence,
+          updatedAt: now
+        });
       }).catch(err => {
         setStatus(`動かせなかった: ${err.message}`);
       });
@@ -1473,10 +1480,6 @@
 
         const currentAlready = players.black === state.playerId || players.white === state.playerId;
 
-        const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < PRESENCE_STALE_MS);
-        const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < PRESENCE_STALE_MS);
-        const bothInactive = !blackActive && !whiteActive;
-
         if (forceHomeAt) {
           players = { black: state.playerId, white: null };
           presence = { [state.playerId]: { side: "black", lastSeen: now } };
@@ -1484,23 +1487,11 @@
           matchStartAt = null;
           rematchVotes = {};
           forceHomeAt = null;
-        } else if (bothInactive && !roomState.winner) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (roomState.winner && bothInactive) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          matchStartAt = null;
-          rematchVotes = {};
         } else if (!currentAlready) {
-          if (!blackActive) {
+          if (!players.black) {
             players.black = state.playerId;
             presence[state.playerId] = { side: "black", lastSeen: now };
-          } else if (!whiteActive) {
+          } else if (!players.white) {
             players.white = state.playerId;
             presence[state.playerId] = { side: "white", lastSeen: now };
           } else {
@@ -1571,33 +1562,6 @@
         refreshHands();
         updateRematchOverlay();
       });
-
-      state.heartbeat = setInterval(() => {
-        if (!state.roomRef || !state.roomData || state.mySide === "spectator") return;
-        runTransaction(db, async (tx) => {
-          const snap = await tx.get(state.roomRef);
-          if (!snap.exists()) return;
-
-          const data = snap.data() || {};
-          const presence = data.presence || {};
-          const players = data.players || {};
-          const now = Date.now();
-
-          presence[state.playerId] = { side: state.mySide, lastSeen: now };
-
-          let matchStartAt = data.matchStartAt || null;
-          const bothReady = !!players.black && !!players.white;
-          if (bothReady && !matchStartAt && !(data.state && data.state.winner)) {
-            matchStartAt = now + COUNTDOWN_MS;
-          }
-
-          tx.update(state.roomRef, {
-            presence,
-            matchStartAt,
-            updatedAt: now
-          });
-        }).catch(() => {});
-      }, 8000);
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
       renderFrame();
