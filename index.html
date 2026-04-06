@@ -112,11 +112,6 @@
       font-weight:800;
     }
 
-    #rematchButtons button.primary{
-      color:var(--primary-text);
-      font-weight:800;
-    }
-
     button:disabled{
       opacity:.55;
       cursor:not-allowed;
@@ -508,7 +503,7 @@
         winner: null,
         updatedAt: Date.now(),
         rev: 0,
-        playerCooldowns: { black: 0, white: 0 }
+        handCooldownUntil: { black: 0, white: 0 }
       };
     }
 
@@ -531,7 +526,7 @@
         winner: s.winner || null,
         updatedAt: s.updatedAt || Date.now(),
         rev: s.rev || 0,
-        playerCooldowns: JSON.parse(JSON.stringify(s.playerCooldowns || { black: 0, white: 0 }))
+        handCooldownUntil: JSON.parse(JSON.stringify(s.handCooldownUntil || { black: 0, white: 0 }))
       };
     }
 
@@ -908,37 +903,10 @@
       return side === state.mySide ? "自分の持ち駒" : "相手の持ち駒";
     }
 
-    function getPlayerDropCooldownRemaining(side, now) {
+    function getHandCooldownRemaining(side, now) {
       const live = state.roomData?.state;
-      const until = live?.playerCooldowns?.[side] || 0;
+      const until = live?.handCooldownUntil?.[side] || 0;
       return Math.max(0, until - now);
-    }
-
-    function updateHandCooldownIndicators(now) {
-      const live = state.roomData?.state;
-      const currentSide = state.mySide;
-      const remaining = currentSide === "spectator" ? 0 : getPlayerDropCooldownRemaining(currentSide, now);
-
-      const areas = [
-        { el: myHandsEl, side: state.mySide, interactive: state.mySide !== "spectator" },
-        { el: enemyHandsEl, side: state.mySide === "black" ? "white" : "black", interactive: false }
-      ];
-
-      for (const area of areas) {
-        const buttons = area.el.querySelectorAll(".handBtn");
-        buttons.forEach(btn => {
-          const ring = btn.querySelector(".handCooldown");
-          if (!ring) return;
-          if (area.interactive && remaining > 0) {
-            ring.style.opacity = "1";
-            ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
-            btn.disabled = true;
-          } else {
-            ring.style.opacity = "0";
-            btn.disabled = btn.dataset.interactive !== "1" ? true : (state.mySide === "spectator");
-          }
-        });
-      }
     }
 
     function refreshHands() {
@@ -968,11 +936,10 @@
 
           const now = Date.now();
           const remaining = (interactive && state.mySide !== "spectator" && side === state.mySide)
-            ? getPlayerDropCooldownRemaining(side, now)
+            ? getHandCooldownRemaining(side, now)
             : 0;
 
-          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator" || remaining > 0;
-
+          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator";
           btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span><span class="handCooldown" aria-hidden="true"></span>`;
 
           const ring = btn.querySelector(".handCooldown");
@@ -986,7 +953,7 @@
           }
 
           btn.addEventListener("pointerdown", (e) => {
-            if (!interactive || count <= 0 || state.mySide === "spectator" || remaining > 0) return;
+            if (!interactive || count <= 0 || state.mySide === "spectator") return;
             e.preventDefault();
             e.stopPropagation();
             state.selected = { kind: "hand", side, type: t };
@@ -999,7 +966,7 @@
           });
 
           btn.addEventListener("click", () => {
-            if (!interactive || count <= 0 || state.mySide === "spectator" || remaining > 0) return;
+            if (!interactive || count <= 0 || state.mySide === "spectator") return;
             state.selected = { kind: "hand", side, type: t };
             state.dragSource = "hand";
             refreshHands();
@@ -1148,8 +1115,6 @@
       const cell = w / 9;
       const now = Date.now();
 
-      updateHandCooldownIndicators(now);
-
       ctx.clearRect(0, 0, w, h);
 
       for (let sy = 0; sy < 9; sy++) {
@@ -1240,8 +1205,31 @@
         ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
       }
 
+      updateHandCooldownIndicators(now);
       updateRematchOverlay();
       requestAnimationFrame(renderFrame);
+    }
+
+    function updateHandCooldownIndicators(now) {
+      const live = state.roomData?.state;
+      if (!live) return;
+
+      const ownSide = state.mySide;
+      const remaining = (ownSide === "black" || ownSide === "white")
+        ? Math.max(0, (live.handCooldownUntil?.[ownSide] || 0) - now)
+        : 0;
+
+      const handButtons = myHandsEl.querySelectorAll(".handBtn");
+      handButtons.forEach(btn => {
+        const ring = btn.querySelector(".handCooldown");
+        if (!ring) return;
+        if (remaining > 0) {
+          ring.style.opacity = "1";
+          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
+        } else {
+          ring.style.opacity = "0";
+        }
+      });
     }
 
     function pointToSquare(ev) {
@@ -1331,9 +1319,7 @@
         const next = cloneState(live);
         next.rev = (next.rev || 0) + 1;
         next.updatedAt = now;
-        next.playerCooldowns = next.playerCooldowns || { black: 0, white: 0 };
-
-        if ((next.playerCooldowns[mySide] || 0) > now) return;
+        next.handCooldownUntil = next.handCooldownUntil || { black: 0, white: 0 };
 
         if (state.selected.kind === "piece") {
           const piece = next.pieces.find(p => p.id === state.selected.id);
@@ -1357,7 +1343,6 @@
           piece.y = destBoard.y;
           piece.cooldownUntil = now + COOLDOWN_MS;
           piece.promoMode = nextMode || "normal";
-          next.playerCooldowns[mySide] = now + COOLDOWN_MS;
         }
 
         if (state.selected.kind === "hand") {
@@ -1365,7 +1350,7 @@
           const type = state.selected.type;
           if (side !== mySide) return;
           if ((next.hands[side]?.[type] || 0) <= 0) return;
-          if ((next.playerCooldowns[side] || 0) > now) return;
+          if ((next.handCooldownUntil?.[side] || 0) > now) return;
 
           const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
           if (occupant) return;
@@ -1380,7 +1365,7 @@
             promoMode: "normal",
             cooldownUntil: now + COOLDOWN_MS
           });
-          next.playerCooldowns[side] = now + COOLDOWN_MS;
+          next.handCooldownUntil[side] = now + COOLDOWN_MS;
         }
 
         tx.update(state.roomRef, { state: next, updatedAt: now });
@@ -1436,36 +1421,6 @@
         x: (ev.clientX - rect.left) / rect.width * 9,
         y: (ev.clientY - rect.top) / rect.height * 9
       };
-    }
-
-    async function attemptMoveToScreen(destScreen) {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return;
-
-      if (state.selected.kind === "piece") {
-        const selectedPiece = live.pieces.find(p => p.id === state.selected.id);
-        if (!selectedPiece) return;
-        if (selectedPiece.side !== state.mySide) return;
-        if (!canAct()) return;
-
-        const destBoard = screenToBoard(destScreen.x, destScreen.y);
-        const legal = legalMovesForPiece(live, selectedPiece);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        if (!move) return;
-
-        await applyMoveTransaction(destBoard, move.nextMode);
-        clearSelection();
-        return;
-      }
-
-      if (state.selected.kind === "hand") {
-        if (state.selected.side !== state.mySide) return;
-        if (!canAct()) return;
-
-        const destBoard = screenToBoard(destScreen.x, destScreen.y);
-        await applyMoveTransaction(destBoard, "normal");
-        clearSelection();
-      }
     }
 
     async function enterRoom() {
@@ -1610,14 +1565,12 @@
         } else if (!players.black || !players.white) {
           setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
         } else {
-          const mine = state.mySide === "black" ? "先手"
-                     : state.mySide === "white" ? "後手"
-                     : "観戦";
+          const mine = state.mySide === "spectator" ? "観戦" : "接続中";
           const now = Date.now();
           if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
             setStatus(`ルーム ${state.roomId} に接続中。${mine}。開始カウントダウン中。`);
           } else {
-            setStatus(`ルーム ${state.roomId} に接続中。あなたは ${mine}。`);
+            setStatus(`ルーム ${state.roomId} に接続中。`);
           }
         }
 
