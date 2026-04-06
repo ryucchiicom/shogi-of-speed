@@ -368,10 +368,11 @@
 
     const COOLDOWN_MS = 3000;
     const COUNTDOWN_MS = 3000;
-    const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
-    const STALE_MS = 30000;
+    const STALE_MS = 5 * 60 * 1000;
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
+    const GLOBAL_LAST_WINNER_KEY = "shogi_of_speed_lastWinnerSide_global";
+    const AI_LOCAL_KEY = "shogi_of_speed_cpu_memory_v3";
 
     const TYPE_LABEL = {
       pawn:"歩", lance:"香", knight:"桂", silver:"銀", gold:"金",
@@ -399,41 +400,129 @@
     };
 
     const theme = {
-      boardDark:"#e0c390",
-      boardLight:"#edd9b3",
-      piece1:"#d9ba90",
-      piece2:"#ba905b"
+      boardDark: "#e0c390",
+      boardLight: "#edd9b3",
+      piece1: "#d9ba90",
+      piece2: "#ba905b"
+    };
+
+    const aiMemory = {
+      table: {},
+      games: 0,
+      loaded: false,
+      loadPromise: null,
+      dirty: false
     };
 
     const session = {
-      kind:"online",        // online | cpu | local_dual
-      renderTimer:null,
-      cpuTimer:null
+      kind: "online", // online | cpu | local_dual
+      renderTimer: null,
+      cpuTimer: null,
+      royalLabels: null,
+      lastWinnerSide: localStorage.getItem(GLOBAL_LAST_WINNER_KEY) || null,
+      finalizedTag: null,
+      cpuTrace: [],
+      cpuLastActionKey: null,
+      cpuLastAfterCount: null
     };
 
     const state = {
-      roomId:"",
-      roomRef:null,
-      unsub:null,
-      playerId:localStorage.getItem("shogi_of_speed_pid") || crypto.randomUUID(),
-      mySide:"spectator",
-      roomData:null,
-      selected:null,
-      boardReady:false,
-      dragPointerId:null,
-      dragStart:null,
-      dragging:false,
-      dragSource:null,
-      suppressClickUntil:0
+      roomId: "",
+      roomRef: null,
+      unsub: null,
+      playerId: localStorage.getItem("shogi_of_speed_pid") || crypto.randomUUID(),
+      mySide: "spectator",
+      roomData: null,
+      selected: null,
+      boardReady: false,
+      dragPointerId: null,
+      dragStart: null,
+      dragging: false,
+      dragSource: null,
+      suppressClickUntil: 0
     };
     localStorage.setItem("shogi_of_speed_pid", state.playerId);
 
     const savedMode = localStorage.getItem("shogi_of_speed_mode");
     if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
 
-    function isCPU() { return session.kind === "cpu"; }
-    function isLocalDual() { return session.kind === "local_dual"; }
-    function isLocalMode() { return session.kind !== "online"; }
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function pruneAIMemory() {
+      const entries = Object.entries(aiMemory.table);
+      if (entries.length <= 1200) return;
+      entries.sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]));
+      const toRemove = entries.length - 1000;
+      for (let i = 0; i < toRemove; i++) {
+        delete aiMemory.table[entries[i][0]];
+      }
+    }
+
+    function loadLocalAIMemory() {
+      try {
+        const raw = localStorage.getItem(AI_LOCAL_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          aiMemory.table = parsed.table && typeof parsed.table === "object" ? parsed.table : {};
+          aiMemory.games = Number(parsed.games || 0);
+        }
+      } catch {}
+    }
+
+    function saveLocalAIMemory() {
+      try {
+        localStorage.setItem(AI_LOCAL_KEY, JSON.stringify({
+          table: aiMemory.table,
+          games: aiMemory.games,
+          updatedAt: Date.now()
+        }));
+      } catch {}
+    }
+
+    function loadAIMemory() {
+      if (aiMemory.loadPromise) return aiMemory.loadPromise;
+      aiMemory.loadPromise = (async () => {
+        loadLocalAIMemory();
+        try {
+          const ref = doc(db, "ai_memory", "cpu_v3");
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            const data = snap.data() || {};
+            if (data.table && typeof data.table === "object") {
+              aiMemory.table = { ...aiMemory.table, ...data.table };
+            }
+            if (Number.isFinite(data.games)) aiMemory.games = Math.max(aiMemory.games, data.games);
+          }
+        } catch {}
+        aiMemory.loaded = true;
+        pruneAIMemory();
+        saveLocalAIMemory();
+      })();
+      return aiMemory.loadPromise;
+    }
+
+    async function saveAIMemory() {
+      pruneAIMemory();
+      saveLocalAIMemory();
+      try {
+        await setDoc(doc(db, "ai_memory", "cpu_v3"), {
+          table: aiMemory.table,
+          games: aiMemory.games,
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch {}
+    }
+
+    function learnCpuReward(key, reward) {
+      if (!key) return;
+      const cur = aiMemory.table[key] || 0;
+      aiMemory.table[key] = clamp(cur * 0.97 + reward * 0.05, -50, 50);
+      aiMemory.games += 1;
+      aiMemory.dirty = true;
+    }
 
     function applyThemeFromCSS(){
       const cs = getComputedStyle(document.documentElement);
@@ -448,6 +537,10 @@
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     if (mq.addEventListener) mq.addEventListener("change", () => { applyThemeFromCSS(); scheduleRender(0); });
     else if (mq.addListener) mq.addListener(() => { applyThemeFromCSS(); scheduleRender(0); });
+
+    function isCPU() { return session.kind === "cpu"; }
+    function isLocalDual() { return session.kind === "local_dual"; }
+    function isLocalMode() { return session.kind !== "online"; }
 
     function clearTimers(){
       if (session.renderTimer) clearTimeout(session.renderTimer);
@@ -466,6 +559,29 @@
       if (c === "1SMARTPHONE") return "local_dual";
       return "online";
     }
+
+    function randomRoyalLabels() {
+      return Math.random() < 0.5
+        ? { black: "王", white: "玉" }
+        : { black: "玉", white: "王" };
+    }
+
+    function assignRoyalLabels(prevWinnerSide) {
+      if (prevWinnerSide === "black") return { black: "王", white: "玉" };
+      if (prevWinnerSide === "white") return { black: "玉", white: "王" };
+      return randomRoyalLabels();
+    }
+
+    function getRoyalLabels() {
+      if (session.kind === "online") return state.roomData?.royalLabels || session.royalLabels || randomRoyalLabels();
+      return session.royalLabels || randomRoyalLabels();
+    }
+
+    function getKingLabel(side) {
+      return getRoyalLabels()[side] || "玉";
+    }
+
+    session.royalLabels = assignRoyalLabels(session.lastWinnerSide);
 
     function makeRoomCodeLabel() {
       if (session.kind === "cpu") return "CPU";
@@ -542,6 +658,8 @@
         players: { black: playerId, white: null },
         presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
         state: freshState(),
+        royalLabels: assignRoyalLabels(session.lastWinnerSide),
+        lastWinnerSide: session.lastWinnerSide || null,
         matchStartAt: null,
         rematchVotes: {},
         createdAt: Date.now(),
@@ -551,7 +669,10 @@
 
     function setLocalRoom(kind){
       clearTimers();
-      state.unsub = null;
+      if (state.unsub) {
+        state.unsub();
+        state.unsub = null;
+      }
       state.roomRef = null;
       state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
       state.mySide = kind === "cpu" ? "black" : "both";
@@ -560,14 +681,24 @@
         players: { black: "local", white: kind === "cpu" ? "cpu" : "local2" },
         presence: {},
         state: freshState(),
+        royalLabels: assignRoyalLabels(session.lastWinnerSide),
+        lastWinnerSide: session.lastWinnerSide || null,
         matchStartAt: null,
         rematchVotes: {}
       };
+      session.kind = kind;
+      session.finalizedTag = null;
+      session.cpuTrace = [];
+      session.cpuLastActionKey = null;
+      session.cpuLastAfterCount = null;
+      if (kind === "cpu") {
+        loadAIMemory().catch(()=>{});
+      }
       state.selected = null;
       updateMePill();
       refreshHands();
       scheduleRender(0);
-      if (kind === "cpu") scheduleCpuThink(400);
+      if (kind === "cpu") scheduleCpuThink(450);
       setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
     }
 
@@ -711,6 +842,7 @@
 
     function moveTextLabel(piece, now) {
       if (!piece) return "?";
+      if (piece.type === "king") return getKingLabel(piece.side);
       if (piece.promoMode === "promoted") return PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?";
       if (piece.promoMode === "can") {
         const blink = Math.floor(now / 250) % 2 === 0;
@@ -753,16 +885,17 @@
       if (!piece || stateObj.winner) return null;
       if (piece.cooldownUntil && Date.now() < piece.cooldownUntil) return null;
 
+      const safety = checkSafety && piece.type !== "king";
       const baseType = piece.type;
       const promoType = PROMOTED_MOVE[baseType];
-      const promotable = canPieceHavePromotion(piece);
+
       const basePseudo = pseudoMovesForType(piece.side, baseType, piece.x, piece.y, stateObj.pieces);
       const baseReach = basePseudo.some(m => m.x === dest.x && m.y === dest.y);
-      const forced = promotable && forcePromoteNeeded(piece, dest.y);
+      const forced = canPieceHavePromotion(piece) && forcePromoteNeeded(piece, dest.y);
 
       if (piece.promoMode === "fixed") {
         if (!baseReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
+        if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
       }
 
@@ -771,29 +904,31 @@
         const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         if (!promoReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+        if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "promoted" };
       }
 
       if (piece.promoMode === "normal") {
         if (!baseReach) return null;
-        const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
+
         if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+          if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         }
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
+
+        const nextMode = canPieceHavePromotion(piece) && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
+        if (safety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode };
       }
 
       if (piece.promoMode === "can") {
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const baseOK = baseReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
-        const promoOK = promoReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
+        const baseOK = baseReach && (!safety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
+        const promoOK = promoReach && (!safety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
 
         if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+          if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         }
 
@@ -849,28 +984,10 @@
       for (let y = 0; y < 9; y++) {
         for (let x = 0; x < 9; x++) {
           if (occ.has(`${x},${y}`)) continue;
-          out.push({
-            x,
-            y,
-            kind: "normal",
-            nextMode: "normal"
-          });
+          out.push({ x, y, kind: "normal", nextMode: "normal" });
         }
       }
       return out;
-    }
-
-    function getControlSideForSelected(){
-      if (session.kind === "local_dual") return "any";
-      if (session.kind === "cpu") return "black";
-      return state.mySide;
-    }
-
-    function canControlSide(side){
-      if (session.kind === "local_dual") return true;
-      if (session.kind === "cpu") return side === "black";
-      if (state.mySide === "spectator") return false;
-      return side === state.mySide;
     }
 
     function selectedLegalMoves(live) {
@@ -1067,6 +1184,7 @@
     }
 
     function getViewSide() {
+      if (session.kind === "local_dual") return "black";
       return state.mySide === "white" ? "white" : "black";
     }
 
@@ -1117,7 +1235,7 @@
       }
 
       ctx.translate(x, y);
-      ctx.rotate(piece.side === getViewSide() ? 0 : Math.PI);
+      ctx.rotate((session.kind === "local_dual" ? 0 : (piece.side === getViewSide() ? 0 : Math.PI)));
 
       ctx.beginPath();
       ctx.moveTo(0, -h * 0.48);
@@ -1209,13 +1327,8 @@
       }, delay);
     }
 
-    function scheduleCpuThink(delay = 400) {
-      if (!isCPU()) return;
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.cpuTimer = setTimeout(() => {
-        session.cpuTimer = null;
-        cpuThink();
-      }, delay);
+    function countSidePieces(pieces, side) {
+      return pieces.reduce((n, p) => n + (p.side === side ? 1 : 0), 0);
     }
 
     function renderFrame() {
@@ -1259,6 +1372,7 @@
         ctx.font = "600 16px system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.fillText("ルーム接続待ち", w / 2, h / 2);
+        handleMatchEndedOnce();
         scheduleRender();
         return;
       }
@@ -1319,6 +1433,7 @@
 
       updateRematchOverlay();
       updateHandCooldownIndicators(now);
+      handleMatchEndedOnce();
       scheduleRender();
     }
 
@@ -1386,6 +1501,15 @@
     function applyActionToLive(live, selected, actorSide, destBoard, anySide = false) {
       const now = Date.now();
       const next = cloneState(live);
+      const info = {
+        capturedType: null,
+        movedType: null,
+        movedSide: null,
+        nextMode: null,
+        winner: null,
+        key: null
+      };
+
       next.rev = (next.rev || 0) + 1;
       next.updatedAt = now;
       next.handCooldownUntil = next.handCooldownUntil || { black: 0, white: 0 };
@@ -1406,100 +1530,49 @@
         if (occupant) {
           next.pieces = next.pieces.filter(p => p.id !== occupant.id);
           next.hands[piece.side][occupant.type] += 1;
-          if (occupant.type === "king") next.winner = piece.side;
+          info.capturedType = occupant.type;
+          if (occupant.type === "king") {
+            next.winner = piece.side;
+            info.winner = piece.side;
+          }
         }
 
         piece.x = destBoard.x;
         piece.y = destBoard.y;
         piece.cooldownUntil = now + COOLDOWN_MS;
         piece.promoMode = move.nextMode || "normal";
-        return next;
+        info.movedType = piece.type;
+        info.movedSide = piece.side;
+        info.nextMode = move.nextMode || "normal";
       }
 
       if (selected.kind === "hand") {
         const side = selected.side;
+        const type = selected.type;
         if (!anySide && side !== actorSide) return null;
-        if ((next.hands[side]?.[selected.type] || 0) <= 0) return null;
+        if ((next.hands[side]?.[type] || 0) <= 0) return null;
         if ((next.handCooldownUntil?.[side] || 0) > now) return null;
 
         const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
         if (occupant) return null;
 
-        next.hands[side][selected.type] -= 1;
+        next.hands[side][type] -= 1;
         next.pieces.push({
-          id: `drop_${side}_${selected.type}_${now}_${Math.random().toString(16).slice(2)}`,
+          id: `drop_${side}_${type}_${now}_${Math.random().toString(16).slice(2)}`,
           side,
-          type: selected.type,
+          type,
           x: destBoard.x,
           y: destBoard.y,
           promoMode: "normal",
           cooldownUntil: now + COOLDOWN_MS
         });
         next.handCooldownUntil[side] = now + COOLDOWN_MS;
-        return next;
+        info.movedType = type;
+        info.movedSide = side;
+        info.nextMode = "normal";
       }
 
-      return null;
-    }
-
-    async function commitMove(destBoard, nextMode = null) {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return;
-
-      if (session.kind === "online") {
-        if (!state.roomRef) return;
-        const actorSide = state.mySide;
-        if (!canAct()) return;
-
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(state.roomRef);
-          if (!snap.exists()) return;
-
-          const room = snap.data();
-          const currentLive = room.state;
-          if (!currentLive || currentLive.winner) return;
-
-          const now = Date.now();
-          if (room.matchStartAt && now < room.matchStartAt) return;
-
-          const side = room.players?.black === state.playerId ? "black"
-                    : room.players?.white === state.playerId ? "white"
-                    : "spectator";
-          if (side === "spectator") return;
-          if (!canControlSide(selectedSideOfSelection())) return;
-
-          const next = applyActionToLive(currentLive, state.selected, actorSide, destBoard, false);
-          if (!next) return;
-
-          const presence = room.presence || {};
-          presence[state.playerId] = { side, lastSeen: now };
-
-          tx.update(state.roomRef, {
-            state: next,
-            presence,
-            updatedAt: now
-          });
-        }).catch(err => {
-          setStatus(`動かせなかった: ${err.message}`);
-        });
-
-        scheduleRender(0);
-        return;
-      }
-
-      const liveLocal = state.roomData?.state;
-      if (!liveLocal) return;
-
-      const anySide = session.kind === "local_dual";
-      const actorSide = session.kind === "cpu" ? "black" : null;
-      const next = applyActionToLive(liveLocal, state.selected, actorSide, destBoard, anySide);
-      if (!next) return;
-
-      state.roomData.state = next;
-      state.roomData.updatedAt = Date.now();
-      scheduleRender(0);
-
-      if (session.kind === "cpu") scheduleCpuThink(350);
+      return { next, info };
     }
 
     function selectedSideOfSelection() {
@@ -1511,6 +1584,164 @@
       }
       if (state.selected.kind === "hand") return state.selected.side;
       return null;
+    }
+
+    function cpuValue(type) {
+      return {
+        king: 10000,
+        rook: 600,
+        bishop: 500,
+        gold: 360,
+        silver: 300,
+        knight: 260,
+        lance: 240,
+        pawn: 130,
+        tokin: 250,
+        proLance: 250,
+        proKnight: 250,
+        proSilver: 250,
+        horse: 700,
+        dragon: 750
+      }[type] || 100;
+    }
+
+    function cpuActionKey(live, selected, move) {
+      if (selected.kind === "piece") {
+        const piece = live.pieces.find(p => p.id === selected.id);
+        if (!piece) return "";
+        const dx = move.x - piece.x;
+        const dy = move.y - piece.y;
+        const cap = pieceAt(live.pieces, move.x, move.y);
+        const zone = isInPromotionZone(piece.side, move.y) ? "1" : "0";
+        return [
+          "P",
+          piece.side,
+          piece.type,
+          piece.promoMode,
+          dx,
+          dy,
+          cap ? cap.type : "0",
+          move.nextMode,
+          zone
+        ].join("|");
+      }
+      if (selected.kind === "hand") {
+        return [
+          "D",
+          selected.side,
+          selected.type,
+          move.x,
+          move.y
+        ].join("|");
+      }
+      return "";
+    }
+
+    function cpuMobilityBonus(stateObj, piece) {
+      const mv = pseudoMovesForType(piece.side, piece.promoMode === "promoted" ? (PROMOTED_MOVE[piece.type] || piece.type) : piece.type, piece.x, piece.y, stateObj.pieces);
+      return mv.length * 0.25;
+    }
+
+    function evaluateCpuMove(live, selected, move, result) {
+      let score = 0;
+      const next = result.next;
+
+      const piece = selected.kind === "piece" ? live.pieces.find(p => p.id === selected.id) : null;
+      const target = pieceAt(live.pieces, move.x, move.y);
+
+      if (result.info.capturedType) score += cpuValue(result.info.capturedType) / 12;
+      if (result.info.nextMode === "promoted") score += 14;
+      if (result.info.winner === "white") score += 1000;
+      if (result.info.winner === "black") score -= 1000;
+
+      const enemyKing = kingPos(next.pieces, "black");
+      if (enemyKing && isSquareAttacked(next.pieces, enemyKing.x, enemyKing.y, "white")) score += 18;
+
+      const whiteKing = kingPos(next.pieces, "white");
+      if (whiteKing && isSquareAttacked(next.pieces, whiteKing.x, whiteKing.y, "black")) {
+        if (piece && piece.type === "king") score -= 150;
+        else score -= cpuValue(piece ? piece.type : selected.type) / 2;
+      }
+
+      if (piece) {
+        const movedNow = next.pieces.find(p => p.side === piece.side && p.x === move.x && p.y === move.y);
+        if (movedNow && isSquareAttacked(next.pieces, move.x, move.y, "black")) {
+          score -= cpuValue(piece.type) * (piece.type === "king" ? 3 : 0.55);
+        }
+
+        if (piece.type === "pawn" || piece.type === "lance" || piece.type === "knight" || piece.type === "silver") {
+          const adv = piece.side === "white" ? move.y - piece.y : piece.y - move.y;
+          score += adv * 0.9;
+        }
+
+        score += cpuMobilityBonus(next, movedNow || piece);
+      }
+
+      if (!piece && selected.kind === "hand") {
+        const center = Math.abs(4 - move.x) + Math.abs(4 - move.y);
+        score += (8 - center) * 0.3;
+      }
+
+      const key = cpuActionKey(live, selected, move);
+      score += (aiMemory.table[key] || 0) * 4;
+      score += Math.random() * 0.35;
+
+      return { score, key };
+    }
+
+    function finalizeCpuLearning(winnerSide) {
+      const cpuWon = winnerSide === "white";
+      const outcomeReward = cpuWon ? 100 : -100;
+      const trace = session.cpuTrace.slice();
+      if (!trace.length) return;
+
+      for (let i = 0; i < trace.length; i++) {
+        const decay = Math.pow(0.93, trace.length - 1 - i);
+        const reward = trace[i].reward + outcomeReward * decay;
+        learnCpuReward(trace[i].key, reward);
+      }
+
+      session.cpuTrace = [];
+      session.cpuLastActionKey = null;
+      session.cpuLastAfterCount = null;
+      saveAIMemory();
+    }
+
+    function handleMatchEndedOnce() {
+      const live = state.roomData?.state;
+      if (!live?.winner) return;
+
+      const tag = `${session.kind}:${state.roomId || "local"}:${live.rev}:${live.winner}`;
+      if (session.finalizedTag === tag) return;
+      session.finalizedTag = tag;
+      session.lastWinnerSide = live.winner;
+      localStorage.setItem(GLOBAL_LAST_WINNER_KEY, live.winner);
+
+      if (session.kind !== "online") {
+        session.royalLabels = assignRoyalLabels(live.winner);
+      }
+
+      if (session.kind === "cpu") {
+        finalizeCpuLearning(live.winner);
+      }
+    }
+
+    function refreshLocalStateAfterReset() {
+      if (!state.roomData) return;
+      state.roomData.state = freshState();
+      state.roomData.rematchVotes = {};
+      state.roomData.matchStartAt = null;
+      state.roomData.lastWinnerSide = session.lastWinnerSide || null;
+      state.roomData.royalLabels = assignRoyalLabels(session.lastWinnerSide);
+      state.roomData.updatedAt = Date.now();
+      state.selected = null;
+      session.finalizedTag = null;
+      session.cpuTrace = [];
+      session.cpuLastActionKey = null;
+      session.cpuLastAfterCount = null;
+      refreshHands();
+      scheduleRender(0);
+      if (session.kind === "cpu") scheduleCpuThink(450);
     }
 
     function getSlidePieceTarget(releasePoint) {
@@ -1560,18 +1791,6 @@
         x: (ev.clientX - rect.left) / rect.width * 9,
         y: (ev.clientY - rect.top) / rect.height * 9
       };
-    }
-
-    function refreshLocalRematchImmediate() {
-      if (!state.roomData) return;
-      state.roomData.state = freshState();
-      state.roomData.rematchVotes = {};
-      state.roomData.matchStartAt = null;
-      state.roomData.updatedAt = Date.now();
-      state.selected = null;
-      clearSelection();
-      scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(400);
     }
 
     async function enterRoom() {
@@ -1634,6 +1853,7 @@
         let matchStartAt = data.matchStartAt || null;
         let rematchVotes = data.rematchVotes || {};
         let forceHomeAt = data.forceHomeAt || null;
+        let royalLabels = data.royalLabels || assignRoyalLabels(data.lastWinnerSide || session.lastWinnerSide);
 
         const currentAlready = players.black === state.playerId || players.white === state.playerId;
 
@@ -1648,18 +1868,21 @@
           matchStartAt = null;
           rematchVotes = {};
           forceHomeAt = null;
+          royalLabels = assignRoyalLabels(session.lastWinnerSide);
         } else if (bothInactive && !roomState.winner) {
           players = { black: state.playerId, white: null };
           presence = { [state.playerId]: { side: "black", lastSeen: now } };
           roomState = freshState();
           matchStartAt = null;
           rematchVotes = {};
+          royalLabels = assignRoyalLabels(session.lastWinnerSide);
         } else if (roomState.winner && bothInactive) {
           players = { black: state.playerId, white: null };
           presence = { [state.playerId]: { side: "black", lastSeen: now } };
           roomState = freshState();
           matchStartAt = null;
           rematchVotes = {};
+          royalLabels = assignRoyalLabels(session.lastWinnerSide);
         } else if (!currentAlready) {
           if (!blackActive) {
             players.black = state.playerId;
@@ -1684,6 +1907,7 @@
           players,
           presence,
           state: roomState,
+          royalLabels,
           matchStartAt,
           rematchVotes,
           forceHomeAt,
@@ -1740,34 +1964,15 @@
       scheduleRender(0);
     }
 
-    function cpuValue(type) {
-      return {
-        king: 10000,
-        rook: 500,
-        bishop: 450,
-        gold: 320,
-        silver: 280,
-        knight: 240,
-        lance: 220,
-        pawn: 120,
-        tokin: 200,
-        proLance: 200,
-        proKnight: 200,
-        proSilver: 200,
-        horse: 650,
-        dragon: 700
-      }[type] || 100;
-    }
-
-    function scoreAction(live, selected, dest, move) {
-      let score = 0;
-      const occ = pieceAt(live.pieces, dest.x, dest.y);
-      if (occ && occ.side !== selected.side) score += cpuValue(occ.type);
-      if (move.nextMode === "promoted") score += 30;
-      if (move.kind === "promo") score += 15;
-      if (selected.kind === "hand") score += 5;
-      score += Math.random() * 4;
-      return score;
+    function maybeCpuLossPenalty(live) {
+      if (!isCPU()) return;
+      if (session.cpuLastActionKey == null || session.cpuLastAfterCount == null) return;
+      const nowCount = countSidePieces(live.pieces, "white");
+      if (nowCount < session.cpuLastAfterCount) {
+        const lost = session.cpuLastAfterCount - nowCount;
+        learnCpuReward(session.cpuLastActionKey, -15 * lost);
+        session.cpuLastAfterCount = nowCount;
+      }
     }
 
     function cpuThink() {
@@ -1781,6 +1986,8 @@
         return;
       }
 
+      maybeCpuLossPenalty(live);
+
       const actorSide = "white";
       const actions = [];
 
@@ -1789,11 +1996,16 @@
         if (p.cooldownUntil && now < p.cooldownUntil) continue;
         const moves = legalMovesForPiece(live, p, true);
         for (const mv of moves) {
+          const result = applyActionToLive(live, { kind: "piece", id: p.id }, actorSide, { x: mv.x, y: mv.y }, false);
+          if (!result) continue;
+          const evaluation = evaluateCpuMove(live, { kind: "piece", id: p.id }, mv, result);
           actions.push({
             selected: { kind: "piece", id: p.id },
             dest: { x: mv.x, y: mv.y },
             nextMode: mv.nextMode,
-            score: scoreAction(live, { kind:"piece", side: p.side }, { x: mv.x, y: mv.y }, mv)
+            key: evaluation.key,
+            score: evaluation.score,
+            result
           });
         }
       }
@@ -1806,11 +2018,16 @@
           for (let y = 0; y < 9; y++) {
             for (let x = 0; x < 9; x++) {
               if (pieceAt(live.pieces, x, y)) continue;
+              const result = applyActionToLive(live, { kind: "hand", side: "white", type: t }, "white", { x, y }, false);
+              if (!result) continue;
+              const evaluation = evaluateCpuMove(live, { kind: "hand", side: "white", type: t }, { x, y, nextMode: "normal" }, result);
               actions.push({
                 selected: { kind: "hand", side: "white", type: t },
                 dest: { x, y },
                 nextMode: "normal",
-                score: 6 + Math.random() * 2
+                key: evaluation.key,
+                score: evaluation.score,
+                result
               });
             }
           }
@@ -1823,88 +2040,143 @@
       }
 
       actions.sort((a, b) => b.score - a.score);
-      const top = actions.slice(0, Math.min(8, actions.length));
+      const top = actions.slice(0, Math.min(10, actions.length));
       const pick = top[Math.floor(Math.random() * top.length)];
 
-      const next = applyActionToLive(live, pick.selected, actorSide, pick.dest, false);
-      if (next) {
-        state.roomData.state = next;
+      const final = applyActionToLive(live, pick.selected, actorSide, pick.dest, false);
+      if (final) {
+        state.roomData.state = final.next;
         state.roomData.updatedAt = now;
+
+        const capturedReward = pick.result.info.capturedType ? cpuValue(pick.result.info.capturedType) / 12 : 0;
+        const promoteReward = pick.result.info.nextMode === "promoted" ? 3 : 0;
+        const checkReward = (() => {
+          const enemyKing = kingPos(final.next.pieces, "black");
+          return enemyKing && isSquareAttacked(final.next.pieces, enemyKing.x, enemyKing.y, "white") ? 4 : 0;
+        })();
+        const immediate = capturedReward + promoteReward + checkReward;
+
+        session.cpuTrace.push({
+          key: pick.key,
+          reward: immediate
+        });
+        session.cpuLastActionKey = pick.key;
+        session.cpuLastAfterCount = countSidePieces(final.next.pieces, "white");
+
         scheduleRender(0);
-        scheduleCpuThink(500);
-      } else {
-        scheduleCpuThink(350);
       }
     }
 
-    async function voteRematch(yes) {
+    function scheduleCpuThink(delay = 400) {
+      if (!isCPU()) return;
+      if (session.cpuTimer) clearTimeout(session.cpuTimer);
+      session.cpuTimer = setTimeout(() => {
+        session.cpuTimer = null;
+        cpuThink();
+      }, delay);
+    }
+
+    function finalizeCpuLearningIfNeeded(winnerSide) {
+      if (!isCPU()) return;
+      const trace = session.cpuTrace.slice();
+      if (!trace.length) return;
+
+      const outcomeReward = winnerSide === "white" ? 100 : -100;
+      for (let i = 0; i < trace.length; i++) {
+        const decay = Math.pow(0.93, trace.length - 1 - i);
+        const reward = trace[i].reward + outcomeReward * decay;
+        learnCpuReward(trace[i].key, reward);
+      }
+      session.cpuTrace = [];
+      session.cpuLastActionKey = null;
+      session.cpuLastAfterCount = null;
+      saveAIMemory();
+    }
+
+    function handleMatchEndedOnce() {
+      const live = state.roomData?.state;
+      if (!live?.winner) return;
+
+      const tag = `${session.kind}:${state.roomId || "local"}:${live.rev}:${live.winner}`;
+      if (session.finalizedTag === tag) return;
+      session.finalizedTag = tag;
+
+      session.lastWinnerSide = live.winner;
+      localStorage.setItem(GLOBAL_LAST_WINNER_KEY, live.winner);
+
       if (session.kind !== "online") {
-        if (yes) {
-          refreshLocalRematchImmediate();
-          rematchOverlay.classList.remove("show");
-        } else {
-          leaveToHome();
-        }
+        session.royalLabels = assignRoyalLabels(live.winner);
+      }
+
+      if (session.kind === "cpu") {
+        finalizeCpuLearningIfNeeded(live.winner);
+      }
+    }
+
+    async function commitMove(destBoard, nextMode = null) {
+      const live = state.roomData?.state;
+      if (!live || !state.selected) return;
+
+      if (session.kind === "online") {
+        if (!state.roomRef) return;
+        if (!canAct()) return;
+        const actorSide = state.mySide;
+
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(state.roomRef);
+          if (!snap.exists()) return;
+
+          const room = snap.data() || {};
+          const currentLive = room.state;
+          if (!currentLive || currentLive.winner) return;
+
+          const now = Date.now();
+          if (room.matchStartAt && now < room.matchStartAt) return;
+
+          const side = room.players?.black === state.playerId ? "black"
+                    : room.players?.white === state.playerId ? "white"
+                    : "spectator";
+          if (side === "spectator") return;
+          if (!selectedSideOfSelection()) return;
+
+          const result = applyActionToLive(currentLive, state.selected, actorSide, destBoard, false);
+          if (!result) return;
+
+          const presence = room.presence || {};
+          presence[state.playerId] = { side, lastSeen: now };
+
+          const next = result.next;
+          const updateObj = {
+            state: next,
+            presence,
+            updatedAt: now
+          };
+          if (next.winner) {
+            updateObj.lastWinnerSide = next.winner;
+          }
+
+          tx.update(state.roomRef, updateObj);
+        }).catch(err => {
+          setStatus(`動かせなかった: ${err.message}`);
+        });
+
+        scheduleRender(0);
         return;
       }
 
-      if (!state.roomRef || !state.roomData) return;
-      const room = state.roomData;
-      if (!room.state?.winner || !isBothPlayersReady(room)) return;
+      const liveLocal = state.roomData?.state;
+      if (!liveLocal) return;
 
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(state.roomRef);
-        if (!snap.exists()) return;
+      const anySide = session.kind === "local_dual";
+      const actorSide = session.kind === "cpu" ? "black" : null;
+      const result = applyActionToLive(liveLocal, state.selected, actorSide, destBoard, anySide);
+      if (!result) return;
 
-        const data = snap.data() || {};
-        const live = data.state || {};
-        const players = data.players || {};
-        const rematchVotes = data.rematchVotes || {};
-        const now = Date.now();
+      state.roomData.state = result.next;
+      state.roomData.updatedAt = Date.now();
+      scheduleRender(0);
 
-        const mySide = players.black === state.playerId ? "black"
-                     : players.white === state.playerId ? "white"
-                     : "spectator";
-        if (mySide === "spectator") return;
-
-        if (!live.winner || !players.black || !players.white) return;
-
-        if (yes) rematchVotes[state.playerId] = true;
-        else delete rematchVotes[state.playerId];
-
-        const blackPid = players.black;
-        const whitePid = players.white;
-        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
-
-        if (bothYes) {
-          tx.update(state.roomRef, {
-            state: freshState(),
-            matchStartAt: now + COUNTDOWN_MS,
-            rematchVotes: {},
-            forceHomeAt: null,
-            updatedAt: now
-          });
-          return;
-        }
-
-        if (!yes) {
-          tx.update(state.roomRef, {
-            rematchVotes: {},
-            forceHomeAt: now,
-            updatedAt: now
-          });
-          return;
-        }
-
-        tx.update(state.roomRef, {
-          rematchVotes,
-          updatedAt: now
-        });
-      }).catch(err => {
-        setStatus(`リマッチの処理に失敗した: ${err.message}`);
-      });
-
-      if (!yes) leaveToHome();
+      if (session.kind === "cpu") scheduleCpuThink(350);
     }
 
     boardCanvas.addEventListener("click", async (ev) => {
@@ -1920,7 +2192,7 @@
 
       if (mode === "tap") {
         if (!state.selected) {
-          if (clicked && canControlSide(clicked.side)) {
+          if (clicked && (session.kind === "local_dual" || clicked.side === state.mySide || session.kind === "cpu" && clicked.side === "black")) {
             state.selected = { kind: "piece", id: clicked.id };
             state.dragSource = "board";
             refreshHands();
@@ -1932,7 +2204,7 @@
         if (state.selected.kind === "piece") {
           const selectedPiece = live.pieces.find(p => p.id === state.selected.id);
 
-          if (selectedPiece && canControlSide(selectedPiece.side)) {
+          if (selectedPiece && (session.kind === "local_dual" || selectedPiece.side === state.mySide || (session.kind === "cpu" && selectedPiece.side === "black"))) {
             const destBoard = screenToBoard(sq.x, sq.y);
             const legal = legalMovesForPiece(live, selectedPiece, true);
             const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
@@ -1943,7 +2215,7 @@
             }
           }
 
-          if (clicked && canControlSide(clicked.side)) {
+          if (clicked && (session.kind === "local_dual" || clicked.side === state.mySide || (session.kind === "cpu" && clicked.side === "black"))) {
             state.selected = { kind: "piece", id: clicked.id };
             state.dragSource = "board";
             refreshHands();
@@ -1971,7 +2243,7 @@
           return;
         }
 
-        if (clicked && canControlSide(clicked.side)) {
+        if (clicked && (session.kind === "local_dual" || clicked.side === state.mySide || (session.kind === "cpu" && clicked.side === "black"))) {
           state.selected = { kind: "piece", id: clicked.id };
           state.dragSource = "board";
           refreshHands();
@@ -2002,7 +2274,7 @@
         }
       }
 
-      if (clicked && canControlSide(clicked.side)) {
+      if (clicked && (session.kind === "local_dual" || clicked.side === state.mySide || (session.kind === "cpu" && clicked.side === "black"))) {
         state.selected = { kind: "piece", id: clicked.id };
         state.dragSource = "board";
         refreshHands();
@@ -2030,7 +2302,7 @@
         if (targetMove) {
           const live = state.roomData?.state;
           const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
-          if (selectedPiece && canControlSide(selectedPiece.side)) {
+          if (selectedPiece && (session.kind === "local_dual" || selectedPiece.side === state.mySide || (session.kind === "cpu" && selectedPiece.side === "black"))) {
             commitMove({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode).then(() => {
               clearSelection();
             });
@@ -2097,6 +2369,80 @@
       scheduleRender(0);
     });
 
+    async function voteRematch(yes) {
+      if (session.kind !== "online") {
+        if (yes) {
+          refreshLocalStateAfterReset();
+          rematchOverlay.classList.remove("show");
+        } else {
+          leaveToHome();
+        }
+        return;
+      }
+
+      if (!state.roomRef || !state.roomData) return;
+      const room = state.roomData;
+      if (!room.state?.winner || !isBothPlayersReady(room)) return;
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(state.roomRef);
+        if (!snap.exists()) return;
+
+        const data = snap.data() || {};
+        const live = data.state || {};
+        const players = data.players || {};
+        const rematchVotes = data.rematchVotes || {};
+        const now = Date.now();
+
+        const mySide = players.black === state.playerId ? "black"
+                     : players.white === state.playerId ? "white"
+                     : "spectator";
+        if (mySide === "spectator") return;
+
+        if (!live.winner || !players.black || !players.white) return;
+
+        if (yes) rematchVotes[state.playerId] = true;
+        else delete rematchVotes[state.playerId];
+
+        const blackPid = players.black;
+        const whitePid = players.white;
+        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
+
+        if (bothYes) {
+          const newRoyal = assignRoyalLabels(data.lastWinnerSide || session.lastWinnerSide);
+          tx.update(state.roomRef, {
+            state: freshState(),
+            royalLabels: newRoyal,
+            matchStartAt: now + COUNTDOWN_MS,
+            rematchVotes: {},
+            forceHomeAt: null,
+            updatedAt: now
+          });
+          return;
+        }
+
+        if (!yes) {
+          tx.update(state.roomRef, {
+            rematchVotes: {},
+            forceHomeAt: now,
+            updatedAt: now
+          });
+          return;
+        }
+
+        tx.update(state.roomRef, {
+          rematchVotes,
+          updatedAt: now
+        });
+      }).catch(err => {
+        setStatus(`リマッチの処理に失敗した: ${err.message}`);
+      });
+
+      if (!yes) {
+        leaveToHome();
+      }
+    }
+
     rematchYes.addEventListener("click", () => voteRematch(true));
     rematchNo.addEventListener("click", () => voteRematch(false));
 
@@ -2120,16 +2466,9 @@
       }
     }
 
-    function refreshLocalStateAfterReset() {
-      if (!state.roomData) return;
-      state.roomData.state = freshState();
-      state.roomData.rematchVotes = {};
-      state.roomData.matchStartAt = null;
-      state.roomData.updatedAt = Date.now();
-      state.selected = null;
-      refreshHands();
-      scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(500);
+    function cpuActionSummaryReward(action) {
+      const reward = action.result.info.capturedType ? cpuValue(action.result.info.capturedType) / 12 : 0;
+      return reward;
     }
 
     window.addEventListener("resize", resizeCanvas);
@@ -2140,6 +2479,7 @@
     updateRematchOverlay();
     scheduleRender(0);
     setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+    loadAIMemory().catch(()=>{});
   </script>
 </body>
 </html>
