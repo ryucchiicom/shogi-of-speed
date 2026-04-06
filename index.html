@@ -99,6 +99,7 @@
       color:var(--ink);
       font-size:14px;
       outline:none;
+      touch-action:manipulation;
     }
 
     button{
@@ -716,7 +717,7 @@
       return !isKingInCheck(sim.pieces, sp.side);
     }
 
-    function classifyMoveForPiece(stateObj, piece, dest) {
+    function classifyMoveForPiece(stateObj, piece, dest, checkSafety = true) {
       if (!piece || stateObj.winner) return null;
       if (piece.cooldownUntil && Date.now() < piece.cooldownUntil) return null;
 
@@ -730,7 +731,7 @@
 
       if (piece.promoMode === "fixed") {
         if (!baseReach) return null;
-        if (!simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
+        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
       }
 
@@ -739,7 +740,7 @@
         const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         if (!promoReach) return null;
-        if (!simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "promoted" };
       }
 
@@ -750,20 +751,20 @@
           const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
           const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
           if (!promoReach) return null;
-          if (!simulateMoveAndCheck(stateObj, piece, dest, "can")) return null;
+          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "can")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "can" };
         }
 
         const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
-        if (!simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
+        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode };
       }
 
       if (piece.promoMode === "can") {
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const promoOK = promoReach && simulateMoveAndCheck(stateObj, piece, dest, "promoted");
-        const baseOK = baseReach && simulateMoveAndCheck(stateObj, piece, dest, "can");
+        const promoOK = promoReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
+        const baseOK = baseReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
 
         if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
         if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
@@ -774,7 +775,7 @@
       return null;
     }
 
-    function legalMovesForPiece(stateObj, piece) {
+    function legalMovesForPiece(stateObj, piece, checkSafety = true) {
       if (!piece || stateObj.winner) return [];
       const out = [];
       const seen = new Set();
@@ -793,7 +794,7 @@
         if (!form.moveType) continue;
         const pseudo = pseudoMovesForType(piece.side, form.moveType, piece.x, piece.y, stateObj.pieces);
         for (const mv of pseudo) {
-          const c = classifyMoveForPiece(stateObj, piece, mv);
+          const c = classifyMoveForPiece(stateObj, piece, mv, checkSafety);
           if (!c) continue;
           const key = `${c.x},${c.y}`;
           if (seen.has(key)) {
@@ -833,7 +834,7 @@
       if (state.selected.kind === "piece") {
         const piece = live.pieces.find(p => p.id === state.selected.id);
         if (!piece) return [];
-        return legalMovesForPiece(live, piece);
+        return legalMovesForPiece(live, piece, false);
       }
       if (state.selected.kind === "hand") {
         if (state.selected.side !== state.mySide) return [];
@@ -939,7 +940,7 @@
             ? getHandCooldownRemaining(side, now)
             : 0;
 
-          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator";
+          btn.disabled = !interactive || count <= 0 || state.mySide === "spectator" || remaining > 0;
           btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span><span class="handCooldown" aria-hidden="true"></span>`;
 
           const ring = btn.querySelector(".handCooldown");
@@ -952,26 +953,18 @@
             }
           }
 
-          btn.addEventListener("pointerdown", (e) => {
-            if (!interactive || count <= 0 || state.mySide === "spectator") return;
+          const selectHand = (e) => {
+            if (!interactive || count <= 0 || state.mySide === "spectator" || remaining > 0) return;
             e.preventDefault();
             e.stopPropagation();
             state.selected = { kind: "hand", side, type: t };
             state.dragSource = "hand";
-            state.dragPointerId = e.pointerId;
-            state.dragStart = { x: e.clientX, y: e.clientY };
-            state.dragging = true;
             refreshHands();
             renderFrame();
-          });
+          };
 
-          btn.addEventListener("click", () => {
-            if (!interactive || count <= 0 || state.mySide === "spectator") return;
-            state.selected = { kind: "hand", side, type: t };
-            state.dragSource = "hand";
-            refreshHands();
-            renderFrame();
-          });
+          btn.addEventListener("pointerdown", selectHand);
+          btn.addEventListener("click", selectHand);
 
           el.appendChild(btn);
         }
@@ -1106,6 +1099,29 @@
       return "1";
     }
 
+    function updateHandCooldownIndicators(now) {
+      const live = state.roomData?.state;
+      if (!live) return;
+
+      const ownSide = state.mySide;
+      const remaining = (ownSide === "black" || ownSide === "white")
+        ? Math.max(0, (live.handCooldownUntil?.[ownSide] || 0) - now)
+        : 0;
+
+      const handButtons = myHandsEl.querySelectorAll(".handBtn");
+      handButtons.forEach(btn => {
+        const ring = btn.querySelector(".handCooldown");
+        if (!ring) return;
+        if (remaining > 0) {
+          ring.style.opacity = "1";
+          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
+          btn.disabled = true;
+        } else {
+          ring.style.opacity = "0";
+        }
+      });
+    }
+
     function renderFrame() {
       if (!state.boardReady) return;
 
@@ -1114,6 +1130,8 @@
       const h = rect.height;
       const cell = w / 9;
       const now = Date.now();
+
+      updateHandCooldownIndicators(now);
 
       ctx.clearRect(0, 0, w, h);
 
@@ -1205,31 +1223,8 @@
         ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
       }
 
-      updateHandCooldownIndicators(now);
       updateRematchOverlay();
       requestAnimationFrame(renderFrame);
-    }
-
-    function updateHandCooldownIndicators(now) {
-      const live = state.roomData?.state;
-      if (!live) return;
-
-      const ownSide = state.mySide;
-      const remaining = (ownSide === "black" || ownSide === "white")
-        ? Math.max(0, (live.handCooldownUntil?.[ownSide] || 0) - now)
-        : 0;
-
-      const handButtons = myHandsEl.querySelectorAll(".handBtn");
-      handButtons.forEach(btn => {
-        const ring = btn.querySelector(".handCooldown");
-        if (!ring) return;
-        if (remaining > 0) {
-          ring.style.opacity = "1";
-          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
-        } else {
-          ring.style.opacity = "0";
-        }
-      });
     }
 
     function pointToSquare(ev) {
@@ -1326,7 +1321,7 @@
           if (!piece || piece.side !== mySide) return;
           if (piece.cooldownUntil && now < piece.cooldownUntil) return;
 
-          const legal = legalMovesForPiece(next, piece);
+          const legal = legalMovesForPiece(next, piece, true);
           const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
           if (!move) return;
 
@@ -1565,10 +1560,9 @@
         } else if (!players.black || !players.white) {
           setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
         } else {
-          const mine = state.mySide === "spectator" ? "観戦" : "接続中";
           const now = Date.now();
           if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-            setStatus(`ルーム ${state.roomId} に接続中。${mine}。開始カウントダウン中。`);
+            setStatus(`ルーム ${state.roomId} に接続中。開始カウントダウン中。`);
           } else {
             setStatus(`ルーム ${state.roomId} に接続中。`);
           }
@@ -1636,7 +1630,7 @@
 
           if (selectedPiece && selectedPiece.side === state.mySide) {
             const destBoard = screenToBoard(sq.x, sq.y);
-            const legal = legalMovesForPiece(live, selectedPiece);
+            const legal = legalMovesForPiece(live, selectedPiece, true);
             const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
             if (move) {
               await applyMoveTransaction(destBoard, move.nextMode);
