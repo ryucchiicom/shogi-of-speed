@@ -368,8 +368,6 @@
 
     const COOLDOWN_MS = 3000;
     const COUNTDOWN_MS = 3000;
-    const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
-    const STALE_MS = 30000;
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
 
@@ -405,8 +403,18 @@
       piece2:"#ba905b"
     };
 
+    const cpuBrainRef = doc(db, "cpuBrain", "v1");
+    let cpuBrain = {
+      capture: 1.0,
+      risk: 1.0,
+      win: 12.0,
+      lose: 12.0,
+      check: 2.0,
+      promote: 0.8
+    };
+
     const session = {
-      kind:"online",
+      kind:"online", // online | cpu | local_dual
       renderTimer:null,
       cpuTimer:null
     };
@@ -430,6 +438,8 @@
 
     const savedMode = localStorage.getItem("shogi_of_speed_mode");
     if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
+
+    function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
 
     function applyThemeFromCSS(){
       const cs = getComputedStyle(document.documentElement);
@@ -461,18 +471,6 @@
       if (c === "CPU") return "cpu";
       if (c === "1SMARTPHONE") return "local_dual";
       return "online";
-    }
-
-    function randomKingLabels() {
-      return Math.random() < 0.5
-        ? { black: "王", white: "玉" }
-        : { black: "玉", white: "王" };
-    }
-
-    function kingLabelsFromWinner(winnerSide) {
-      if (winnerSide === "black") return { black: "王", white: "玉" };
-      if (winnerSide === "white") return { black: "玉", white: "王" };
-      return randomKingLabels();
     }
 
     function isPromotableType(type) {
@@ -517,6 +515,10 @@
       return pieces;
     }
 
+    function randomKingSide() {
+      return Math.random() < 0.5 ? "black" : "white";
+    }
+
     function freshState() {
       return {
         pieces: initialPieces(),
@@ -525,6 +527,19 @@
         updatedAt: Date.now(),
         rev: 0,
         handCooldownUntil: { black: 0, white: 0 }
+      };
+    }
+
+    function makeOnlineRoomDoc(playerId) {
+      return {
+        players: { black: playerId, white: null },
+        presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
+        state: freshState(),
+        kingSide: randomKingSide(),
+        matchStartAt: null,
+        rematchVotes: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now()
       };
     }
 
@@ -539,29 +554,8 @@
       };
     }
 
-    function makeOnlineRoomDoc(playerId) {
-      return {
-        players: { black: playerId, white: null },
-        presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
-        state: freshState(),
-        kingLabels: randomKingLabels(),
-        matchStartAt: null,
-        rematchVotes: {},
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-    }
-
-    function makeLocalRoom(kind) {
-      return {
-        mode: kind,
-        players: { black: "local", white: kind === "cpu" ? "cpu" : "local2" },
-        presence: {},
-        state: freshState(),
-        kingLabels: randomKingLabels(),
-        matchStartAt: null,
-        rematchVotes: {}
-      };
+    function isLocalMode() {
+      return session.kind !== "online";
     }
 
     function setLocalRoom(kind){
@@ -570,12 +564,20 @@
       state.roomRef = null;
       state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
       state.mySide = kind === "cpu" ? "black" : "both";
-      state.roomData = makeLocalRoom(kind);
+      state.roomData = {
+        mode: kind,
+        players: { black: "local", white: kind === "cpu" ? "cpu" : "local2" },
+        presence: {},
+        kingSide: randomKingSide(),
+        state: freshState(),
+        matchStartAt: null,
+        rematchVotes: {}
+      };
       state.selected = null;
       updateMePill();
       refreshHands();
       scheduleRender(0);
-      if (kind === "cpu") scheduleCpuThink(400);
+      if (kind === "cpu") scheduleCpuThink(500);
       setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
     }
 
@@ -592,7 +594,7 @@
     }
 
     function isInPromotionZone(side, y) {
-      return PROMOTION_ZONE[side].includes(y);
+      return side === "black" ? [0,1,2].includes(y) : [6,7,8].includes(y);
     }
 
     function forcePromoteNeeded(piece, destY) {
@@ -678,7 +680,10 @@
       if (type === "bishop") return rayMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]);
       if (type === "rook") return rayMoves([[0, -1], [0, 1], [-1, 0], [1, 0]]);
       if (type === "king") {
-        return stepMoves([[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]]);
+        return stepMoves([
+          [0, -1], [0, 1], [-1, 0], [1, 0],
+          [-1, -1], [1, -1], [-1, 1], [1, 1]
+        ]);
       }
       if (type === "horse") {
         const moves = rayMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]);
@@ -717,15 +722,14 @@
       return isSquareAttacked(pieces, kp.x, kp.y, opposite(side));
     }
 
-    function getKingLabel(side) {
-      const labels = state.roomData?.kingLabels;
-      if (labels && labels[side]) return labels[side];
-      return side === "black" ? "王" : "玉";
+    function getKingGlyph(side) {
+      const kingSide = state.roomData?.kingSide || "black";
+      return side === kingSide ? "王" : "玉";
     }
 
-    function pieceDisplayLabel(piece, now) {
+    function moveTextLabel(piece, now) {
       if (!piece) return "?";
-      if (piece.type === "king") return getKingLabel(piece.side);
+      if (piece.type === "king") return getKingGlyph(piece.side);
       if (piece.promoMode === "promoted") return PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?";
       if (piece.promoMode === "can") {
         const blink = Math.floor(now / 250) % 2 === 0;
@@ -736,7 +740,6 @@
 
     function pieceTextColor(piece) {
       if (!piece) return "#111";
-      if (piece.type === "king") return "#111";
       if (piece.promoMode === "promoted") return "#d84b43";
       if (piece.promoMode === "can") return "#3569d6";
       return "#111";
@@ -776,14 +779,9 @@
       const baseReach = basePseudo.some(m => m.x === dest.x && m.y === dest.y);
       const forced = promotable && forcePromoteNeeded(piece, dest.y);
 
-      if (baseType === "king") {
-        if (!baseReach) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "normal" };
-      }
-
       if (piece.promoMode === "fixed") {
         if (!baseReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
+        if (checkSafety && piece.type !== "king" && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
       }
 
@@ -792,29 +790,31 @@
         const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         if (!promoReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+        if (checkSafety && piece.type !== "king" && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "promoted" };
       }
 
       if (piece.promoMode === "normal") {
         if (!baseReach) return null;
+
         if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+          if (checkSafety && piece.type !== "king" && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         }
+
         const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
+        if (checkSafety && piece.type !== "king" && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode };
       }
 
       if (piece.promoMode === "can") {
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const baseOK = baseReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
-        const promoOK = promoReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
+        const baseOK = baseReach && (!checkSafety || piece.type === "king" || simulateMoveAndCheck(stateObj, piece, dest, "can"));
+        const promoOK = promoReach && (!checkSafety || piece.type === "king" || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
 
         if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+          if (checkSafety && piece.type !== "king" && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         }
 
@@ -829,11 +829,6 @@
 
     function legalMovesForPiece(stateObj, piece, checkSafety = true) {
       if (!piece || stateObj.winner) return [];
-      if (piece.type === "king") {
-        const pseudo = pseudoMovesForType(piece.side, "king", piece.x, piece.y, stateObj.pieces);
-        return pseudo.map(m => ({ x: m.x, y: m.y, kind: "normal", nextMode: "normal" }));
-      }
-
       const out = [];
       const seen = new Set();
 
@@ -875,7 +870,12 @@
       for (let y = 0; y < 9; y++) {
         for (let x = 0; x < 9; x++) {
           if (occ.has(`${x},${y}`)) continue;
-          out.push({ x, y, kind: "normal", nextMode: "normal" });
+          out.push({
+            x,
+            y,
+            kind: "normal",
+            nextMode: "normal"
+          });
         }
       }
       return out;
@@ -947,17 +947,13 @@
       const winnerRaw = room.state?.winner;
       const winnerText =
         winnerRaw === "black"
-          ? (session.kind === "cpu"
-              ? "あなたの勝ち"
-              : session.kind === "local_dual"
-                ? "勝者: 先手"
-                : (state.mySide === "black" ? "あなたの勝ち" : "あなたの負け"))
+          ? (session.kind === "cpu" || session.kind === "local_dual"
+              ? "先手の勝ち"
+              : (state.mySide === "black" ? "あなたの勝ち" : "あなたの負け"))
           : winnerRaw === "white"
-            ? (session.kind === "cpu"
-                ? "あなたの負け"
-                : session.kind === "local_dual"
-                  ? "勝者: 後手"
-                  : (state.mySide === "white" ? "あなたの勝ち" : "あなたの負け"))
+            ? (session.kind === "cpu" || session.kind === "local_dual"
+                ? "後手の勝ち"
+                : (state.mySide === "white" ? "あなたの勝ち" : "あなたの負け"))
             : "決着";
 
       rematchWinner.textContent = winnerText;
@@ -1079,7 +1075,6 @@
     }
 
     function getViewSide() {
-      if (session.kind === "local_dual") return "black";
       return state.mySide === "white" ? "white" : "black";
     }
 
@@ -1153,7 +1148,7 @@
       ctx.font = `700 ${Math.max(14, s * 0.21)}px "Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(pieceDisplayLabel(piece, now), 0, 1);
+      ctx.fillText(moveTextLabel(piece, now), 0, 1);
 
       const remain = Math.max(0, piece.cooldownUntil - now);
       if (remain > 0) {
@@ -1222,13 +1217,24 @@
       }, delay);
     }
 
-    function scheduleCpuThink(delay = 400) {
-      if (!isCPU()) return;
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.cpuTimer = setTimeout(() => {
-        session.cpuTimer = null;
-        cpuThink();
-      }, delay);
+    function updateHandCooldownIndicators(now) {
+      const live = state.roomData?.state;
+      if (!live) return;
+
+      const buttons = [...myHandsEl.querySelectorAll(".handBtn"), ...enemyHandsEl.querySelectorAll(".handBtn")];
+      for (const btn of buttons) {
+        const side = btn.dataset.side;
+        const ring = btn.querySelector(".handCooldown");
+        if (!ring) continue;
+        const rem = getHandCooldownRemaining(side, now);
+        if (rem > 0) {
+          ring.style.opacity = "1";
+          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, rem / COOLDOWN_MS))));
+          if (btn.dataset.interactive === "1") btn.disabled = true;
+        } else {
+          ring.style.opacity = "0";
+        }
+      }
     }
 
     function renderFrame() {
@@ -1239,6 +1245,8 @@
       const h = rect.height;
       const cell = w / 9;
       const now = Date.now();
+
+      updateHandCooldownIndicators(now);
 
       ctx.clearRect(0, 0, w, h);
 
@@ -1331,7 +1339,6 @@
       }
 
       updateRematchOverlay();
-      updateHandCooldownIndicators(now);
       scheduleRender();
     }
 
@@ -1382,7 +1389,7 @@
       roomInput.value = "";
       updateMePill();
       refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね.");
       scheduleRender(0);
     }
 
@@ -1396,28 +1403,18 @@
       scheduleRender(0);
     }
 
-    function selectedSideOfSelection() {
-      if (!state.selected) return null;
-      if (state.selected.kind === "piece") {
-        const live = state.roomData?.state;
-        const p = live?.pieces.find(x => x.id === state.selected.id);
-        return p?.side || null;
-      }
-      if (state.selected.kind === "hand") return state.selected.side;
-      return null;
-    }
-
     function applyActionToLive(live, selected, actorSide, destBoard, anySide = false) {
       const now = Date.now();
       const next = cloneState(live);
+      const sel = selected;
       next.rev = (next.rev || 0) + 1;
       next.updatedAt = now;
       next.handCooldownUntil = next.handCooldownUntil || { black: 0, white: 0 };
 
-      if (selected.kind === "piece") {
-        const piece = next.pieces.find(p => p.id === selected.id);
+      if (sel.kind === "piece") {
+        const piece = next.pieces.find(p => p.id === sel.id);
         if (!piece) return null;
-        if (!anySide && piece.side !== actorSide) return null;
+        if (!anySide && actorSide && piece.side !== actorSide) return null;
         if (piece.cooldownUntil && now < piece.cooldownUntil) return null;
 
         const legal = legalMovesForPiece(next, piece, true);
@@ -1440,20 +1437,20 @@
         return next;
       }
 
-      if (selected.kind === "hand") {
-        const side = selected.side;
-        if (!anySide && side !== actorSide) return null;
-        if ((next.hands[side]?.[selected.type] || 0) <= 0) return null;
+      if (sel.kind === "hand") {
+        const side = sel.side;
+        if (!anySide && actorSide && side !== actorSide) return null;
+        if ((next.hands[side]?.[sel.type] || 0) <= 0) return null;
         if ((next.handCooldownUntil?.[side] || 0) > now) return null;
 
         const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
         if (occupant) return null;
 
-        next.hands[side][selected.type] -= 1;
+        next.hands[side][sel.type] -= 1;
         next.pieces.push({
-          id: `drop_${side}_${selected.type}_${now}_${Math.random().toString(16).slice(2)}`,
+          id: `drop_${side}_${sel.type}_${now}_${Math.random().toString(16).slice(2)}`,
           side,
-          type: selected.type,
+          type: sel.type,
           x: destBoard.x,
           y: destBoard.y,
           promoMode: "normal",
@@ -1464,64 +1461,6 @@
       }
 
       return null;
-    }
-
-    async function commitMove(destBoard) {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return;
-
-      if (session.kind === "online") {
-        if (!state.roomRef) return;
-        if (!canAct()) return;
-
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(state.roomRef);
-          if (!snap.exists()) return;
-
-          const room = snap.data();
-          const currentLive = room.state;
-          if (!currentLive || currentLive.winner) return;
-
-          const now = Date.now();
-          if (room.matchStartAt && now < room.matchStartAt) return;
-
-          const side = room.players?.black === state.playerId ? "black"
-                    : room.players?.white === state.playerId ? "white"
-                    : "spectator";
-          if (side === "spectator") return;
-
-          const next = applyActionToLive(currentLive, state.selected, side, destBoard, false);
-          if (!next) return;
-
-          const presence = room.presence || {};
-          presence[state.playerId] = { side, lastSeen: now };
-
-          tx.update(state.roomRef, {
-            state: next,
-            presence,
-            updatedAt: now
-          });
-        }).catch(err => {
-          setStatus(`動かせなかった: ${err.message}`);
-        });
-
-        scheduleRender(0);
-        return;
-      }
-
-      const liveLocal = state.roomData?.state;
-      if (!liveLocal) return;
-
-      const anySide = session.kind === "local_dual";
-      const actorSide = session.kind === "cpu" ? "black" : null;
-      const next = applyActionToLive(liveLocal, state.selected, actorSide, destBoard, anySide);
-      if (!next) return;
-
-      state.roomData.state = next;
-      state.roomData.updatedAt = Date.now();
-      if (next.winner) state.roomData.lastWinnerSide = next.winner;
-      scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(350);
     }
 
     function getSlidePieceTarget(releasePoint) {
@@ -1573,6 +1512,193 @@
       };
     }
 
+    function refreshLocalRematchImmediate() {
+      if (!state.roomData) return;
+      state.roomData.state = freshState();
+      state.roomData.rematchVotes = {};
+      state.roomData.matchStartAt = null;
+      state.roomData.updatedAt = Date.now();
+      state.selected = null;
+      refreshHands();
+      scheduleRender(0);
+    }
+
+    async function loadCpuBrain() {
+      try {
+        const snap = await getDoc(cpuBrainRef);
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          cpuBrain = {
+            ...cpuBrain,
+            ...data
+          };
+        }
+      } catch {}
+      try {
+        const local = localStorage.getItem("shogi_cpu_brain_v1");
+        if (local) {
+          const parsed = JSON.parse(local);
+          cpuBrain = { ...cpuBrain, ...parsed };
+        }
+      } catch {}
+    }
+
+    async function saveCpuBrain() {
+      try {
+        localStorage.setItem("shogi_cpu_brain_v1", JSON.stringify(cpuBrain));
+      } catch {}
+      try {
+        await setDoc(cpuBrainRef, cpuBrain, { merge: true });
+      } catch {}
+    }
+
+    async function rewardCpu(winnerSide) {
+      if (session.kind !== "cpu") return;
+      const won = winnerSide === "white";
+      cpuBrain.capture = clamp(cpuBrain.capture + (won ? 0.02 : -0.01), 0.2, 4);
+      cpuBrain.risk = clamp(cpuBrain.risk + (won ? -0.01 : 0.01), 0.2, 4);
+      cpuBrain.win = clamp(cpuBrain.win + (won ? 0.10 : -0.05), 1, 30);
+      cpuBrain.lose = clamp(cpuBrain.lose + (won ? -0.05 : 0.10), 1, 30);
+      cpuBrain.check = clamp(cpuBrain.check + (won ? 0.01 : -0.005), 0.1, 10);
+      cpuBrain.promote = clamp(cpuBrain.promote + (won ? 0.01 : -0.005), 0.1, 10);
+      await saveCpuBrain();
+    }
+
+    function cpuValue(type) {
+      return {
+        king: 10000,
+        rook: 500,
+        bishop: 450,
+        gold: 320,
+        silver: 280,
+        knight: 240,
+        lance: 220,
+        pawn: 120,
+        tokin: 200,
+        proLance: 200,
+        proKnight: 200,
+        proSilver: 200,
+        horse: 650,
+        dragon: 700
+      }[type] || 100;
+    }
+
+    function cpuMoveScore(live, selected, dest, move) {
+      const sim = cloneState(live);
+      const next = applyActionToLive(sim, selected, "white", dest, false);
+      if (!next) return -Infinity;
+
+      let score = 0;
+      const occ = pieceAt(live.pieces, dest.x, dest.y);
+      if (occ && occ.side === "black") score += cpuBrain.capture * cpuValue(occ.type);
+
+      if (move.kind === "promo" || move.kind === "both" || move.nextMode === "promoted") {
+        score += cpuBrain.promote;
+      }
+
+      if (next.winner === "white") score += cpuBrain.win;
+      if (next.winner === "black") score -= cpuBrain.lose;
+
+      if (selected.kind === "piece") {
+        const moved = next.pieces.find(p => p.x === dest.x && p.y === dest.y && p.side === "white");
+        if (moved && isSquareAttacked(next.pieces, moved.x, moved.y, "black")) {
+          score -= cpuBrain.risk * (cpuValue(selected.type) * 0.7);
+        }
+      }
+
+      const blackKing = kingPos(next.pieces, "black");
+      if (blackKing && isSquareAttacked(next.pieces, blackKing.x, blackKing.y, "white")) {
+        score += cpuBrain.check;
+      }
+
+      score += Math.random() * 0.03;
+      return score;
+    }
+
+    function scheduleCpuThink(delay = 500) {
+      if (session.kind !== "cpu") return;
+      if (session.cpuTimer) clearTimeout(session.cpuTimer);
+      session.cpuTimer = setTimeout(() => {
+        session.cpuTimer = null;
+        cpuThink();
+      }, delay);
+    }
+
+    function cpuThink() {
+      if (session.kind !== "cpu") return;
+      const live = state.roomData?.state;
+      if (!live || live.winner) return;
+
+      const now = Date.now();
+      if (state.roomData?.matchStartAt && now < state.roomData.matchStartAt) {
+        scheduleCpuThink(state.roomData.matchStartAt - now + 50);
+        return;
+      }
+
+      const actorSide = "white";
+      const actions = [];
+
+      for (const p of live.pieces) {
+        if (p.side !== actorSide) continue;
+        if (p.cooldownUntil && now < p.cooldownUntil) continue;
+        const moves = legalMovesForPiece(live, p, true);
+        for (const mv of moves) {
+          actions.push({
+            selected: { kind: "piece", id: p.id },
+            dest: { x: mv.x, y: mv.y },
+            nextMode: mv.nextMode,
+            score: cpuMoveScore(live, p, { x: mv.x, y: mv.y }, mv)
+          });
+        }
+      }
+
+      if ((live.handCooldownUntil?.white || 0) <= now) {
+        for (const t of pieceOrder) {
+          const count = live.hands.white?.[t] || 0;
+          if (!count) continue;
+          for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+              if (pieceAt(live.pieces, x, y)) continue;
+              const selected = { kind: "hand", side: "white", type: t };
+              const sim = cloneState(live);
+              const next = applyActionToLive(sim, selected, "white", { x, y }, false);
+              if (!next) continue;
+              let score = 0.2;
+              if (next.winner === "white") score += cpuBrain.win;
+              if (next.winner === "black") score -= cpuBrain.lose;
+              score += Math.random() * 0.02;
+              actions.push({
+                selected,
+                dest: { x, y },
+                nextMode: "normal",
+                score
+              });
+            }
+          }
+        }
+      }
+
+      if (!actions.length) return;
+
+      actions.sort((a, b) => b.score - a.score);
+      const top = actions.slice(0, Math.min(8, actions.length));
+      const pick = top[Math.floor(Math.random() * top.length)];
+
+      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
+      if (!next) return;
+
+      state.roomData.state = next;
+      state.roomData.updatedAt = now;
+
+      if (next.winner) {
+        state.roomData.kingSide = next.winner;
+        rewardCpu(next.winner).catch(() => {});
+      }
+
+      refreshHands();
+      scheduleRender(0);
+    }
+
     async function enterRoom() {
       const code = normalizeRoomId(roomInput.value);
       const mode = specialModeFromCode(code);
@@ -1589,7 +1715,7 @@
       try {
         let roomId = code;
         if (!roomId) {
-          roomId = Math.random().toString(36).slice(2, 8).toUpperCase();
+          roomId = randomRoomCode();
           roomInput.value = roomId;
         }
 
@@ -1606,6 +1732,13 @@
       }
     }
 
+    function randomRoomCode() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let s = "";
+      for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+      return s;
+    }
+
     async function connectOnlineRoom(roomId) {
       roomId = normalizeRoomId(roomId);
       if (!roomId) return;
@@ -1614,7 +1747,6 @@
       state.roomId = roomId;
       state.roomRef = doc(db, "rooms", roomId);
       state.selected = null;
-      state.mySide = "spectator";
       updateMePill();
 
       await runTransaction(db, async (tx) => {
@@ -1630,44 +1762,17 @@
         let players = data.players || { black: null, white: null };
         let presence = data.presence || {};
         let roomState = data.state || freshState();
-        let kingLabels = data.kingLabels || randomKingLabels();
         let matchStartAt = data.matchStartAt || null;
         let rematchVotes = data.rematchVotes || {};
-        let forceHomeAt = data.forceHomeAt || null;
+        let kingSide = data.kingSide || randomKingSide();
 
         const currentAlready = players.black === state.playerId || players.white === state.playerId;
 
-        const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < STALE_MS);
-        const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < STALE_MS);
-        const bothInactive = !blackActive && !whiteActive;
-
-        if (forceHomeAt) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          kingLabels = randomKingLabels();
-          matchStartAt = null;
-          rematchVotes = {};
-          forceHomeAt = null;
-        } else if (bothInactive && !roomState.winner) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          kingLabels = randomKingLabels();
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (roomState.winner && bothInactive) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState();
-          kingLabels = randomKingLabels();
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (!currentAlready) {
-          if (!blackActive) {
+        if (!currentAlready) {
+          if (!players.black) {
             players.black = state.playerId;
             presence[state.playerId] = { side: "black", lastSeen: now };
-          } else if (!whiteActive) {
+          } else if (!players.white) {
             players.white = state.playerId;
             presence[state.playerId] = { side: "white", lastSeen: now };
           } else {
@@ -1683,14 +1788,15 @@
           matchStartAt = now + COUNTDOWN_MS;
         }
 
+        if (!data.kingSide) kingSide = randomKingSide();
+
         tx.update(state.roomRef, {
           players,
           presence,
           state: roomState,
-          kingLabels,
+          kingSide,
           matchStartAt,
           rematchVotes,
-          forceHomeAt,
           updatedAt: now
         });
       });
@@ -1702,15 +1808,7 @@
         }
 
         const data = snap.data();
-        if (data.forceHomeAt) {
-          leaveToHome();
-          return;
-        }
-
-        state.roomData = {
-          ...data,
-          kingLabels: data.kingLabels || randomKingLabels()
-        };
+        state.roomData = data;
 
         const players = state.roomData.players || {};
         state.mySide =
@@ -1747,154 +1845,95 @@
       scheduleRender(0);
     }
 
-    function cpuValue(type) {
-      return {
-        king: 10000,
-        rook: 500,
-        bishop: 450,
-        gold: 320,
-        silver: 280,
-        knight: 240,
-        lance: 220,
-        pawn: 120,
-        tokin: 200,
-        proLance: 200,
-        proKnight: 200,
-        proSilver: 200,
-        horse: 650,
-        dragon: 700
-      }[type] || 100;
+    function selectedSideOfSelection() {
+      if (!state.selected) return null;
+      if (state.selected.kind === "piece") {
+        const live = state.roomData?.state;
+        const p = live?.pieces.find(x => x.id === state.selected.id);
+        return p?.side || null;
+      }
+      if (state.selected.kind === "hand") return state.selected.side;
+      return null;
     }
 
-    function materialScore(live, side) {
-      let total = 0;
-      for (const p of live.pieces) {
-        if (p.side === side) total += cpuValue(p.type);
-      }
-      for (const t of pieceOrder) {
-        total += (live.hands?.[side]?.[t] || 0) * cpuValue(t);
-      }
-      return total;
+    function canControlSide(side){
+      if (session.kind === "local_dual") return true;
+      if (session.kind === "cpu") return side === "black";
+      if (state.mySide === "spectator") return false;
+      return side === state.mySide;
     }
 
-    function evaluateCpuAction(live, action) {
-      const next = applyActionToLive(live, action.selected, "white", action.dest, false);
-      if (!next) return -Infinity;
+    async function commitMove(destBoard, nextMode = null) {
+      const live = state.roomData?.state;
+      if (!live || !state.selected) return;
 
-      let score = 0;
-      const beforeWhite = materialScore(live, "white");
-      const afterWhite = materialScore(next, "white");
-      score += (afterWhite - beforeWhite) * 1.3;
+      if (session.kind === "online") {
+        if (!state.roomRef) return;
+        if (!canAct()) return;
 
-      const beforeBlack = materialScore(live, "black");
-      const afterBlack = materialScore(next, "black");
-      score += (beforeBlack - afterBlack) * 0.6;
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(state.roomRef);
+          if (!snap.exists()) return;
 
-      if (action.selected.kind === "piece") {
-        const moved = next.pieces.find(p => p.id === action.selected.id);
-        const captured = pieceAt(live.pieces, action.dest.x, action.dest.y);
-        if (captured && captured.side === "black") score += cpuValue(captured.type) * 2.2;
+          const room = snap.data();
+          const currentLive = room.state;
+          if (!currentLive || currentLive.winner) return;
 
-        if (moved) {
-          const attackedByBlack = isSquareAttacked(next.pieces, moved.x, moved.y, "black");
-          if (attackedByBlack) {
-            const penalty = moved.type === "king" ? 900 : cpuValue(moved.type) * 1.15;
-            score -= penalty;
+          const now = Date.now();
+          if (room.matchStartAt && now < room.matchStartAt) return;
+
+          const side = room.players?.black === state.playerId ? "black"
+                    : room.players?.white === state.playerId ? "white"
+                    : "spectator";
+          if (side === "spectator") return;
+
+          const next = applyActionToLive(currentLive, state.selected, side, destBoard, false);
+          if (!next) return;
+
+          const presence = room.presence || {};
+          presence[state.playerId] = { side, lastSeen: now };
+
+          const update = {
+            state: next,
+            presence,
+            updatedAt: now
+          };
+
+          if (next.winner) {
+            update.kingSide = next.winner;
           }
-          if (moved.promoMode === "promoted") score += 35;
-          if (moved.promoMode === "can") score += 15;
-        }
 
-        const blackKing = kingPos(next.pieces, "black");
-        if (blackKing && isSquareAttacked(next.pieces, blackKing.x, blackKing.y, "white")) {
-          score += 60;
-        }
-      } else if (action.selected.kind === "hand") {
-        score += 8;
-      }
+          tx.update(state.roomRef, update);
+        }).catch(err => {
+          setStatus(`動かせなかった: ${err.message}`);
+        });
 
-      if (next.winner === "white") score += 10000;
-      if (next.winner === "black") score -= 10000;
-
-      score += Math.random() * 6;
-      return score;
-    }
-
-    function cpuThink() {
-      if (!isCPU() || !state.roomData) return;
-      const live = state.roomData.state;
-      if (!live || live.winner) return;
-
-      const now = Date.now();
-      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-        scheduleCpuThink(state.roomData.matchStartAt - now + 30);
-        return;
-      }
-
-      const actions = [];
-      for (const p of live.pieces) {
-        if (p.side !== "white") continue;
-        if (p.cooldownUntil && now < p.cooldownUntil) continue;
-        const moves = legalMovesForPiece(live, p, true);
-        for (const mv of moves) {
-          actions.push({
-            selected: { kind: "piece", id: p.id },
-            dest: { x: mv.x, y: mv.y },
-            nextMode: mv.nextMode,
-            score: evaluateCpuAction(live, { selected: { kind: "piece", id: p.id }, dest: { x: mv.x, y: mv.y } })
-          });
-        }
-      }
-
-      if ((live.handCooldownUntil?.white || 0) <= now) {
-        for (const t of pieceOrder) {
-          const count = live.hands.white?.[t] || 0;
-          if (!count) continue;
-          for (let y = 0; y < 9; y++) {
-            for (let x = 0; x < 9; x++) {
-              if (pieceAt(live.pieces, x, y)) continue;
-              actions.push({
-                selected: { kind: "hand", side: "white", type: t },
-                dest: { x, y },
-                nextMode: "normal",
-                score: evaluateCpuAction(live, { selected: { kind: "hand", side: "white", type: t }, dest: { x, y } })
-              });
-            }
-          }
-        }
-      }
-
-      if (!actions.length) {
-        scheduleCpuThink(500);
-        return;
-      }
-
-      actions.sort((a, b) => b.score - a.score);
-      const top = actions.slice(0, Math.min(8, actions.length));
-      const pick = top[Math.floor(Math.random() * top.length)];
-
-      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
-      if (next) {
-        state.roomData.state = next;
-        if (next.winner) state.roomData.lastWinnerSide = next.winner;
-        state.roomData.updatedAt = now;
         scheduleRender(0);
+        return;
       }
-      scheduleCpuThink(450);
-    }
 
-    function refreshLocalRematchImmediate() {
-      if (!state.roomData) return;
-      const winner = state.roomData.state?.winner;
-      state.roomData.state = freshState();
-      state.roomData.kingLabels = kingLabelsFromWinner(winner);
-      state.roomData.rematchVotes = {};
-      state.roomData.matchStartAt = null;
-      state.roomData.lastWinnerSide = null;
-      state.selected = null;
+      const liveLocal = state.roomData?.state;
+      if (!liveLocal) return;
+
+      const anySide = session.kind === "local_dual";
+      const actorSide = session.kind === "cpu" ? "black" : null;
+      const next = applyActionToLive(liveLocal, state.selected, actorSide, destBoard, anySide);
+      if (!next) return;
+
+      state.roomData.state = next;
+      state.roomData.updatedAt = Date.now();
+
+      if (next.winner) {
+        state.roomData.kingSide = next.winner;
+        if (session.kind === "cpu") {
+          rewardCpu(next.winner).catch(() => {});
+        }
+      }
+
       refreshHands();
       scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(400);
+
+      if (session.kind === "cpu" && !next.winner) scheduleCpuThink(500);
     }
 
     async function voteRematch(yes) {
@@ -1902,6 +1941,7 @@
         if (yes) {
           refreshLocalRematchImmediate();
           rematchOverlay.classList.remove("show");
+          if (session.kind === "cpu") scheduleCpuThink(500);
         } else {
           leaveToHome();
         }
@@ -1939,10 +1979,8 @@
         if (bothYes) {
           tx.update(state.roomRef, {
             state: freshState(),
-            kingLabels: kingLabelsFromWinner(live.winner),
             matchStartAt: now + COUNTDOWN_MS,
             rematchVotes: {},
-            forceHomeAt: null,
             updatedAt: now
           });
           return;
@@ -1981,7 +2019,7 @@
 
       if (mode === "tap") {
         if (!state.selected) {
-          if (clicked && (session.kind === "local_dual" || canControlSide(clicked.side))) {
+          if (clicked && canControlSide(clicked.side)) {
             state.selected = { kind: "piece", id: clicked.id };
             state.dragSource = "board";
             refreshHands();
@@ -1993,18 +2031,18 @@
         if (state.selected.kind === "piece") {
           const selectedPiece = live.pieces.find(p => p.id === state.selected.id);
 
-          if (selectedPiece && (session.kind === "local_dual" || canControlSide(selectedPiece.side))) {
+          if (selectedPiece && canControlSide(selectedPiece.side)) {
             const destBoard = screenToBoard(sq.x, sq.y);
             const legal = legalMovesForPiece(live, selectedPiece, true);
             const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
             if (move) {
-              await commitMove(destBoard);
+              await commitMove(destBoard, move.nextMode);
               clearSelection();
               return;
             }
           }
 
-          if (clicked && (session.kind === "local_dual" || canControlSide(clicked.side))) {
+          if (clicked && canControlSide(clicked.side)) {
             state.selected = { kind: "piece", id: clicked.id };
             state.dragSource = "board";
             refreshHands();
@@ -2018,7 +2056,7 @@
 
         if (state.selected.kind === "hand") {
           const destBoard = screenToBoard(sq.x, sq.y);
-          await commitMove(destBoard);
+          await commitMove(destBoard, "normal");
           clearSelection();
           return;
         }
@@ -2027,12 +2065,12 @@
       if (mode === "slide") {
         if (state.selected?.kind === "hand") {
           const destBoard = screenToBoard(sq.x, sq.y);
-          await commitMove(destBoard);
+          await commitMove(destBoard, "normal");
           clearSelection();
           return;
         }
 
-        if (clicked && (session.kind === "local_dual" || canControlSide(clicked.side))) {
+        if (clicked && canControlSide(clicked.side)) {
           state.selected = { kind: "piece", id: clicked.id };
           state.dragSource = "board";
           refreshHands();
@@ -2058,12 +2096,12 @@
         const live = state.roomData?.state;
         const empty = live && !pieceAt(live.pieces, board.x, board.y);
         if (empty) {
-          commitMove(board).then(() => clearSelection());
+          commitMove(board, "normal").then(() => clearSelection());
           return;
         }
       }
 
-      if (clicked && (session.kind === "local_dual" || canControlSide(clicked.side))) {
+      if (clicked && canControlSide(clicked.side)) {
         state.selected = { kind: "piece", id: clicked.id };
         state.dragSource = "board";
         refreshHands();
@@ -2091,8 +2129,8 @@
         if (targetMove) {
           const live = state.roomData?.state;
           const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
-          if (selectedPiece && (session.kind === "local_dual" || canControlSide(selectedPiece.side))) {
-            commitMove({ x: targetMove.x, y: targetMove.y }).then(() => {
+          if (selectedPiece && canControlSide(selectedPiece.side)) {
+            commitMove({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode).then(() => {
               clearSelection();
             });
           }
@@ -2102,7 +2140,7 @@
       if (state.selected && state.selected.kind === "hand" && state.dragSource === "hand") {
         const targetBoard = getHandDropTarget(ev);
         if (targetBoard) {
-          commitMove(targetBoard).then(() => {
+          commitMove(targetBoard, "normal").then(() => {
             clearSelection();
           });
         }
@@ -2125,7 +2163,7 @@
     enterBtn.addEventListener("click", enterRoom);
 
     shareBtn.addEventListener("click", async () => {
-      const code = normalizeRoomId(roomInput.value || state.roomId || (session.kind === "cpu" ? "CPU" : session.kind === "local_dual" ? "1 SMARTPHONE" : ""));
+      const code = normalizeRoomId(roomInput.value || state.roomId || "ROOM");
       if (!code) {
         setStatus("共有するコードがないよ。");
         return;
@@ -2161,28 +2199,24 @@
     rematchYes.addEventListener("click", () => voteRematch(true));
     rematchNo.addEventListener("click", () => voteRematch(false));
 
-    function updateHandCooldownIndicators(now) {
-      const live = state.roomData?.state;
-      if (!live) return;
+    function refreshLocalStateAfterReset() {
+      if (!state.roomData) return;
+      state.roomData.state = freshState();
+      state.roomData.rematchVotes = {};
+      state.roomData.matchStartAt = null;
+      state.roomData.updatedAt = Date.now();
+      state.selected = null;
+      refreshHands();
+      scheduleRender(0);
+    }
 
-      const buttons = [...myHandsEl.querySelectorAll(".handBtn"), ...enemyHandsEl.querySelectorAll(".handBtn")];
-      for (const btn of buttons) {
-        const side = btn.dataset.side;
-        const ring = btn.querySelector(".handCooldown");
-        if (!ring) continue;
-        const rem = getHandCooldownRemaining(side, now);
-        if (rem > 0) {
-          ring.style.opacity = "1";
-          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, rem / COOLDOWN_MS))));
-          if (btn.dataset.interactive === "1") btn.disabled = true;
-        } else {
-          ring.style.opacity = "0";
-        }
-      }
+    async function loadCpuBrainOnce() {
+      await loadCpuBrain();
     }
 
     window.addEventListener("resize", resizeCanvas);
 
+    loadCpuBrainOnce().catch(() => {});
     resizeCanvas();
     refreshHands();
     updateMePill();
