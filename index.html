@@ -1,946 +1,147 @@
-<!-- index.html -->
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
-  <title>Shogi of Speed / MOD</title>
-  <style>
-    :root{
-      --bg:#f7f2e8;
-      --panel:#fffaf2;
-      --ink:#2f2618;
-      --line:#d9c8a6;
-      --green:#39b54a;
-      --green2:#e9fff0;
-      --blue:#2f6fff;
-      --red:#e24a4a;
-      --btn:#ffffff;
-      --muted:#7b6b56;
-      --shadow:0 3px 14px rgba(0,0,0,.06);
+// server.js
+import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { join, extname } from "node:path";
+
+const PORT = Number(process.env.PORT || 3000);
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+
+function send(res, status, body, headers = {}) {
+  const isObj = typeof body === "object" && body !== null;
+  res.writeHead(status, {
+    "Content-Type": isObj ? "application/json; charset=utf-8" : "text/plain; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    ...headers
+  });
+  res.end(isObj ? JSON.stringify(body) : String(body));
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("AI output was not JSON");
+    return JSON.parse(m[0]);
+  }
+}
+
+async function handleModAI(req, res) {
+  if (!OPENAI_API_KEY) {
+    send(res, 500, { error: "OPENAI_API_KEY is missing" });
+    return;
+  }
+
+  let body = "";
+  req.on("data", chunk => body += chunk);
+  req.on("end", async () => {
+    try {
+      const input = JSON.parse(body || "{}");
+      const mode = input.mode === "edit" ? "edit" : "create";
+      const name = String(input.name || "NEWMOD").slice(0, 40);
+      const prompt = String(input.prompt || "").slice(0, 4000);
+      const existing = input.existing || null;
+      const versions = Array.isArray(input.versions) ? input.versions.slice(-8) : [];
+
+      const system = `
+あなたはMOD設計者です。
+返答は必ずJSONのみ。
+形式:
+{
+  "name":"MOD名",
+  "summary":"短い説明",
+  "patchNote":"何を変えたかの説明",
+  "runtime":{
+    "cooldownMs":3000,
+    "boardTint":"optional",
+    "pieceTint":"optional",
+    "rules": {
+      "example": "optional"
     }
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#15110d;
-        --panel:#211914;
-        --ink:#f2eadf;
-        --line:#4f4031;
-        --green:#4cd264;
-        --green2:#17321d;
-        --blue:#6b93ff;
-        --red:#ff6b6b;
-        --btn:#2c231c;
-        --muted:#b39d81;
-        --shadow:0 3px 14px rgba(0,0,0,.22);
-      }
-    }
+  }
+}
+runtime にはゲーム本体が読むための軽い設定だけ入れる。
+日本語でわかりやすく。
+`;
 
-    html,body{
-      margin:0;
-      padding:0;
-      background:var(--bg);
-      color:var(--ink);
-      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;
-      user-select:none;
-      -webkit-user-select:none;
-      overscroll-behavior:none;
-    }
-
-    body{
-      touch-action:manipulation;
-    }
-
-    #app{
-      max-width:980px;
-      margin:0 auto;
-      padding:10px;
-      box-sizing:border-box;
-    }
-
-    .panel{
-      background:var(--panel);
-      border:1px solid var(--line);
-      border-radius:14px;
-      box-shadow:var(--shadow);
-    }
-
-    #topbar{
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      align-items:center;
-      padding:8px;
-      margin-bottom:8px;
-    }
-
-    #roomInput{
-      width:min(440px,100%);
-      padding:10px 11px;
-      border-radius:11px;
-      border:1px solid var(--line);
-      background:var(--btn);
-      color:var(--ink);
-      font-size:15px;
-      box-sizing:border-box;
-      outline:none;
-      text-transform:uppercase;
-    }
-
-    button, select, input, textarea{
-      font:inherit;
-    }
-
-    button{
-      padding:9px 11px;
-      border-radius:11px;
-      border:1px solid var(--line);
-      background:var(--btn);
-      color:var(--ink);
-      font-size:14px;
-      cursor:pointer;
-      touch-action:manipulation;
-    }
-
-    button.primary{
-      background:linear-gradient(180deg,#fff3bf,#ffe08c);
-      border-color:#d8b84a;
-      color:#2a220f;
-      font-weight:800;
-    }
-
-    button.green{
-      background:linear-gradient(180deg,var(--green2),#f3fff6);
-      border:2px solid var(--green);
-      color:var(--green);
-      font-weight:900;
-    }
-
-    button.danger{
-      border-color:#f0a5a5;
-      color:var(--red);
-      font-weight:800;
-    }
-
-    button:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
-
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:6px 9px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--btn);
-      font-size:12px;
-    }
-
-    #status{
-      padding:8px 10px;
-      margin-bottom:8px;
-      line-height:1.45;
-      font-size:13px;
-    }
-
-    .hidden{ display:none !important; }
-
-    #gameView,#modView{
-      display:none;
-    }
-    #gameView.show,#modView.show{
-      display:block;
-    }
-
-    #gameFrame{
-      padding:12px;
-      line-height:1.6;
-    }
-
-    .notice{
-      padding:10px;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.25);
-      margin-bottom:10px;
-    }
-
-    .grid{
-      display:grid;
-      grid-template-columns:280px 1fr;
-      gap:8px;
-    }
-    @media (max-width:840px){
-      .grid{ grid-template-columns:1fr; }
-    }
-
-    .listPane,.editorPane{
-      padding:8px;
-    }
-
-    .headRow{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:8px;
-      margin-bottom:8px;
-    }
-
-    .modItem{
-      display:block;
-      width:100%;
-      text-align:left;
-      padding:10px 11px;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:var(--btn);
-      margin-bottom:7px;
-    }
-
-    .modItem strong{
-      display:block;
-      font-size:14px;
-      margin-bottom:3px;
-    }
-
-    .modItem small{
-      display:block;
-      color:var(--muted);
-      line-height:1.35;
-    }
-
-    .field{
-      display:flex;
-      flex-direction:column;
-      gap:5px;
-      margin-bottom:10px;
-    }
-
-    .field label{
-      font-size:12px;
-      font-weight:800;
-      opacity:.9;
-    }
-
-    .field input,.field textarea{
-      width:100%;
-      box-sizing:border-box;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:var(--btn);
-      color:var(--ink);
-      padding:10px 11px;
-      outline:none;
-    }
-
-    .field textarea{
-      min-height:108px;
-      resize:vertical;
-      line-height:1.5;
-    }
-
-    .row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      align-items:center;
-    }
-
-    .versions{
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      margin:10px 0;
-    }
-
-    .verBtn{
-      padding:8px 10px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--btn);
-    }
-
-    .verBtn.active{
-      outline:3px solid rgba(95,145,255,.35);
-      border-color:#5e8cff;
-    }
-
-    .bigBox{
-      padding:10px;
-      border-radius:14px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.26);
-      line-height:1.6;
-      white-space:pre-wrap;
-    }
-
-    .muted{ color:var(--muted); }
-
-    .tag{
-      display:inline-flex;
-      align-items:center;
-      padding:4px 8px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--btn);
-      font-size:12px;
-    }
-
-    .dangerBox{
-      padding:10px;
-      border-radius:12px;
-      border:1px solid #b84e4e;
-      background:rgba(255,90,90,.07);
-      line-height:1.6;
-    }
-
-    .codeHelp{
-      font-size:12px;
-      line-height:1.45;
-      color:var(--muted);
-      margin-top:8px;
-    }
-
-    code{
-      user-select:text;
-      -webkit-user-select:text;
-    }
-  </style>
-</head>
-<body>
-  <div id="app">
-    <div class="panel" id="topbar">
-      <input id="roomInput" maxlength="120" placeholder="ROOM CODE" />
-      <button class="primary" id="enterBtn">入室 / 作成</button>
-      <button id="shareBtn">コードを共有</button>
-      <button id="backBtn">ゲームへ戻る</button>
-      <label class="pill">表示
-        <select id="panelSelect">
-          <option value="game">対戦</option>
-          <option value="mods">MOD制作</option>
-        </select>
-      </label>
-      <span class="pill" id="mePill">未接続</span>
-    </div>
-
-    <div class="panel" id="status">ROOM CODE を入れて「入室 / 作成」を押してね。</div>
-
-    <div id="gameView" class="panel">
-      <div id="gameFrame">
-        <div class="notice">
-          ここは既存の対戦本体を置く場所だよ。<br>
-          既存コードの最初にある部屋コード処理の直前で、<code>window.SHOGI_MOD_RUNTIME.resolveModsFromRoomCode(roomCode)</code> を呼ぶようにしてね。
-        </div>
-        <div class="dangerBox">
-          <strong>大事</strong><br>
-          <div class="codeHelp">
-            <code>MOD</code> / <code>MODS</code> は、入力中ではなく <em>入室 / 作成を押した時</em> にだけ MOD画面へ切り替わるようにしてある。<br>
-            画面が戻れなくなるのを防ぐため、<code>ゲームへ戻る</code>ボタンも常設してある。
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="modView" class="panel" style="margin-top:8px;">
-      <div class="grid">
-        <div class="listPane panel" style="box-shadow:none;">
-          <div class="headRow">
-            <strong>MOD一覧</strong>
-            <button class="green" id="newModBtn">+新規MOD</button>
-          </div>
-          <div id="modList"></div>
-        </div>
-
-        <div class="editorPane panel" style="box-shadow:none;">
-          <div id="editorEmpty" class="muted">
-            左から MOD を選ぶか、+新規MOD を押して作ってね。
-          </div>
-
-          <div id="editorMain" class="hidden">
-            <div class="field">
-              <label>MOD名</label>
-              <input id="modName" maxlength="40" placeholder="MOD名を入力…" />
-            </div>
-
-            <div class="field">
-              <label>説明 / AIへの指示</label>
-              <textarea id="modPrompt" placeholder="どんなMODにしたいか、バグ修正、追加要素、見た目変更などを自由に書いてね。"></textarea>
-            </div>
-
-            <div class="row" style="margin-bottom:10px;">
-              <button id="saveDraftBtn" class="primary">下書きを保存</button>
-              <button id="generateBtn">AIで新バージョン作成</button>
-              <button id="duplicateBtn">このMODを複製</button>
-              <button id="deleteBtn" class="danger">削除</button>
-            </div>
-
-            <div style="margin-bottom:8px;">
-              <strong>バージョン一覧</strong>
-              <div class="versions" id="versionList"></div>
-            </div>
-
-            <div class="grid" style="grid-template-columns:1fr 1fr;">
-              <div>
-                <strong>今見ているバージョンの説明</strong>
-                <div class="bigBox" id="versionDetail">-</div>
-              </div>
-              <div>
-                <strong>使い方</strong>
-                <div class="bigBox" id="useInfo">-</div>
-              </div>
-            </div>
-
-            <div style="margin-top:10px;">
-              <strong>AI出力プレビュー</strong>
-              <div class="bigBox" id="aiPreview">-</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="modModeView" class="panel hidden" style="margin-top:8px;padding:12px;">
-      <strong>MOD制作画面</strong>
-      <div class="codeHelp">
-        もう一回 <span class="tag">MOD</span> / <span class="tag">MODS</span> を ROOM CODE に入れて押すと、ここを開いたり閉じたりできる。<br>
-        対戦コードは <code>ROOMCODE MOD=MOD名 v2,別MOD</code> の形で使える。
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const LS_KEY = "shogi_mods_private_store_v2";
-    const UI_KEY = "shogi_mods_private_ui_v2";
-
-    const el = {
-      roomInput: document.getElementById("roomInput"),
-      enterBtn: document.getElementById("enterBtn"),
-      shareBtn: document.getElementById("shareBtn"),
-      backBtn: document.getElementById("backBtn"),
-      panelSelect: document.getElementById("panelSelect"),
-      mePill: document.getElementById("mePill"),
-      status: document.getElementById("status"),
-      gameView: document.getElementById("gameView"),
-      modView: document.getElementById("modView"),
-      modModeView: document.getElementById("modModeView"),
-      modList: document.getElementById("modList"),
-      newModBtn: document.getElementById("newModBtn"),
-      editorEmpty: document.getElementById("editorEmpty"),
-      editorMain: document.getElementById("editorMain"),
-      modName: document.getElementById("modName"),
-      modPrompt: document.getElementById("modPrompt"),
-      saveDraftBtn: document.getElementById("saveDraftBtn"),
-      generateBtn: document.getElementById("generateBtn"),
-      duplicateBtn: document.getElementById("duplicateBtn"),
-      deleteBtn: document.getElementById("deleteBtn"),
-      versionList: document.getElementById("versionList"),
-      versionDetail: document.getElementById("versionDetail"),
-      useInfo: document.getElementById("useInfo"),
-      aiPreview: document.getElementById("aiPreview")
-    };
-
-    const state = {
-      ui: loadUI(),
-      store: loadStore(),
-      selectedId: null,
-      selectedVersion: null,
-      currentRoomCode: "",
-      activeMods: []
-    };
-
-    function loadStore(){
-      try{
-        const raw = localStorage.getItem(LS_KEY);
-        const data = raw ? JSON.parse(raw) : null;
-        if (data && typeof data === "object" && Array.isArray(data.mods)) return data;
-      }catch{}
-      return { mods: [] };
-    }
-
-    function saveStore(){
-      localStorage.setItem(LS_KEY, JSON.stringify(state.store));
-    }
-
-    function loadUI(){
-      try{
-        const raw = localStorage.getItem(UI_KEY);
-        const data = raw ? JSON.parse(raw) : null;
-        if (data && typeof data === "object") return data;
-      }catch{}
-      return { panel: "game" };
-    }
-
-    function saveUI(){
-      localStorage.setItem(UI_KEY, JSON.stringify(state.ui));
-    }
-
-    function normalizeModName(name){
-      return (name || "")
-        .trim()
-        .replace(/[a-z]/g, m => m.toUpperCase())
-        .slice(0, 40);
-    }
-
-    function normalizeRoomInput(text){
-      return (text || "").trim().replace(/\s+/g, " ");
-    }
-
-    function uid(){
-      return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-    }
-
-    function nowISO(){
-      return new Date().toISOString();
-    }
-
-    function blankVersion(n = 1, summary = "新規作成", runtime = {}){
-      return {
-        version: n,
-        createdAt: nowISO(),
-        summary,
-        prompt: "",
-        patchNote: "",
-        runtime
+      const user = {
+        mode,
+        name,
+        prompt,
+        existing,
+        versions
       };
-    }
 
-    function makeEmptyMod(){
-      return {
-        id: uid(),
-        name: "NEWMOD",
-        prompt: "",
-        createdAt: nowISO(),
-        updatedAt: nowISO(),
-        versions: [blankVersion(1, "初期バージョン", {})],
-        draft: {
-          name: "NEWMOD",
-          prompt: ""
-        }
-      };
-    }
-
-    function getSelectedMod(){
-      return state.store.mods.find(m => m.id === state.selectedId) || null;
-    }
-
-    function setSelected(mod){
-      state.selectedId = mod ? mod.id : null;
-      state.selectedVersion = mod && mod.versions && mod.versions.length
-        ? mod.versions[mod.versions.length - 1].version
-        : null;
-      render();
-    }
-
-    function upsertMod(mod){
-      const idx = state.store.mods.findIndex(m => m.id === mod.id);
-      if (idx >= 0) state.store.mods[idx] = mod;
-      else state.store.mods.unshift(mod);
-      saveStore();
-      render();
-    }
-
-    function removeMod(id){
-      state.store.mods = state.store.mods.filter(m => m.id !== id);
-      if (state.selectedId === id) {
-        state.selectedId = null;
-        state.selectedVersion = null;
-      }
-      saveStore();
-      render();
-    }
-
-    function duplicateSelected(){
-      const mod = getSelectedMod();
-      if (!mod) return;
-      const copy = JSON.parse(JSON.stringify(mod));
-      copy.id = uid();
-      copy.name = normalizeModName(mod.name + "COPY");
-      copy.createdAt = nowISO();
-      copy.updatedAt = nowISO();
-      copy.versions = copy.versions.map(v => ({ ...v }));
-      copy.draft = { name: copy.name, prompt: mod.draft?.prompt || mod.prompt || "" };
-      state.store.mods.unshift(copy);
-      state.selectedId = copy.id;
-      state.selectedVersion = copy.versions[copy.versions.length - 1]?.version || 1;
-      saveStore();
-      render();
-    }
-
-    function renameInputAutoUpper(e){
-      const start = e.target.selectionStart;
-      const end = e.target.selectionEnd;
-      e.target.value = normalizeModName(e.target.value);
-      try{ e.target.setSelectionRange(start, end); }catch{}
-    }
-
-    function parseModTokens(text){
-      const raw = normalizeRoomInput(text);
-      const parts = raw.split(" ");
-      const baseCode = parts.shift() || "";
-      const modParts = [];
-      const baseParts = [baseCode];
-
-      for (const p of parts) {
-        const up = p.toUpperCase();
-        if (up.startsWith("MOD=")) modParts.push(p);
-        else baseParts.push(p);
-      }
-
-      const mods = [];
-      for (const item of modParts) {
-        const body = item.slice(4);
-        const specs = body.split(",").map(s => s.trim()).filter(Boolean);
-        for (const spec of specs) {
-          const m = spec.match(/^(.+?)(?:\s+V(\d+))?$/i);
-          if (!m) continue;
-          mods.push({
-            name: normalizeModName(m[1]),
-            version: m[2] ? Number(m[2]) : null
-          });
-        }
-      }
-
-      return {
-        baseCode: baseParts.join(" ").trim(),
-        mods
-      };
-    }
-
-    function resolveModsFromRoomCode(text){
-      const parsed = parseModTokens(text);
-      const active = [];
-      for (const req of parsed.mods) {
-        const mod = state.store.mods.find(m => normalizeModName(m.name) === normalizeModName(req.name));
-        if (!mod) continue;
-        const version = req.version || mod.versions[mod.versions.length - 1]?.version || 1;
-        const v = mod.versions.find(x => x.version === version) || mod.versions[mod.versions.length - 1];
-        if (!v) continue;
-        active.push({
-          id: mod.id,
-          name: mod.name,
-          version: v.version,
-          runtime: v.runtime || {},
-          summary: v.summary || "",
-          patchNote: v.patchNote || ""
-        });
-      }
-      return { parsed, active };
-    }
-
-    function buildRoomCode(baseCode, mods){
-      const modsText = mods.length
-        ? " MOD=" + mods.map(m => `${m.name}${m.version ? ` v${m.version}` : ""}`).join(",")
-        : "";
-      return `${baseCode}${modsText}`.trim();
-    }
-
-    async function callAI(payload){
-      const res = await fetch("/api/mod-ai", {
+      const r = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          input: [
+            { role: "system", content: [{ type: "input_text", text: system }] },
+            { role: "user", content: [{ type: "input_text", text: JSON.stringify(user, null, 2) }] }
+          ]
+        })
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `AI failed (${res.status})`);
-      }
-      return await res.json();
-    }
 
-    function defaultUseInfo(mod){
-      const latest = mod.versions[mod.versions.length - 1];
-      return `使い方:\n${mod.name} v${latest.version} を付けるとそのバージョンが使われる。\nバージョンを書かなければ最新を使う。\n例: ROOMCODE MOD=${mod.name} v${latest.version}`;
-    }
-
-    function renderList(){
-      el.modList.innerHTML = "";
-      if (!state.store.mods.length) {
-        const empty = document.createElement("div");
-        empty.className = "muted";
-        empty.style.padding = "8px 4px";
-        empty.textContent = "まだMODはないよ。";
-        el.modList.appendChild(empty);
-        return;
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(t || `OpenAI error ${r.status}`);
       }
 
-      for (const mod of state.store.mods) {
-        const latest = mod.versions[mod.versions.length - 1];
-        const btn = document.createElement("button");
-        btn.className = "modItem";
-        if (mod.id === state.selectedId) btn.style.outline = "3px solid rgba(95,145,255,.22)";
-        btn.innerHTML = `<strong>${mod.name}</strong><small>v${latest.version} / ${latest.summary || "説明なし"}</small>`;
-        btn.addEventListener("click", () => setSelected(mod));
-        el.modList.appendChild(btn);
-      }
-    }
-
-    function renderEditor(){
-      const mod = getSelectedMod();
-      const has = !!mod;
-      el.editorEmpty.classList.toggle("hidden", has);
-      el.editorMain.classList.toggle("hidden", !has);
-
-      if (!has) {
-        el.aiPreview.textContent = "-";
-        el.versionList.innerHTML = "";
-        el.versionDetail.textContent = "-";
-        el.useInfo.textContent = "-";
-        return;
+      const data = await r.json();
+      let text = "";
+      for (const item of data.output || []) {
+        for (const c of item.content || []) {
+          if (c.type === "output_text" && typeof c.text === "string") text += c.text;
+        }
       }
 
-      el.modName.value = mod.name || "";
-      el.modPrompt.value = mod.draft?.prompt ?? mod.prompt ?? "";
-      el.useInfo.textContent = defaultUseInfo(mod);
-
-      el.versionList.innerHTML = "";
-      for (const v of mod.versions) {
-        const b = document.createElement("button");
-        b.className = "verBtn" + (v.version === state.selectedVersion ? " active" : "");
-        b.textContent = `v${v.version}`;
-        b.addEventListener("click", () => {
-          state.selectedVersion = v.version;
-          render();
-        });
-        el.versionList.appendChild(b);
-      }
-
-      const version = mod.versions.find(v => v.version === state.selectedVersion) || mod.versions[mod.versions.length - 1];
-      el.versionDetail.textContent = version
-        ? `作成日時: ${version.createdAt}\n\n要約:\n${version.summary || "-"}\n\nAIからの修正メモ:\n${version.patchNote || "-"}\n\nruntime:\n${JSON.stringify(version.runtime || {}, null, 2)}`
-        : "-";
-
-      el.aiPreview.textContent = JSON.stringify({
-        name: mod.name,
-        versions: mod.versions.map(v => ({ version: v.version, summary: v.summary })),
-        latestRuntime: version?.runtime || {}
-      }, null, 2);
+      const parsed = safeJsonParse(text);
+      send(res, 200, parsed);
+    } catch (err) {
+      send(res, 500, { error: err.message });
     }
+  });
+}
 
-    function renderHeader(){
-      const info = parseModTokens(el.roomInput.value);
-      if (state.ui.panel === "mods") {
-        el.mePill.textContent = "MOD制作";
-      } else {
-        el.mePill.textContent = info.baseCode ? `コード: ${info.baseCode}` : "未接続";
-      }
-    }
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
 
-    function render(){
-      renderHeader();
-
-      const isModPanel = state.ui.panel === "mods";
-      el.gameView.classList.toggle("show", !isModPanel);
-      el.modView.classList.toggle("show", isModPanel);
-      el.modModeView.classList.toggle("hidden", !isModPanel);
-
-      renderList();
-      renderEditor();
-
-      saveStore();
-      saveUI();
-    }
-
-    function saveDraft(){
-      const mod = getSelectedMod();
-      if (!mod) return;
-      mod.name = normalizeModName(el.modName.value || mod.name);
-      mod.draft = {
-        name: mod.name,
-        prompt: el.modPrompt.value || ""
-      };
-      mod.updatedAt = nowISO();
-      saveStore();
-      render();
-    }
-
-    async function generateVersion(){
-      const mod = getSelectedMod();
-      if (!mod) return;
-
-      saveDraft();
-
-      el.generateBtn.disabled = true;
-      el.generateBtn.textContent = "AI生成中…";
-      try{
-        const payload = {
-          mode: mod.versions.length === 1 && !mod.versions[0].patchNote ? "create" : "edit",
-          name: mod.name,
-          prompt: mod.draft?.prompt || "",
-          existing: mod.versions[mod.versions.length - 1] || null,
-          versions: mod.versions
-        };
-
-        const out = await callAI(payload);
-
-        const nextVer = (mod.versions[mod.versions.length - 1]?.version || 0) + 1;
-        mod.versions.push({
-          version: nextVer,
-          createdAt: nowISO(),
-          summary: out.summary || out.name || "AIで生成",
-          patchNote: out.patchNote || out.note || "",
-          prompt: mod.draft?.prompt || "",
-          runtime: out.runtime || {}
-        });
-
-        if (out.name) mod.name = normalizeModName(out.name);
-        mod.updatedAt = nowISO();
-        state.selectedVersion = nextVer;
-        saveStore();
-        render();
-      } catch (err) {
-        alert(`AI生成に失敗: ${err.message}`);
-      } finally {
-        el.generateBtn.disabled = false;
-        el.generateBtn.textContent = "AIで新バージョン作成";
-      }
-    }
-
-    function newMod(){
-      const mod = makeEmptyMod();
-      mod.name = "NEWMOD";
-      mod.draft.name = "NEWMOD";
-      mod.draft.prompt = "";
-      state.store.mods.unshift(mod);
-      state.selectedId = mod.id;
-      state.selectedVersion = 1;
-      saveStore();
-      render();
-    }
-
-    function deleteSelected(){
-      const mod = getSelectedMod();
-      if (!mod) return;
-      if (!confirm(`MOD「${mod.name}」を削除する？`)) return;
-      removeMod(mod.id);
-    }
-
-    function resolveAndDisplayMods(){
-      const parsed = resolveModsFromRoomCode(el.roomInput.value);
-      state.currentRoomCode = parsed.parsed.baseCode;
-      state.activeMods = parsed.active;
-      if (parsed.active.length) {
-        el.status.textContent = `MOD読み込みOK: ${parsed.active.map(m => `${m.name} v${m.version}`).join(", ")}`;
-      } else {
-        el.status.textContent = "ROOM CODE に MOD か MODS を入れると MOD制作画面になるよ。";
-      }
-      renderHeader();
-      return parsed;
-    }
-
-    async function shareCode(){
-      const code = normalizeRoomInput(el.roomInput.value);
-      if (!code) return alert("共有するコードがないよ。");
-      if (!navigator.share) return alert("この端末は共有に対応していないよ。");
-      try{
-        await navigator.share({ text: code });
-      }catch(err){
-        if (err?.name !== "AbortError") alert(err.message);
-      }
-    }
-
-    function switchPanel(panel){
-      state.ui.panel = panel === "mods" ? "mods" : "game";
-      saveUI();
-      render();
-    }
-
-    function toggleByRoomCode(){
-      const text = normalizeRoomInput(el.roomInput.value);
-      const parsedText = text.toUpperCase();
-      if (parsedText === "MOD" || parsedText === "MODS") {
-        state.ui.panel = state.ui.panel === "mods" ? "game" : "mods";
-        saveUI();
-        render();
-        return true;
-      }
-      return false;
-    }
-
-    function launchGameFromRoomCode(){
-      const parsed = resolveAndDisplayMods();
-      const code = parsed.parsed.baseCode;
-
-      if (!code) {
-        alert("ROOM CODE を入れてね。");
-        return;
-      }
-
-      if (code.toUpperCase() === "MOD" || code.toUpperCase() === "MODS") {
-        toggleByRoomCode();
-        return;
-      }
-
-      // ここで既存の対戦本体に渡す。
-      // 例:
-      // window.SHOGI_MOD_RUNTIME.startMatch(code, parsed.active);
-      // 既存側で parsed.active を一時ダウンロードとして扱う。
-      el.status.textContent = parsed.active.length
-        ? `対戦開始: ${code} / MOD: ${parsed.active.map(m => `${m.name} v${m.version}`).join(", ")}`
-        : `対戦開始: ${code}`;
-    }
-
-    el.roomInput.addEventListener("input", () => {
-      el.roomInput.value = normalizeRoomInput(el.roomInput.value);
-      // 入力中に勝手に画面は切り替えない
-      renderHeader();
+  if (req.method === "OPTIONS") {
+    send(res, 204, "", {
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
     });
+    return;
+  }
 
-    el.roomInput.addEventListener("keydown", e => {
-      if (e.key === "Enter") {
-        if (!toggleByRoomCode()) launchGameFromRoomCode();
-      }
-    });
+  if (url.pathname === "/api/mod-ai" && req.method === "POST") {
+    await handleModAI(req, res);
+    return;
+  }
 
-    el.enterBtn.addEventListener("click", () => {
-      if (!toggleByRoomCode()) launchGameFromRoomCode();
-    });
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    try {
+      const html = await readFile(join(process.cwd(), "index.html"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      });
+      res.end(html);
+    } catch (err) {
+      send(res, 500, `index.html not found: ${err.message}`);
+    }
+    return;
+  }
 
-    el.shareBtn.addEventListener("click", shareCode);
-    el.backBtn.addEventListener("click", () => switchPanel("game"));
-    el.panelSelect.addEventListener("change", () => switchPanel(el.panelSelect.value));
-    el.newModBtn.addEventListener("click", newMod);
-    el.saveDraftBtn.addEventListener("click", saveDraft);
-    el.generateBtn.addEventListener("click", generateVersion);
-    el.duplicateBtn.addEventListener("click", duplicateSelected);
-    el.deleteBtn.addEventListener("click", deleteSelected);
+  send(res, 404, "Not found");
+});
 
-    el.modName.addEventListener("input", renameInputAutoUpper);
-    el.modName.addEventListener("change", () => {
-      const mod = getSelectedMod();
-      if (!mod) return;
-      mod.name = normalizeModName(el.modName.value);
-      mod.draft.name = mod.name;
-      mod.updatedAt = nowISO();
-      saveStore();
-      render();
-    });
-
-    el.modPrompt.addEventListener("input", () => {
-      const mod = getSelectedMod();
-      if (!mod) return;
-      mod.draft.prompt = el.modPrompt.value;
-    });
-
-    window.SHOGI_MOD_RUNTIME = {
-      getStore: () => JSON.parse(JSON.stringify(state.store)),
-      getSelectedMod,
-      resolveModsFromRoomCode,
-      buildRoomCode,
-      setPanel: switchPanel,
-      getActiveModsForCode: (code) => resolveModsFromRoomCode(code).active,
-      isModCode: (text) => {
-        const t = normalizeRoomInput(text).toUpperCase();
-        return t === "MOD" || t === "MODS";
-      },
-      // 既存の対戦本体は、ここから runtime を読む。
-      // 例:
-      // const mods = window.SHOGI_MOD_RUNTIME.getActiveModsForCode(roomCode);
-      // mods.forEach(mod => applyRuntime(mod.runtime));
-    };
-
-    render();
-    resolveAndDisplayMods();
-  </script>
-</body>
-</html>
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
