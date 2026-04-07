@@ -1,168 +1,157 @@
 // server.js
-import express from "express";
-import cors from "cors";
+// 使い方:
+//   1) OPENAI_API_KEY を環境変数に入れる
+//   2) node server.js
+//   3) index.html から /api/mod-ai を叩く
+//
+// OpenAI は API キーをブラウザに置かないよう明言しています。
+// Responses API が現在の生成用APIです。 [oai_citation:1‡OpenAI Help Center](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety?utm_source=chatgpt.com)
 
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { extname, join } from "node:path";
 
-const PORT = process.env.PORT || 3000;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const PORT = Number(process.env.PORT || 3000);
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
-if (!OPENAI_API_KEY) {
-  console.warn("OPENAI_API_KEY is not set.");
+function send(res, status, body, headers = {}) {
+  const isObj = typeof body === "object" && body !== null;
+  res.writeHead(status, {
+    "Content-Type": isObj ? "application/json; charset=utf-8" : "text/plain; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    ...headers
+  });
+  res.end(isObj ? JSON.stringify(body) : String(body));
 }
 
-const MOD_SCHEMA = {
-  name: "mod_spec",
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      name: { type: "string" },
-      summary: { type: "string" },
-      versions: {
-        type: "array",
-        minItems: 1,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            version: { type: "integer", minimum: 1 },
-            summary: { type: "string" },
-            patch: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                boardTint: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    light: { type: "string" },
-                    dark: { type: "string" }
-                  },
-                  required: ["light", "dark"]
-                },
-                cooldownMs: { type: "integer", minimum: 0 },
-                pieceLabels: {
-                  type: "object",
-                  additionalProperties: { type: "string" }
-                },
-                extraMoves: {
-                  type: "object",
-                  additionalProperties: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      properties: {
-                        dx: { type: "integer" },
-                        dy: { type: "integer" },
-                        repeat: { type: "boolean" }
-                      },
-                      required: ["dx", "dy", "repeat"]
-                    }
-                  }
-                },
-                handCooldownMs: { type: "integer", minimum: 0 },
-                cpuBias: {
-                  type: "object",
-                  additionalProperties: {
-                    type: "number"
-                  }
-                },
-                notes: { type: "string" }
-              },
-              required: ["notes"]
-            }
-          },
-          required: ["version", "summary", "patch"]
-        }
-      }
-    },
-    required: ["name", "summary", "versions"]
-  }
-};
-
-app.post("/api/generate-mod", async (req, res) => {
+function safeJsonParse(text) {
   try {
-    const { mode, modName, prompt, existingMod } = req.body || {};
-    if (!OPENAI_API_KEY) {
-      return res.status(500).json({ error: "OPENAI_API_KEY is not set." });
+    return JSON.parse(text);
+  } catch {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("AI output was not JSON");
+    return JSON.parse(m[0]);
+  }
+}
+
+async function handleModAI(req, res) {
+  if (!OPENAI_API_KEY) {
+    send(res, 500, { error: "OPENAI_API_KEY is missing" });
+    return;
+  }
+
+  let body = "";
+  req.on("data", chunk => body += chunk);
+  req.on("end", async () => {
+    try {
+      const input = JSON.parse(body || "{}");
+      const mode = input.mode === "edit" ? "edit" : "create";
+      const name = String(input.name || "NEWMOD").slice(0, 40);
+      const prompt = String(input.prompt || "").slice(0, 4000);
+      const existing = input.existing || null;
+      const versions = Array.isArray(input.versions) ? input.versions.slice(-8) : [];
+
+      const system = `
+あなたはMOD設計者です。
+返答は必ずJSONのみ。
+形式:
+{
+  "name":"MOD名",
+  "summary":"短い説明",
+  "patchNote":"何を変えたかの説明",
+  "runtime":{
+    "cooldownMs":3000,
+    "boardTint":"optional",
+    "pieceTint":"optional",
+    "rules": {
+      "example": "optional"
     }
+  }
+}
+runtime にはゲーム本体が読むための軽い設定だけ入れる。
+日本語でわかりやすく。
+`;
 
-    const system = [
-      "You are a mod designer for a shogi-like browser game.",
-      "Return ONLY valid JSON matching the schema.",
-      "Keep the mod practical for a browser game.",
-      "Avoid unsafe or external dependencies.",
-      "Use version numbers starting at 1.",
-      "When editing an existing mod, preserve useful parts and increment version.",
-      "Prefer patches that can be interpreted by a simple game engine."
-    ].join(" ");
+      const user = {
+        mode,
+        name,
+        prompt,
+        existing,
+        versions
+      };
 
-    const user = JSON.stringify({
-      mode,
-      modName,
-      prompt,
-      existingMod
-    });
+      const r = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          input: [
+            { role: "system", content: [{ type: "input_text", text: system }] },
+            { role: "user", content: [{ type: "input_text", text: JSON.stringify(user, null, 2) }] }
+          ]
+        })
+      });
 
-    const body = {
-      model: OPENAI_MODEL,
-      input: [
-        { role: "system", content: [{ type: "text", text: system }] },
-        { role: "user", content: [{ type: "text", text: user }] }
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: MOD_SCHEMA.name,
-          schema: MOD_SCHEMA.schema,
-          strict: true
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(t || `OpenAI error ${r.status}`);
+      }
+
+      const data = await r.json();
+
+      let text = "";
+      const out = data.output || [];
+      for (const item of out) {
+        for (const c of (item.content || [])) {
+          if (c.type === "output_text" && typeof c.text === "string") text += c.text;
         }
       }
-    };
 
-    const r = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify(body)
+      const parsed = safeJsonParse(text);
+      send(res, 200, parsed);
+    } catch (err) {
+      send(res, 500, { error: err.message });
+    }
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (req.method === "OPTIONS") {
+    send(res, 204, "", {
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
     });
-
-    const data = await r.json();
-    if (!r.ok) {
-      return res.status(r.status).json({
-        error: "OpenAI request failed",
-        details: data
-      });
-    }
-
-    const text =
-      data.output_text ||
-      data.output?.[0]?.content?.[0]?.text ||
-      "";
-
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return res.status(500).json({
-        error: "Model did not return valid JSON",
-        raw: text
-      });
-    }
-
-    return res.json(parsed);
-  } catch (err) {
-    return res.status(500).json({ error: err.message || String(err) });
+    return;
   }
+
+  if (url.pathname === "/api/mod-ai" && req.method === "POST") {
+    await handleModAI(req, res);
+    return;
+  }
+
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    try {
+      const html = await readFile(join(process.cwd(), "index.html"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      });
+      res.end(html);
+    } catch (err) {
+      send(res, 500, `index.html not found: ${err.message}`);
+    }
+    return;
+  }
+
+  send(res, 404, "Not found");
 });
 
-app.listen(PORT, () => {
-  console.log(`MOD generator proxy running on http://localhost:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
