@@ -1,7 +1,7 @@
 // server.js
 import http from "node:http";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, extname } from "node:path";
 
 const PORT = Number(process.env.PORT || 3000);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -22,14 +22,14 @@ function safeJsonParse(text) {
     return JSON.parse(text);
   } catch {
     const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error("AI出力がJSONじゃない");
+    if (!m) throw new Error("AI output was not JSON");
     return JSON.parse(m[0]);
   }
 }
 
 async function handleModAI(req, res) {
   if (!OPENAI_API_KEY) {
-    send(res, 500, { error: "OPENAI_API_KEY がありません" });
+    send(res, 500, { error: "OPENAI_API_KEY is missing" });
     return;
   }
 
@@ -45,20 +45,33 @@ async function handleModAI(req, res) {
       const versions = Array.isArray(input.versions) ? input.versions.slice(-8) : [];
 
       const system = `
-あなたはMOD設計AIです。
+あなたはMOD設計者です。
 返答は必ずJSONのみ。
 形式:
 {
   "name":"MOD名",
   "summary":"短い説明",
-  "patchNote":"何を変えたか",
+  "patchNote":"何を変えたかの説明",
   "runtime":{
     "cooldownMs":3000,
-    "rules": { "自由に追加" }
+    "boardTint":"optional",
+    "pieceTint":"optional",
+    "rules": {
+      "example": "optional"
+    }
   }
 }
-日本語で、短く、実装に使いやすく書くこと。
+runtime にはゲーム本体が読むための軽い設定だけ入れる。
+日本語でわかりやすく。
 `;
+
+      const user = {
+        mode,
+        name,
+        prompt,
+        existing,
+        versions
+      };
 
       const r = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -70,25 +83,20 @@ async function handleModAI(req, res) {
           model: OPENAI_MODEL,
           input: [
             { role: "system", content: [{ type: "input_text", text: system }] },
-            { role: "user", content: [{ type: "input_text", text: JSON.stringify({
-              mode,
-              name,
-              prompt,
-              existing,
-              versions
-            }, null, 2) }] }
+            { role: "user", content: [{ type: "input_text", text: JSON.stringify(user, null, 2) }] }
           ]
         })
       });
 
       if (!r.ok) {
-        throw new Error(await r.text());
+        const t = await r.text();
+        throw new Error(t || `OpenAI error ${r.status}`);
       }
 
       const data = await r.json();
       let text = "";
-      for (const item of (data.output || [])) {
-        for (const c of (item.content || [])) {
+      for (const item of data.output || []) {
+        for (const c of item.content || []) {
           if (c.type === "output_text" && typeof c.text === "string") text += c.text;
         }
       }
@@ -126,7 +134,7 @@ const server = http.createServer(async (req, res) => {
       });
       res.end(html);
     } catch (err) {
-      send(res, 500, `index.html が見つからない: ${err.message}`);
+      send(res, 500, `index.html not found: ${err.message}`);
     }
     return;
   }
@@ -135,5 +143,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
