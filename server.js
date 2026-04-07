@@ -1,15 +1,7 @@
 // server.js
-// 使い方:
-//   1) OPENAI_API_KEY を環境変数に入れる
-//   2) node server.js
-//   3) index.html から /api/mod-ai を叩く
-//
-// OpenAI は API キーをブラウザに置かないよう明言しています。
-// Responses API が現在の生成用APIです。 [oai_citation:1‡OpenAI Help Center](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety?utm_source=chatgpt.com)
-
 import http from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 
 const PORT = Number(process.env.PORT || 3000);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -30,14 +22,14 @@ function safeJsonParse(text) {
     return JSON.parse(text);
   } catch {
     const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error("AI output was not JSON");
+    if (!m) throw new Error("AI出力がJSONじゃない");
     return JSON.parse(m[0]);
   }
 }
 
 async function handleModAI(req, res) {
   if (!OPENAI_API_KEY) {
-    send(res, 500, { error: "OPENAI_API_KEY is missing" });
+    send(res, 500, { error: "OPENAI_API_KEY がありません" });
     return;
   }
 
@@ -53,33 +45,20 @@ async function handleModAI(req, res) {
       const versions = Array.isArray(input.versions) ? input.versions.slice(-8) : [];
 
       const system = `
-あなたはMOD設計者です。
+あなたはMOD設計AIです。
 返答は必ずJSONのみ。
 形式:
 {
   "name":"MOD名",
   "summary":"短い説明",
-  "patchNote":"何を変えたかの説明",
+  "patchNote":"何を変えたか",
   "runtime":{
     "cooldownMs":3000,
-    "boardTint":"optional",
-    "pieceTint":"optional",
-    "rules": {
-      "example": "optional"
-    }
+    "rules": { "自由に追加" }
   }
 }
-runtime にはゲーム本体が読むための軽い設定だけ入れる。
-日本語でわかりやすく。
+日本語で、短く、実装に使いやすく書くこと。
 `;
-
-      const user = {
-        mode,
-        name,
-        prompt,
-        existing,
-        versions
-      };
 
       const r = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -91,21 +70,24 @@ runtime にはゲーム本体が読むための軽い設定だけ入れる。
           model: OPENAI_MODEL,
           input: [
             { role: "system", content: [{ type: "input_text", text: system }] },
-            { role: "user", content: [{ type: "input_text", text: JSON.stringify(user, null, 2) }] }
+            { role: "user", content: [{ type: "input_text", text: JSON.stringify({
+              mode,
+              name,
+              prompt,
+              existing,
+              versions
+            }, null, 2) }] }
           ]
         })
       });
 
       if (!r.ok) {
-        const t = await r.text();
-        throw new Error(t || `OpenAI error ${r.status}`);
+        throw new Error(await r.text());
       }
 
       const data = await r.json();
-
       let text = "";
-      const out = data.output || [];
-      for (const item of out) {
+      for (const item of (data.output || [])) {
         for (const c of (item.content || [])) {
           if (c.type === "output_text" && typeof c.text === "string") text += c.text;
         }
@@ -144,7 +126,7 @@ const server = http.createServer(async (req, res) => {
       });
       res.end(html);
     } catch (err) {
-      send(res, 500, `index.html not found: ${err.message}`);
+      send(res, 500, `index.html が見つからない: ${err.message}`);
     }
     return;
   }
@@ -153,5 +135,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`http://localhost:${PORT}`);
 });
