@@ -1,135 +1,161 @@
 // server.js
-import http from "node:http";
+const http = require("node:http");
 
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
-function send(res, code, data, contentType = "application/json; charset=utf-8") {
-  res.writeHead(code, { "Content-Type": contentType });
-  res.end(typeof data === "string" ? data : JSON.stringify(data));
+const MOD_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    modName: { type: "string" },
+    summary: { type: "string" },
+    config: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        moveCooldownMs: { type: "integer" },
+        handCooldownMs: { type: "integer" },
+        showHints: { type: "boolean" },
+        boardDark: { type: "string" },
+        boardLight: { type: "string" },
+        piece1: { type: "string" },
+        piece2: { type: "string" },
+        cpuAggression: { type: "number" },
+        cpuExploration: { type: "number" }
+      },
+      required: [
+        "moveCooldownMs",
+        "handCooldownMs",
+        "showHints",
+        "boardDark",
+        "boardLight",
+        "piece1",
+        "piece2",
+        "cpuAggression",
+        "cpuExploration"
+      ]
+    }
+  },
+  required: ["modName", "summary", "config"]
+};
+
+function send(res, code, body, type = "text/plain; charset=utf-8") {
+  res.writeHead(code, { "Content-Type": type });
+  res.end(body);
 }
 
-function readBody(req) {
+function sendJson(res, code, obj) {
+  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(obj));
+}
+
+function collect(req) {
   return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", chunk => {
-      body += chunk;
-      if (body.length > 1_000_000) {
-        reject(new Error("body too large"));
+    let buf = "";
+    req.on("data", d => {
+      buf += d;
+      if (buf.length > 1e6) {
         req.destroy();
+        reject(new Error("Payload too large"));
       }
     });
-    req.on("end", () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch (err) {
-        reject(err);
-      }
-    });
+    req.on("end", () => resolve(buf));
     req.on("error", reject);
   });
 }
 
-async function generateMod({ name, prompt, previous }) {
+async function openaiModAI({ mode, name, prompt, current, history }) {
   if (!OPENAI_API_KEY) {
-    return {
-      manifest: {
-        name,
-        version: 1,
-        description: "OPENAI_API_KEY が未設定なので、ローカルのダミー生成になってる。",
-        settings: {
-          cooldownMs: 3000,
-          cpuAggression: 1,
-          handRotate180: true
-        }
-      },
-      description: "OPENAI_API_KEY が未設定なので、ローカルのダミー生成になってる。"
-    };
+    throw new Error("OPENAI_API_KEY が設定されていないよ");
   }
 
-  const system = `
-You create private mod manifests for a shogi-like web game.
-Return ONLY valid JSON.
-Schema:
-{
-  "name": string,
-  "version": number,
-  "description": string,
-  "settings": {
-    "cooldownMs"?: number,
-    "cpuAggression"?: number,
-    "boardDark"?: string,
-    "boardLight"?: string,
-    "pieceFill1"?: string,
-    "pieceFill2"?: string,
-    "handRotate180"?: boolean
-  }
-}
-Rules:
-- Use Japanese.
-- Keep values practical.
-- cooldownMs 500..15000.
-- cpuAggression 0.2..5.
-`;
+  const system = [
+    "あなたは将棋風ゲームのMOD設計AI。",
+    "出力は必ずJSONだけ。",
+    "MODは安全な設定変更に限定する。",
+    "コードを生成しない。",
+    "プレイに影響する設定だけを調整する。",
+    "moveCooldownMs, handCooldownMs, showHints, boardDark, boardLight, piece1, piece2, cpuAggression, cpuExploration を扱う。",
+    "色はCSSで使える文字列にする。",
+    "小さな改善でもよいが、JSON Schemaに厳密に従う。"
+  ].join(" ");
 
-  const payload = {
-    model: OPENAI_MODEL,
-    input: [
-      { role: "system", content: [{ type: "input_text", text: system }] },
-      { role: "user", content: [{ type: "input_text", text: JSON.stringify({ name, prompt, previous }, null, 2) }] }
-    ]
+  const user = {
+    mode,
+    name,
+    prompt,
+    current,
+    history: Array.isArray(history) ? history.slice(-10) : []
   };
 
-  const resp = await fetch("https://api.openai.com/v1/responses", {
+  const body = {
+    model: OPENAI_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [{ type: "input_text", text: system }]
+      },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: JSON.stringify(user) }]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        strict: true,
+        schema: MOD_SCHEMA
+      }
+    }
+  };
+
+  const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${OPENAI_API_KEY}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   });
 
-  if (!resp.ok) {
-    throw new Error(`OpenAI error ${resp.status}: ${await resp.text()}`);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = data?.error?.message || `OpenAI error ${r.status}`;
+    throw new Error(msg);
   }
 
-  const data = await resp.json();
   const text = data.output_text || "";
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error("OpenAI の出力が JSON じゃなかった。");
-  }
-
-  parsed.name = String(parsed.name || name);
-  parsed.version = Number.isFinite(parsed.version) ? parsed.version : 1;
-  parsed.description = String(parsed.description || "");
-  parsed.settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
-  return { manifest: parsed, description: parsed.description };
+  if (!text) throw new Error("OpenAIから本文が返らなかったよ");
+  return JSON.parse(text);
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-
-  if (req.method === "POST" && url.pathname === "/api/mods/generate") {
-    try {
-      const body = await readBody(req);
-      const name = String(body.name || "新しいMOD").trim().slice(0, 64);
-      const prompt = String(body.prompt || "").trim().slice(0, 5000);
-      const previous = body.previous && typeof body.previous === "object" ? body.previous : null;
-      const out = await generateMod({ name, prompt, previous });
-      send(res, 200, out);
-    } catch (err) {
-      send(res, 500, { error: err.message || "server error" });
+  try {
+    if (req.url === "/api/mod-ai" && req.method === "POST") {
+      const raw = await collect(req);
+      const payload = raw ? JSON.parse(raw) : {};
+      const out = await openaiModAI(payload);
+      return sendJson(res, 200, out);
     }
-    return;
-  }
 
-  send(res, 404, { error: "not found" });
+    if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const file = path.join(process.cwd(), "index.html");
+      if (fs.existsSync(file)) {
+        return send(res, 200, fs.readFileSync(file, "utf8"), "text/html; charset=utf-8");
+      }
+      return send(res, 404, "index.html が見つからないよ");
+    }
+
+    return send(res, 404, "Not found");
+  } catch (e) {
+    return sendJson(res, 500, { error: e.message || "Server error" });
+  }
 });
 
 server.listen(PORT, () => {
-  console.log(`server listening on http://localhost:${PORT}`);
+  console.log(`Server listening on http://localhost:${PORT}`);
 });
