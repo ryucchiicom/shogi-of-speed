@@ -3,18 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
-  <title>Shogi of Speed</title>
+  <title>Shogi of Speed + MOD</title>
   <style>
     :root{
       --bg:#f7f2e8;
       --panel:#fffaf2;
       --ink:#2f2618;
       --line:#d9c8a6;
+      --accent:#2fa84f;
+      --accent2:#f2c94c;
+      --danger:#d85c5c;
       --board-dark:#e0c390;
       --board-light:#edd9b3;
       --piece-fill-1:#d9ba90;
       --piece-fill-2:#ba905b;
-      --overlay:#0000005c;
+      --overlay:rgba(0,0,0,.62);
       --overlay-card:#fffaf2;
       --ui-btn:#ffffff;
       --primary-text:#2f2618;
@@ -26,11 +29,14 @@
         --panel:#211914;
         --ink:#f2eadf;
         --line:#4f4031;
+        --accent:#51c86c;
+        --accent2:#d9b14f;
+        --danger:#ff7b7b;
         --board-dark:#52402d;
         --board-light:#67523c;
         --piece-fill-1:#8e6b45;
         --piece-fill-2:#674b2e;
-        --overlay:#0000007a;
+        --overlay:rgba(0,0,0,.78);
         --overlay-card:#241c16;
         --ui-btn:#2c231c;
         --primary-text:#1e140c;
@@ -51,7 +57,7 @@
     body{ touch-action:manipulation; }
 
     #app{
-      max-width:860px;
+      max-width:980px;
       margin:0 auto;
       padding:10px;
       box-sizing:border-box;
@@ -74,8 +80,8 @@
     }
 
     #roomInput{
-      width:170px;
-      max-width:100%;
+      width:min(420px, 100%);
+      flex:1 1 240px;
       padding:9px 10px;
       border-radius:11px;
       border:1px solid var(--line);
@@ -99,18 +105,23 @@
     }
 
     button{ cursor:pointer; }
-
     button.primary{
       background:linear-gradient(180deg,#fff3bf,#ffe08c);
       border-color:#d8b84a;
       color:var(--primary-text);
       font-weight:800;
     }
-
-    button:disabled{
-      opacity:.55;
-      cursor:not-allowed;
+    button.green{
+      background:linear-gradient(180deg,#dfffe6,#b8f5c8);
+      border-color:#2fa84f;
+      font-weight:800;
     }
+    button.red{
+      background:linear-gradient(180deg,#ffe4e4,#ffc9c9);
+      border-color:#d85c5c;
+      font-weight:800;
+    }
+    button:disabled{ opacity:.55; cursor:not-allowed; }
 
     #status{
       padding:8px 10px;
@@ -121,7 +132,6 @@
 
     #layout{
       display:grid;
-      grid-template-columns:1fr;
       gap:8px;
     }
 
@@ -208,74 +218,163 @@
       font-size:12px;
     }
 
-    #rematchOverlay{
+    #modal{
       position:fixed;
       inset:0;
       background:var(--overlay);
       display:none;
       align-items:center;
       justify-content:center;
-      z-index:60;
-      padding:18px;
-      box-sizing:border-box;
-    }
-
-    #rematchOverlay.show{
-      display:flex;
-    }
-
-    #rematchCard{
-      width:min(92vw,380px);
-      background:var(--overlay-card);
-      color:var(--ink);
-      border:1px solid var(--line);
-      border-radius:18px;
-      box-shadow:0 16px 40px rgba(0,0,0,.25);
+      z-index:100;
       padding:16px;
       box-sizing:border-box;
     }
+    #modal.show{ display:flex; }
 
-    #rematchWinner{
-      font-size:28px;
-      font-weight:900;
-      line-height:1.1;
-      margin-bottom:8px;
-      text-align:center;
+    #modalCard{
+      width:min(1100px, 96vw);
+      max-height:92vh;
+      overflow:auto;
+      background:var(--overlay-card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      box-shadow:0 18px 50px rgba(0,0,0,.35);
+      padding:14px;
+      box-sizing:border-box;
     }
 
-    #rematchTitle{
-      font-weight:800;
-      font-size:18px;
-      margin-bottom:8px;
-      text-align:center;
-    }
-
-    #rematchDesc{
-      font-size:13px;
-      line-height:1.55;
-      margin-bottom:14px;
-      opacity:.95;
-      white-space:pre-line;
-      text-align:center;
-    }
-
-    #rematchButtons{
+    #hubHeader, #editorHeader{
       display:flex;
-      gap:8px;
       flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+      margin-bottom:10px;
     }
 
-    #rematchButtons button{
-      flex:1 1 100px;
-      min-width:100px;
-      font-weight:700;
+    #hubList{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+      gap:10px;
+    }
+
+    .modCard{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:rgba(255,255,255,.03);
+      cursor:pointer;
+    }
+    .modCard h3{
+      margin:0 0 6px 0;
+      font-size:16px;
+    }
+    .modCard p{
+      margin:0;
+      font-size:12px;
+      opacity:.9;
+      line-height:1.45;
+      white-space:pre-wrap;
+    }
+
+    .modCard.new{
+      border:2px solid var(--accent);
+      box-shadow:inset 0 0 0 1px rgba(47,168,79,.16);
+    }
+
+    #editorWrap{
+      display:none;
+      gap:10px;
+    }
+    #editorWrap.show{
+      display:grid;
+      grid-template-columns:1.2fr .8fr;
+    }
+
+    .box{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:rgba(255,255,255,.03);
+    }
+
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      margin-bottom:10px;
+    }
+
+    .field label{
+      font-size:12px;
+      opacity:.8;
+    }
+
+    .field input, .field textarea{
+      width:100%;
+      box-sizing:border-box;
+      border:1px solid var(--line);
+      border-radius:11px;
+      background:var(--ui-btn);
+      color:var(--ink);
+      padding:10px 11px;
+      font-size:14px;
+      outline:none;
+    }
+
+    .field textarea{
+      min-height:120px;
+      resize:vertical;
+    }
+
+    #versionList{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-bottom:10px;
+    }
+
+    .verBtn{
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:var(--ui-btn);
+      font-size:13px;
+    }
+
+    .verBtn.active{
+      outline:3px solid rgba(138,180,255,.9);
+      border-color:#7aa4f5;
+    }
+
+    #preview{
+      white-space:pre-wrap;
+      font-size:13px;
+      line-height:1.6;
+      border:1px dashed var(--line);
+      border-radius:12px;
+      padding:10px;
+      min-height:120px;
+    }
+
+    .small{
+      font-size:12px;
+      opacity:.85;
+      line-height:1.5;
+    }
+
+    .spacer{
+      flex:1 1 auto;
+    }
+
+    @media (max-width: 860px){
+      #editorWrap.show{ grid-template-columns:1fr; }
     }
   </style>
 </head>
 <body>
   <div id="app">
     <div class="panel" id="topbar">
-      <input id="roomInput" maxlength="24" placeholder="ROOM CODE" />
+      <input id="roomInput" maxlength="220" placeholder="ROOM CODE" />
       <button class="primary" id="enterBtn">入室 / 作成</button>
       <button id="shareBtn">コードを共有</button>
       <label class="pill">操作
@@ -285,9 +384,11 @@
         </select>
       </label>
       <span class="pill" id="mePill">未接続</span>
+      <span class="spacer"></span>
+      <button class="green" id="openHubBtn">MOD</button>
     </div>
 
-    <div class="panel" id="status">ルームコードを入れて「入室 / 作成」を押してね。</div>
+    <div class="panel" id="status">ROOM CODE を入れて「入室 / 作成」を押してね。</div>
 
     <div id="layout">
       <div class="panel" id="handsTop">
@@ -304,21 +405,53 @@
     </div>
   </div>
 
-  <div id="rematchOverlay">
-    <div id="rematchCard">
-      <div id="rematchWinner">勝敗: -</div>
-      <div id="rematchTitle">再戦しますか？</div>
-      <div id="rematchDesc">はいを両方が押すと、同じ相手ともう一回始まるよ。</div>
-      <div id="rematchButtons">
-        <button class="primary" id="rematchYes">はい</button>
-        <button id="rematchNo">いいえ</button>
+  <div id="modal">
+    <div id="modalCard">
+      <div id="hubView">
+        <div id="hubHeader">
+          <button class="green" id="newModBtn">+新規MOD</button>
+          <button id="hubBackBtn">ゲームへ戻る</button>
+          <span class="pill">MODのデータはこの端末に保存</span>
+        </div>
+        <div id="hubList"></div>
+      </div>
+
+      <div id="editorWrap">
+        <div class="box">
+          <div id="editorHeader">
+            <button id="editorBackBtn">一覧へ</button>
+            <button class="primary" id="saveModBtn">AIで保存</button>
+            <button id="cloneVerBtn">この版を複製</button>
+            <button class="red" id="deleteModBtn">削除</button>
+          </div>
+
+          <div class="field">
+            <label>MOD名</label>
+            <input id="modNameInput" maxlength="64" placeholder="MOD名を入力..." />
+          </div>
+
+          <div class="field">
+            <label id="promptLabel">AIにどのようなMODを作るか説明</label>
+            <textarea id="promptInput" placeholder="例: 駒の色を青っぽくして、歩が3歩進むようにしたい..."></textarea>
+          </div>
+
+          <div class="small" id="editorHelp">
+            小文字英字は自動で大文字に変換する。<br>
+            ここで作ったMODはこの端末にだけ保存される。対戦で使う時はルームコードの後ろに
+            <b>MOD=MOD名 v2</b> のように書く。
+          </div>
+        </div>
+
+        <div class="box">
+          <div id="versionList"></div>
+          <div id="preview">まだ何も選ばれていないよ。</div>
+        </div>
       </div>
     </div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
     import {
       getFirestore,
       doc,
@@ -334,12 +467,10 @@
       projectId: "shogi-of-speed",
       storageBucket: "shogi-of-speed.firebasestorage.app",
       messagingSenderId: "161090240863",
-      appId: "1:161090240863:web:2f9f54c8fa57fd9fca76ea",
-      measurementId: "G-S9FD32FECD"
+      appId: "1:161090240863:web:2f9f54c8fa57fd9fca76ea"
     };
 
     const app = initializeApp(firebaseConfig);
-    try { getAnalytics(app); } catch {}
     const db = getFirestore(app);
 
     const boardCanvas = document.getElementById("board");
@@ -354,233 +485,338 @@
     const myHandsEl = document.getElementById("myHands");
     const enemyHandsEl = document.getElementById("enemyHands");
 
-    const rematchOverlay = document.getElementById("rematchOverlay");
-    const rematchWinner = document.getElementById("rematchWinner");
-    const rematchYes = document.getElementById("rematchYes");
-    const rematchNo = document.getElementById("rematchNo");
-    const rematchDesc = document.getElementById("rematchDesc");
+    const modal = document.getElementById("modal");
+    const openHubBtn = document.getElementById("openHubBtn");
+    const hubView = document.getElementById("hubView");
+    const hubList = document.getElementById("hubList");
+    const hubBackBtn = document.getElementById("hubBackBtn");
+    const newModBtn = document.getElementById("newModBtn");
+
+    const editorWrap = document.getElementById("editorWrap");
+    const editorBackBtn = document.getElementById("editorBackBtn");
+    const saveModBtn = document.getElementById("saveModBtn");
+    const cloneVerBtn = document.getElementById("cloneVerBtn");
+    const deleteModBtn = document.getElementById("deleteModBtn");
+    const modNameInput = document.getElementById("modNameInput");
+    const promptInput = document.getElementById("promptInput");
+    const previewEl = document.getElementById("preview");
+    const versionList = document.getElementById("versionList");
+    const promptLabel = document.getElementById("promptLabel");
 
     const COOLDOWN_MS = 3000;
     const COUNTDOWN_MS = 3000;
     const STALE_MS = 30000;
-    const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
+
+    const BASE_ROWS = {
+      blackBack: ["lance","knight","silver","gold","king","gold","silver","knight","lance"],
+      whiteBack: ["lance","knight","silver","gold","king","gold","silver","knight","lance"]
+    };
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
-    const CPU_SIDE = "white";
-
     const TYPE_LABEL = {
       pawn:"歩", lance:"香", knight:"桂", silver:"銀", gold:"金",
       bishop:"角", rook:"飛", king:"玉",
       tokin:"と", proLance:"成香", proKnight:"成桂", proSilver:"成銀",
       horse:"馬", dragon:"龍"
     };
+    const PROMOTED_LABEL = { pawn:"と", lance:"成香", knight:"成桂", silver:"成銀", bishop:"馬", rook:"龍" };
+    const PROMOTED_MOVE = { pawn:"tokin", lance:"proLance", knight:"proKnight", silver:"proSilver", bishop:"horse", rook:"dragon" };
+    const PROMOTION_ZONE = { black:[0,1,2], white:[6,7,8] };
 
-    const PROMOTED_LABEL = {
-      pawn:"と",
-      lance:"成香",
-      knight:"成桂",
-      silver:"成銀",
-      bishop:"馬",
-      rook:"龍"
-    };
-
-    const PROMOTED_MOVE = {
-      pawn:"tokin",
-      lance:"proLance",
-      knight:"proKnight",
-      silver:"proSilver",
-      bishop:"horse",
-      rook:"dragon"
-    };
-
-    const theme = {
-      boardDark:"#e0c390",
-      boardLight:"#edd9b3",
-      piece1:"#d9ba90",
-      piece2:"#ba905b"
-    };
-
-    const LOCAL_RESULTS_KEY = "shogi_of_speed_local_results_v4";
-    const CPU_MEMORY_KEY = "shogi_of_speed_cpu_memory_v4";
-
-    const session = {
-      kind: "online", // online | cpu | local_dual
-      renderTimer: null,
-      cpuTimer: null,
-      cpuBusy: false,
-      cpuFinalized: false
-    };
+    const LS_MODS = "mods_v1";
+    const LS_ACTIVE = "mods_active_v1";
+    const LS_RESULTS = "shogi_results_v1";
+    const LS_PID = "shogi_pid_v1";
+    const LS_MODE = "shogi_mode_v1";
 
     const state = {
+      pid: localStorage.getItem(LS_PID) || crypto.randomUUID(),
       roomId: "",
       roomRef: null,
       unsub: null,
-      playerId: localStorage.getItem("shogi_of_speed_pid") || crypto.randomUUID(),
+      heartbeat: null,
       mySide: "spectator",
       roomData: null,
       selected: null,
-      boardReady: false,
       dragPointerId: null,
       dragStart: null,
       dragging: false,
-      dragSource: null,
       suppressClickUntil: 0,
-      localResults: loadLocalResults(),
-      cpuMemoryLoaded: false,
-      cpuMemory: defaultCpuMemory()
+      view: "game", // game | hub | editor
+      activeMods: [],
+      mods: loadMods(),
+      editorName: "",
+      editorPrompt: "",
+      editorSelectedVersion: null,
+      currentModKey: "",
+      localResults: loadResults(),
+      cpuTimer: null,
+      cpuBusy: false
     };
-    localStorage.setItem("shogi_of_speed_pid", state.playerId);
+    localStorage.setItem(LS_PID, state.pid);
 
-    const savedMode = localStorage.getItem("shogi_of_speed_mode");
-    if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
+    const session = {
+      kind: "online" // online | cpu | local_dual
+    };
 
-    function defaultCpuMemory(){
-      const zero = () => ({
-        pawn:0, lance:0, knight:0, silver:0, gold:0, bishop:0, rook:0,
-        king:0, tokin:0, proLance:0, proKnight:0, proSilver:0, horse:0, dragon:0
-      });
+    function loadResults() {
+      try {
+        const raw = localStorage.getItem(LS_RESULTS);
+        if (!raw) return { black:"lose", white:"lose" };
+        const v = JSON.parse(raw);
+        return {
+          black: v.black === "win" ? "win" : "lose",
+          white: v.white === "win" ? "win" : "lose",
+        };
+      } catch {
+        return { black:"lose", white:"lose" };
+      }
+    }
+
+    function saveResults() {
+      localStorage.setItem(LS_RESULTS, JSON.stringify(state.localResults));
+    }
+
+    function loadMods() {
+      try {
+        const raw = localStorage.getItem(LS_MODS);
+        const obj = raw ? JSON.parse(raw) : {};
+        return obj && typeof obj === "object" ? obj : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveMods() {
+      localStorage.setItem(LS_MODS, JSON.stringify(state.mods));
+    }
+
+    function activeModsLoad() {
+      try {
+        const raw = localStorage.getItem(LS_ACTIVE);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function activeModsSave(arr) {
+      localStorage.setItem(LS_ACTIVE, JSON.stringify(arr));
+    }
+
+    function normalizeCode(s) {
+      return (s || "").trim().toUpperCase();
+    }
+
+    function sanitizeModName(s) {
+      return normalizeCode(s).replace(/[^A-Z0-9ぁ-んァ-ヶ一-龠ー _-]/g, "").slice(0, 64);
+    }
+
+    function parseMatchCode(text) {
+      const raw = (text || "").trim();
+      const parts = raw.split(/\s+/).filter(Boolean);
+      const base = parts.shift() || "";
+      const modsText = parts.join(" ");
+      const modMatches = [...modsText.matchAll(/MOD=([^,\s]+)(?:\s+v(\d+))?/gi)];
+      const mods = modMatches.slice(0, 2).map(m => ({
+        name: m[1],
+        version: m[2] ? Number(m[2]) : null
+      }));
       return {
-        version: 4,
-        games: 0,
-        moveBias: zero(),
-        captureBias: zero(),
-        dropBias: zero(),
-        promoteBias: zero(),
-        lossBias: zero(),
-        checkBias: 0,
-        winBias: 0,
-        lossGameBias: 0
+        base: normalizeCode(base),
+        mods
       };
     }
 
-    function loadLocalResults(){
-      try{
-        const raw = localStorage.getItem(LOCAL_RESULTS_KEY);
-        const obj = raw ? JSON.parse(raw) : null;
-        if (obj && typeof obj === "object") {
-          return {
-            black: obj.black === "win" ? "win" : "lose",
-            white: obj.white === "win" ? "win" : "lose"
-          };
+    function makeId(prefix = "id") {
+      return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+
+    function defaultModDraft() {
+      return {
+        key: "",
+        name: "",
+        versions: [],
+        draftPrompt: "",
+        draftMode: "create",
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    }
+
+    function openModal(view = "hub") {
+      state.view = view;
+      modal.classList.add("show");
+      renderHub();
+      renderEditor();
+    }
+
+    function closeModal() {
+      modal.classList.remove("show");
+      state.view = "game";
+    }
+
+    function switchToEditor(modKey, versionIndex = null) {
+      state.currentModKey = modKey;
+      state.editorSelectedVersion = versionIndex;
+      state.view = "editor";
+      openModal("editor");
+    }
+
+    function ensureModObject(key) {
+      if (!state.mods[key]) {
+        state.mods[key] = defaultModDraft();
+        state.mods[key].key = key;
+      }
+      return state.mods[key];
+    }
+
+    function latestVersion(mod) {
+      return mod.versions.length ? mod.versions[mod.versions.length - 1] : null;
+    }
+
+    function versionLabel(i) {
+      return `v${i + 1}`;
+    }
+
+    function compileRulesFromVersions(versions) {
+      const compiled = {
+        cooldownMs: COOLDOWN_MS,
+        boardDark: null,
+        boardLight: null,
+        pieceLabelOverrides: {},
+        extra: []
+      };
+
+      for (const ver of versions) {
+        const rules = ver?.result?.rules || {};
+        if (typeof rules.cooldownMs === "number") compiled.cooldownMs = rules.cooldownMs;
+        if (typeof rules.boardDark === "string") compiled.boardDark = rules.boardDark;
+        if (typeof rules.boardLight === "string") compiled.boardLight = rules.boardLight;
+        if (rules.pieceLabelOverrides && typeof rules.pieceLabelOverrides === "object") {
+          Object.assign(compiled.pieceLabelOverrides, rules.pieceLabelOverrides);
         }
-      }catch{}
-      return { black: "lose", white: "lose" };
+        if (typeof rules.extra === "string" && rules.extra.trim()) compiled.extra.push(rules.extra.trim());
+      }
+
+      return compiled;
     }
 
-    function saveLocalResults(){
-      try{
-        localStorage.setItem(LOCAL_RESULTS_KEY, JSON.stringify(state.localResults));
-      }catch{}
+    function compileSelectedMods() {
+      const selected = activeModsLoad();
+      const out = [];
+      for (const item of selected.slice(0, 2)) {
+        const nameKey = sanitizeModName(item.name);
+        const mod = state.mods[nameKey];
+        if (!mod) continue;
+        const ver = item.version ? mod.versions[item.version - 1] : latestVersion(mod);
+        if (ver) {
+          out.push({
+            name: mod.name,
+            version: ver.version,
+            result: ver.result
+          });
+        }
+      }
+      return out;
     }
 
-    function applyThemeFromCSS(){
-      const cs = getComputedStyle(document.documentElement);
-      theme.boardDark = (cs.getPropertyValue("--board-dark") || "#e0c390").trim();
-      theme.boardLight = (cs.getPropertyValue("--board-light") || "#edd9b3").trim();
-      theme.piece1 = (cs.getPropertyValue("--piece-fill-1") || "#d9ba90").trim();
-      theme.piece2 = (cs.getPropertyValue("--piece-fill-2") || "#ba905b").trim();
+    function applyCompiledModsToTheme(compiledMods) {
+      let boardDark = null;
+      let boardLight = null;
+
+      for (const m of compiledMods) {
+        const rules = m.result?.rules || {};
+        if (typeof rules.boardDark === "string") boardDark = rules.boardDark;
+        if (typeof rules.boardLight === "string") boardLight = rules.boardLight;
+      }
+
+      const root = document.documentElement;
+      if (boardDark) root.style.setProperty("--board-dark", boardDark);
+      if (boardLight) root.style.setProperty("--board-light", boardLight);
     }
 
-    applyThemeFromCSS();
-
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    if (mq.addEventListener) mq.addEventListener("change", () => { applyThemeFromCSS(); scheduleRender(0); });
-    else if (mq.addListener) mq.addListener(() => { applyThemeFromCSS(); scheduleRender(0); });
-
-    function clearTimers(){
-      if (session.renderTimer) clearTimeout(session.renderTimer);
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.renderTimer = null;
-      session.cpuTimer = null;
-      session.cpuBusy = false;
+    function readCompiledModForPieceLabel(type) {
+      const compiled = state.activeMods || [];
+      for (let i = compiled.length - 1; i >= 0; i--) {
+        const r = compiled[i].result?.rules?.pieceLabelOverrides;
+        if (r && r[type]) return r[type];
+      }
+      return null;
     }
 
-    function normalizeRoomId(v){
-      return (v || "").trim().toUpperCase();
+    function currentCooldownMs() {
+      const compiled = state.activeMods || [];
+      for (let i = compiled.length - 1; i >= 0; i--) {
+        const n = compiled[i].result?.rules?.cooldownMs;
+        if (typeof n === "number") return Math.max(250, Math.floor(n));
+      }
+      return COOLDOWN_MS;
     }
 
-    function specialModeFromCode(code){
-      const c = normalizeRoomId(code).replace(/[\s_]/g, "");
-      if (c === "CPU") return "cpu";
-      if (c === "1SMARTPHONE") return "local_dual";
-      return "online";
+    function updateThemeFromCompiledMods() {
+      const root = document.documentElement;
+      root.style.setProperty("--board-dark", "");
+      root.style.setProperty("--board-light", "");
+      applyCompiledModsToTheme(state.activeMods || []);
     }
 
-    function isPromotableType(type){
+    function isPromotableType(type) {
       return !!PROMOTED_MOVE[type];
     }
 
-    function clamp(n, min, max){
-      return Math.max(min, Math.min(max, n));
-    }
-
-    function randomRoyalLabels(){
-      return Math.random() < 0.5
-        ? { black: "王", white: "玉" }
-        : { black: "玉", white: "王" };
-    }
-
-    function royalLabelsFromResults(blackResult, whiteResult){
-      const br = blackResult || "lose";
-      const wr = whiteResult || "lose";
-      if (br !== wr) {
-        return {
-          black: br === "win" ? "王" : "玉",
-          white: wr === "win" ? "王" : "玉"
-        };
-      }
-      return randomRoyalLabels();
-    }
-
-    function royalLabelsForOnline(room){
-      const players = room.players || {};
-      const results = room.playerResults || {};
-      const blackResult = results[players.black] || "lose";
-      const whiteResult = results[players.white] || "lose";
-      return royalLabelsFromResults(blackResult, whiteResult);
-    }
-
-    function royalLabelsForLocal(){
-      return royalLabelsFromResults(state.localResults.black, state.localResults.white);
-    }
-
-    function makePiece(side, type, x, y, extra = {}){
+    function makePiece(side, type, x, y, extra = {}) {
       return {
-        id: `${side}_${type}_${Math.random().toString(16).slice(2)}_${Date.now()}`,
+        id: makeId(type),
         side,
         type,
         x,
         y,
         promoMode: isPromotableType(type) ? "normal" : "fixed",
         cooldownUntil: 0,
-        ...extra
+        royalLabel: type === "king" ? (extra.royalLabel || "玉") : undefined,
       };
     }
 
-    function makeHands(){
-      const obj = {};
-      for (const side of ["black", "white"]) {
-        obj[side] = {};
-        for (const t of pieceOrder) obj[side][t] = 0;
-      }
-      return obj;
+    function boardMap(pieces) {
+      const map = new Map();
+      for (const p of pieces) map.set(`${p.x},${p.y}`, p);
+      return map;
     }
 
-    function initialPieces(royalLabels){
+    function pieceAt(pieces, x, y) {
+      return pieces.find(p => p.x === x && p.y === y);
+    }
+
+    function forward(side) {
+      return side === "black" ? -1 : 1;
+    }
+
+    function randomRoyalLabels() {
+      return Math.random() < 0.5 ? { black:"王", white:"玉" } : { black:"玉", white:"王" };
+    }
+
+    function royalLabelsFromResults(blackResult, whiteResult) {
+      const br = blackResult || "lose";
+      const wr = whiteResult || "lose";
+      if (br !== wr) return { black: br === "win" ? "王" : "玉", white: wr === "win" ? "王" : "玉" };
+      return randomRoyalLabels();
+    }
+
+    function initialPieces(labels = randomRoyalLabels()) {
       const pieces = [];
       const add = (side, type, x, y, extra = {}) => pieces.push(makePiece(side, type, x, y, extra));
 
       ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => {
-        if (t === "king") add("white", t, x, 0, { royalLabel: royalLabels.white || "玉" });
-        else add("white", t, x, 0);
+        add("white", t, x, 0, t === "king" ? { royalLabel: labels.white } : {});
       });
       add("white", "bishop", 1, 1);
       add("white", "rook", 7, 1);
       for (let x = 0; x < 9; x++) add("white", "pawn", x, 2);
 
       ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => {
-        if (t === "king") add("black", t, x, 8, { royalLabel: royalLabels.black || "王" });
-        else add("black", t, x, 8);
+        add("black", t, x, 8, t === "king" ? { royalLabel: labels.black } : {});
       });
       add("black", "rook", 1, 7);
       add("black", "bishop", 7, 7);
@@ -589,9 +825,18 @@
       return pieces;
     }
 
-    function freshState(royalLabels = randomRoyalLabels()){
+    function makeHands() {
+      const o = {};
+      for (const side of ["black","white"]) {
+        o[side] = {};
+        for (const t of pieceOrder) o[side][t] = 0;
+      }
+      return o;
+    }
+
+    function freshState(labels = randomRoyalLabels()) {
       return {
-        pieces: initialPieces(royalLabels),
+        pieces: initialPieces(labels),
         hands: makeHands(),
         winner: null,
         updatedAt: Date.now(),
@@ -600,7 +845,7 @@
       };
     }
 
-    function cloneState(s){
+    function cloneState(s) {
       return {
         pieces: s.pieces.map(p => ({ ...p })),
         hands: JSON.parse(JSON.stringify(s.hands)),
@@ -611,278 +856,158 @@
       };
     }
 
-    function makeOnlineRoomDoc(playerId){
-      return {
-        players: { black: playerId, white: null },
-        presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
-        playerResults: {},
-        state: freshState(randomRoyalLabels()),
-        matchStartAt: null,
-        rematchVotes: {},
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-    }
+    function isInside(x, y) { return x >= 0 && x < 9 && y >= 0 && y < 9; }
 
-    function isInside(x, y){
-      return x >= 0 && x < 9 && y >= 0 && y < 9;
-    }
+    function isInPromotionZone(side, y) { return side === "black" ? y <= 2 : y >= 6; }
 
-    function forward(side){
-      return side === "black" ? -1 : 1;
-    }
-
-    function opposite(side){
-      return side === "black" ? "white" : "black";
-    }
-
-    function isInPromotionZone(side, y){
-      return PROMOTION_ZONE[side].includes(y);
-    }
-
-    function forcePromoteNeeded(piece, destY){
-      if (piece.type === "pawn" || piece.type === "lance") {
-        return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
-      }
-      if (piece.type === "knight") {
-        return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
-      }
+    function forcePromoteNeeded(piece, destY) {
+      if (piece.type === "pawn" || piece.type === "lance") return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
+      if (piece.type === "knight") return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
       return false;
     }
 
-    function boardMap(pieces){
-      const map = new Map();
-      for (const p of pieces) map.set(`${p.x},${p.y}`, p);
-      return map;
-    }
+    function pseudoMovesForType(side, type, x, y, pieces) {
+      const f = forward(side);
+      const occ = boardMap(pieces);
 
-    function pieceAt(pieces, x, y){
-      return pieces.find(p => p.x === x && p.y === y);
-    }
-
-    function kingPos(pieces, side){
-      const k = pieces.find(p => p.side === side && p.type === "king");
-      return k ? { x: k.x, y: k.y } : null;
-    }
-
-    function dedupeMoves(arr){
-      const seen = new Set();
-      const out = [];
-      for (const m of arr) {
-        const k = `${m.x},${m.y}`;
-        if (!seen.has(k)) {
-          seen.add(k);
-          out.push(m);
-        }
-      }
-      return out;
-    }
-
-    function pseudoMovesForType(side, type, x, y, pieces){
-      const stepMoves = (steps) => {
+      const stepMoves = (arr) => {
         const out = [];
-        const occ = boardMap(pieces);
-        for (const [dx, dy] of steps) {
-          const nx = x + dx;
-          const ny = y + dy;
+        for (const [dx,dy] of arr) {
+          const nx = x + dx, ny = y + dy;
           if (!isInside(nx, ny)) continue;
           const hit = occ.get(`${nx},${ny}`);
-          if (!hit || hit.side !== side) out.push({ x: nx, y: ny });
+          if (!hit || hit.side !== side) out.push({ x:nx, y:ny });
         }
         return out;
       };
 
-      const rayMoves = (dirs, maxSteps = 99) => {
+      const rayMoves = (dirs) => {
         const out = [];
-        const occ = boardMap(pieces);
-        for (const [dx, dy] of dirs) {
-          for (let step = 1; step <= maxSteps; step++) {
-            const nx = x + dx * step;
-            const ny = y + dy * step;
+        for (const [dx,dy] of dirs) {
+          for (let step = 1; step < 9; step++) {
+            const nx = x + dx * step, ny = y + dy * step;
             if (!isInside(nx, ny)) break;
             const hit = occ.get(`${nx},${ny}`);
             if (hit) {
-              if (hit.side !== side) out.push({ x: nx, y: ny });
+              if (hit.side !== side) out.push({ x:nx, y:ny });
               break;
             }
-            out.push({ x: nx, y: ny });
+            out.push({ x:nx, y:ny });
           }
         }
         return out;
       };
 
-      const f = forward(side);
-
       if (type === "pawn") return stepMoves([[0, f]]);
       if (type === "lance") return rayMoves([[0, f]]);
-      if (type === "knight") return stepMoves([[-1, 2 * f], [1, 2 * f]]);
-      if (type === "silver") return stepMoves([[0, f], [-1, f], [1, f], [-1, -f], [1, -f]]);
+      if (type === "knight") return stepMoves([[-1, 2*f],[1, 2*f]]);
+      if (type === "silver") return stepMoves([[0,f],[-1,f],[1,f],[-1,-f],[1,-f]]);
       if (type === "gold" || type === "tokin" || type === "proLance" || type === "proKnight" || type === "proSilver") {
-        return stepMoves([[0, f], [-1, f], [1, f], [-1, 0], [1, 0], [0, -f]]);
+        return stepMoves([[0,f],[-1,f],[1,f],[-1,0],[1,0],[0,-f]]);
       }
-      if (type === "bishop") return rayMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]);
-      if (type === "rook") return rayMoves([[0, -1], [0, 1], [-1, 0], [1, 0]]);
-      if (type === "king") {
-        return stepMoves([[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]]);
-      }
-      if (type === "horse") {
-        const moves = rayMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]);
-        moves.push(...stepMoves([[0, -1], [0, 1], [-1, 0], [1, 0]]));
-        return dedupeMoves(moves);
-      }
-      if (type === "dragon") {
-        const moves = rayMoves([[0, -1], [0, 1], [-1, 0], [1, 0]]);
-        moves.push(...stepMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]));
-        return dedupeMoves(moves);
-      }
+      if (type === "bishop") return rayMoves([[-1,-1],[1,-1],[-1,1],[1,1]]);
+      if (type === "rook") return rayMoves([[0,-1],[0,1],[-1,0],[1,0]]);
+      if (type === "king") return stepMoves([[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]]);
+      if (type === "horse") return [...rayMoves([[-1,-1],[1,-1],[-1,1],[1,1]]), ...stepMoves([[0,-1],[0,1],[-1,0],[1,0]])];
+      if (type === "dragon") return [...rayMoves([[0,-1],[0,1],[-1,0],[1,0]]), ...stepMoves([[-1,-1],[1,-1],[-1,1],[1,1]])];
       return [];
     }
 
-    function movementForms(piece){
-      if (piece.promoMode === "promoted") return [PROMOTED_MOVE[piece.type] || piece.type];
-      if (piece.promoMode === "can") return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
-      return [piece.type];
+    function promotionForm(piece) {
+      if (piece.promoMode === "promoted") return PROMOTED_MOVE[piece.type] || piece.type;
+      return piece.type;
     }
 
-    function isSquareAttacked(pieces, x, y, bySide){
+    function isSquareAttacked(pieces, x, y, bySide) {
       for (const p of pieces) {
         if (p.side !== bySide) continue;
-        for (const moveType of movementForms(p)) {
-          for (const m of pseudoMovesForType(p.side, moveType, p.x, p.y, pieces)) {
-            if (m.x === x && m.y === y) return true;
-          }
+        const type = promotionForm(p);
+        for (const mv of pseudoMovesForType(p.side, type, p.x, p.y, pieces)) {
+          if (mv.x === x && mv.y === y) return true;
         }
       }
       return false;
     }
 
-    function isKingInCheck(pieces, side){
+    function kingPos(pieces, side) {
+      const k = pieces.find(p => p.side === side && p.type === "king");
+      return k ? { x:k.x, y:k.y } : null;
+    }
+
+    function isKingInCheck(pieces, side) {
       const kp = kingPos(pieces, side);
       if (!kp) return true;
-      return isSquareAttacked(pieces, kp.x, kp.y, opposite(side));
+      return isSquareAttacked(pieces, kp.x, kp.y, side === "black" ? "white" : "black");
     }
 
-    function moveTextLabel(piece, now){
-      if (!piece) return "?";
-      if (piece.type === "king") return piece.royalLabel || "玉";
-      if (piece.promoMode === "promoted") return PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?";
-      if (piece.promoMode === "can") {
-        const blink = Math.floor(now / 250) % 2 === 0;
-        return blink ? (TYPE_LABEL[piece.type] || "?") : (PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?");
-      }
-      return TYPE_LABEL[piece.type] || "?";
+    function canMovePiece(piece) {
+      const now = Date.now();
+      return !piece.cooldownUntil || now >= piece.cooldownUntil;
     }
 
-    function pieceTextColor(piece){
-      if (!piece) return "#111";
-      if (piece.type === "king") return "#111";
-      if (piece.promoMode === "promoted") return "#d84b43";
-      if (piece.promoMode === "can") return "#3569d6";
-      return "#111";
-    }
+    function classifyMoveForPiece(stateObj, piece, dest, checkSafety = true) {
+      const baseMoves = pseudoMovesForType(piece.side, piece.type, piece.x, piece.y, stateObj.pieces);
+      const baseReach = baseMoves.some(m => m.x === dest.x && m.y === dest.y);
+      if (!baseReach) return null;
+      const forced = forcePromoteNeeded(piece, dest.y);
 
-    function canPieceHavePromotion(piece){
-      return isPromotableType(piece.type);
-    }
-
-    function simulateMoveAndCheck(stateObj, piece, dest, nextPromoMode){
-      const sim = cloneState(stateObj);
-      const sp = sim.pieces.find(p => p.id === piece.id);
-      if (!sp) return false;
-
-      const occupant = pieceAt(sim.pieces, dest.x, dest.y);
-      if (occupant && occupant.side === sp.side) return false;
-
-      if (occupant) {
-        sim.pieces = sim.pieces.filter(p => p.id !== occupant.id);
-        sim.hands[sp.side][occupant.type] += 1;
-      }
-
-      sp.x = dest.x;
-      sp.y = dest.y;
-      sp.promoMode = nextPromoMode;
-      return !isKingInCheck(sim.pieces, sp.side);
-    }
-
-    function classifyMoveForPiece(stateObj, piece, dest, checkSafety = true){
-      if (!piece || stateObj.winner) return null;
-      if (piece.cooldownUntil && Date.now() < piece.cooldownUntil) return null;
-
-      const baseType = piece.type;
-      const promoType = PROMOTED_MOVE[baseType];
-      const promotable = canPieceHavePromotion(piece);
-      const basePseudo = pseudoMovesForType(piece.side, baseType, piece.x, piece.y, stateObj.pieces);
-      const baseReach = basePseudo.some(m => m.x === dest.x && m.y === dest.y);
-      const forced = promotable && forcePromoteNeeded(piece, dest.y);
-      const safety = checkSafety && piece.type !== "king";
+      const simulate = (mode) => {
+        const sim = cloneState(stateObj);
+        const sp = sim.pieces.find(p => p.id === piece.id);
+        const hit = pieceAt(sim.pieces, dest.x, dest.y);
+        if (hit && hit.side === sp.side) return false;
+        if (hit) {
+          sim.pieces = sim.pieces.filter(p => p.id !== hit.id);
+          sim.hands[sp.side][hit.type] += 1;
+        }
+        sp.x = dest.x;
+        sp.y = dest.y;
+        sp.promoMode = mode;
+        return !isKingInCheck(sim.pieces, sp.side);
+      };
 
       if (piece.promoMode === "fixed") {
-        if (!baseReach) return null;
-        if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
+        if (checkSafety && !simulate("fixed")) return null;
+        return { x: dest.x, y: dest.y, nextMode: "fixed", kind: "normal" };
       }
 
       if (piece.promoMode === "promoted") {
-        const pm = promoType || baseType;
-        const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
-        const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        if (!promoReach) return null;
-        if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "promoted" };
+        const promoMoves = pseudoMovesForType(piece.side, PROMOTED_MOVE[piece.type] || piece.type, piece.x, piece.y, stateObj.pieces);
+        if (!promoMoves.some(m => m.x === dest.x && m.y === dest.y)) return null;
+        if (checkSafety && !simulate("promoted")) return null;
+        return { x: dest.x, y: dest.y, nextMode: "promoted", kind: "normal" };
       }
 
-      if (piece.promoMode === "normal") {
-        if (!baseReach) return null;
-        if (forced) {
-          if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
-        }
-
-        const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
-        if (safety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode };
+      if (forced) {
+        if (checkSafety && !simulate("promoted")) return null;
+        return { x: dest.x, y: dest.y, nextMode: "promoted", kind: "promo" };
       }
 
-      if (piece.promoMode === "can") {
-        const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
-        const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const baseOK = baseReach && (!safety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
-        const promoOK = promoReach && (!safety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
-
-        if (forced) {
-          if (safety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
-        }
-
-        if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
-        if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
-        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
+      const canPromo = isInPromotionZone(piece.side, piece.y) || isInPromotionZone(piece.side, dest.y);
+      if (canPromo) {
+        const baseOK = !checkSafety || simulate("can");
+        const promoOK = !checkSafety || simulate("promoted");
+        if (baseOK && promoOK) return { x: dest.x, y: dest.y, nextMode: "can", kind: "both" };
+        if (promoOK) return { x: dest.x, y: dest.y, nextMode: "promoted", kind: "promo" };
+        if (baseOK) return { x: dest.x, y: dest.y, nextMode: "can", kind: "normal" };
         return null;
       }
 
-      return null;
+      if (checkSafety && !simulate("normal")) return null;
+      return { x: dest.x, y: dest.y, nextMode: "normal", kind: "normal" };
     }
 
-    function legalMovesForPiece(stateObj, piece, checkSafety = true){
-      if (!piece || stateObj.winner) return [];
+    function legalMovesForPiece(stateObj, piece) {
       const out = [];
       const seen = new Set();
-
-      const forms = [];
-      if (piece.promoMode === "can" && canPieceHavePromotion(piece)) {
-        forms.push({ moveType: piece.type });
-        forms.push({ moveType: PROMOTED_MOVE[piece.type] });
-      } else if (piece.promoMode === "promoted") {
-        forms.push({ moveType: PROMOTED_MOVE[piece.type] || piece.type });
-      } else {
-        forms.push({ moveType: piece.type });
-      }
+      const forms = piece.promoMode === "can" && isPromotableType(piece.type)
+        ? [piece.type, PROMOTED_MOVE[piece.type]]
+        : [piece.promoMode === "promoted" ? (PROMOTED_MOVE[piece.type] || piece.type) : piece.type];
 
       for (const form of forms) {
-        if (!form.moveType) continue;
-        const pseudo = pseudoMovesForType(piece.side, form.moveType, piece.x, piece.y, stateObj.pieces);
-        for (const mv of pseudo) {
-          const c = classifyMoveForPiece(stateObj, piece, mv, checkSafety);
+        if (!form) continue;
+        for (const mv of pseudoMovesForType(piece.side, form, piece.x, piece.y, stateObj.pieces)) {
+          const c = classifyMoveForPiece(stateObj, piece, mv, true);
           if (!c) continue;
           const key = `${c.x},${c.y}`;
           if (seen.has(key)) {
@@ -898,44 +1023,192 @@
       return out;
     }
 
-    function dropLegalSquares(stateObj){
-      if (!stateObj || stateObj.winner) return [];
+    function dropLegalSquares(stateObj) {
       const out = [];
       const occ = boardMap(stateObj.pieces);
-
       for (let y = 0; y < 9; y++) {
         for (let x = 0; x < 9; x++) {
           if (occ.has(`${x},${y}`)) continue;
-          out.push({ x, y, kind: "normal", nextMode: "normal" });
+          out.push({ x, y, nextMode: "normal", kind: "normal" });
         }
       }
       return out;
     }
 
-    function selectedLegalMoves(live){
-      if (!live || !state.selected || live.winner) return [];
-      if (state.selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === state.selected.id);
-        if (!piece) return [];
-        return legalMovesForPiece(live, piece, true);
+    function loadActiveModsFromInput() {
+      const parsed = parseMatchCode(roomInput.value);
+      const compiled = [];
+      for (const spec of parsed.mods.slice(0, 2)) {
+        const key = sanitizeModName(spec.name);
+        const mod = state.mods[key];
+        if (!mod) continue;
+        const version = spec.version || mod.versions.length;
+        const v = mod.versions[version - 1];
+        if (!v) continue;
+        compiled.push({
+          name: mod.name,
+          version,
+          result: v.result
+        });
       }
-      if (state.selected.kind === "hand") {
-        return dropLegalSquares(live);
-      }
-      return [];
+      state.activeMods = compiled;
+      activeModsSave(parsed.mods.slice(0, 2));
+      updateThemeFromCompiledMods();
     }
 
-    function selectedPieceObj(){
+    function activeModsFromRoomCode() {
+      const parsed = parseMatchCode(roomInput.value);
+      return parsed.mods.slice(0, 2).map(spec => {
+        const key = sanitizeModName(spec.name);
+        const mod = state.mods[key];
+        if (!mod) return null;
+        const version = spec.version || mod.versions.length;
+        const v = mod.versions[version - 1];
+        if (!v) return null;
+        return { name: mod.name, version, result: v.result };
+      }).filter(Boolean);
+    }
+
+    function selectedPieceObj() {
       const live = state.roomData?.state;
       if (!live || !state.selected || state.selected.kind !== "piece") return null;
       return live.pieces.find(p => p.id === state.selected.id) || null;
     }
 
-    function setStatus(msg){
-      statusEl.textContent = msg;
+    function handAreaLabel(side) {
+      if (session.kind === "local_dual") return side === "black" ? "下の持ち駒" : "上の持ち駒";
+      if (state.mySide === "spectator") return "持ち駒";
+      return side === state.mySide ? "自分の持ち駒" : "相手の持ち駒";
     }
 
-    function updateMePill(){
+    function pieceLabelFor(piece) {
+      const custom = readCompiledModForPieceLabel(piece.type);
+      if (custom) return custom;
+      if (piece.type === "king") return piece.royalLabel || "玉";
+      if (piece.promoMode === "promoted") return PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?";
+      if (piece.promoMode === "can") {
+        const blink = Math.floor(Date.now() / 250) % 2 === 0;
+        return blink ? (TYPE_LABEL[piece.type] || "?") : (PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?");
+      }
+      return TYPE_LABEL[piece.type] || "?";
+    }
+
+    function pieceTextColor(piece) {
+      if (piece.type === "king") return "#111";
+      if (piece.promoMode === "promoted") return "#d84b43";
+      if (piece.promoMode === "can") return "#3569d6";
+      return "#111";
+    }
+
+    function boardViewSide() {
+      if (session.kind === "local_dual") return "black";
+      return state.mySide === "white" ? "white" : "black";
+    }
+
+    function boardToScreen(x, y) {
+      if (session.kind === "local_dual") return { x, y };
+      if (boardViewSide() === "white") return { x: 8 - x, y: 8 - y };
+      return { x, y };
+    }
+
+    function screenToBoard(x, y) {
+      if (session.kind === "local_dual") return { x, y };
+      if (boardViewSide() === "white") return { x: 8 - x, y: 8 - y };
+      return { x, y };
+    }
+
+    function pointToSquare(ev) {
+      const rect = boardCanvas.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) / rect.width * 9;
+      const py = (ev.clientY - rect.top) / rect.height * 9;
+      const x = Math.floor(px);
+      const y = Math.floor(py);
+      if (!isInside(x,y)) return null;
+      return { x, y, px, py };
+    }
+
+    function pieceUnderSquare(screenX, screenY) {
+      const live = state.roomData?.state;
+      if (!live) return null;
+      const b = screenToBoard(screenX, screenY);
+      return live.pieces.find(p => p.x === b.x && p.y === b.y) || null;
+    }
+
+    function refreshHands() {
+      const live = state.roomData?.state;
+      const hands = live?.hands || makeHands();
+
+      const render = (el, side, interactive, labelText) => {
+        el.innerHTML = "";
+        const lab = document.createElement("div");
+        lab.className = "handLabel";
+        lab.textContent = labelText;
+        el.appendChild(lab);
+
+        for (const t of pieceOrder) {
+          const count = hands[side]?.[t] || 0;
+          if (!count && !interactive) continue;
+
+          const btn = document.createElement("button");
+          btn.className = "handBtn";
+          btn.dataset.side = side;
+          btn.dataset.type = t;
+          btn.dataset.interactive = interactive ? "1" : "0";
+
+          if (state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) btn.classList.add("selected");
+
+          const rem = live ? Math.max(0, (live.handCooldownUntil?.[side] || 0) - Date.now()) : 0;
+          btn.disabled = !interactive || count <= 0 || rem > 0;
+          btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span><span class="handCooldown" aria-hidden="true"></span>`;
+
+          const ring = btn.querySelector(".handCooldown");
+          if (ring) {
+            ring.style.opacity = rem > 0 ? "1" : "0";
+            if (rem > 0) ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, rem / currentCooldownMs()))));
+          }
+
+          const select = (e) => {
+            if (!interactive || count <= 0 || rem > 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            state.selected = { kind: "hand", side, type: t };
+            refreshHands();
+            scheduleRender(0);
+          };
+
+          btn.addEventListener("pointerdown", select);
+          btn.addEventListener("click", select);
+          el.appendChild(btn);
+        }
+      };
+
+      if (session.kind === "local_dual") {
+        enemyHandsEl.classList.add("rot180");
+        render(enemyHandsEl, "white", true, "上の持ち駒");
+        render(myHandsEl, "black", true, "下の持ち駒");
+        return;
+      }
+
+      enemyHandsEl.classList.remove("rot180");
+      if (session.kind === "cpu") {
+        render(enemyHandsEl, "white", false, "相手の持ち駒");
+        render(myHandsEl, "black", true, "自分の持ち駒");
+        return;
+      }
+
+      if (state.mySide === "black") {
+        render(enemyHandsEl, "white", false, "相手の持ち駒");
+        render(myHandsEl, "black", true, "自分の持ち駒");
+      } else if (state.mySide === "white") {
+        render(enemyHandsEl, "black", false, "相手の持ち駒");
+        render(myHandsEl, "white", true, "自分の持ち駒");
+      } else {
+        render(enemyHandsEl, "black", false, "相手の持ち駒");
+        render(myHandsEl, "white", false, "自分の持ち駒");
+      }
+    }
+
+    function updateMePill() {
       if (session.kind === "cpu") {
         mePill.textContent = "CPU / あなた: 先手";
         return;
@@ -948,213 +1221,282 @@
         mePill.textContent = "未接続";
         return;
       }
-      const label = state.mySide === "black" ? "あなた: 先手"
-                   : state.mySide === "white" ? "あなた: 後手"
-                   : "あなた: 観戦";
+      const label = state.mySide === "black" ? "あなた: 先手" : state.mySide === "white" ? "あなた: 後手" : "あなた: 観戦";
       mePill.textContent = `${state.roomId} / ${label}`;
     }
 
-    function isBothPlayersReady(roomData){
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    function isBothPlayersReady(roomData) {
       return !!roomData?.players?.black && !!roomData?.players?.white;
     }
 
-    function shouldShowRematch(roomData){
-      if (!roomData) return false;
-      if (!roomData.state?.winner) return false;
-      return session.kind === "online" ? isBothPlayersReady(roomData) : true;
+    function showModal(view = "hub") {
+      state.view = view;
+      modal.classList.add("show");
+      renderHub();
+      renderEditor();
     }
 
-    function hideRematchOverlay(){
-      rematchOverlay.classList.remove("show");
+    function hideModal() {
+      modal.classList.remove("show");
+      state.view = "game";
     }
 
-    function updateRematchOverlay(){
-      const room = state.roomData;
-      if (!shouldShowRematch(room)) {
-        hideRematchOverlay();
-        return;
-      }
-
-      const winnerRaw = room.state?.winner;
-      let winnerText = "決着";
-      if (winnerRaw === "black") {
-        if (session.kind === "cpu") winnerText = "あなたの勝ち";
-        else if (session.kind === "local_dual") winnerText = "勝者: 先手";
-        else winnerText = (state.mySide === "black") ? "あなたの勝ち" : "あなたの負け";
-      } else if (winnerRaw === "white") {
-        if (session.kind === "cpu") winnerText = "あなたの負け";
-        else if (session.kind === "local_dual") winnerText = "勝者: 後手";
-        else winnerText = (state.mySide === "white") ? "あなたの勝ち" : "あなたの負け";
-      }
-      rematchWinner.textContent = winnerText;
-
-      if (session.kind !== "online") {
-        rematchDesc.textContent = "はいを押したらすぐ次の試合が始まるよ。";
-        rematchOverlay.classList.add("show");
-        return;
-      }
-
-      const votes = room.rematchVotes || {};
-      const me = votes[state.playerId] ? "はいを押してあるよ。" : "まだ返事してないよ。";
-      const otherSide = state.mySide === "black" ? "white" : "black";
-      const otherPid = room.players?.[otherSide];
-      const otherVote = otherPid ? !!votes[otherPid] : false;
-      const other = otherVote ? "相手もはいを押してるよ。" : "相手の返事待ちだよ。";
-      rematchDesc.textContent = `${me}\n${other}`;
-      rematchOverlay.classList.add("show");
-    }
-
-    function handAreaLabel(side){
-      if (session.kind === "cpu") return side === "black" ? "自分の持ち駒" : "相手の持ち駒";
-      if (session.kind === "local_dual") return side === "black" ? "下の持ち駒" : "上の持ち駒";
-      if (state.mySide === "spectator") return "持ち駒";
-      return side === state.mySide ? "自分の持ち駒" : "相手の持ち駒";
-    }
-
-    function getHandCooldownRemaining(side, now){
-      const live = state.roomData?.state;
-      return Math.max(0, (live?.handCooldownUntil?.[side] || 0) - now);
-    }
-
-    function refreshHands(){
-      const live = state.roomData?.state;
-      const hands = live?.hands || makeHands();
-
-      const renderHandArea = (el, side, interactive, labelText) => {
-        el.innerHTML = "";
-        const label = document.createElement("div");
-        label.className = "handLabel";
-        label.textContent = labelText;
-        el.appendChild(label);
-
-        for (const t of pieceOrder) {
-          const count = hands[side]?.[t] || 0;
-          if (!count && !interactive) continue;
-
-          const btn = document.createElement("button");
-          btn.className = "handBtn";
-          btn.dataset.interactive = interactive ? "1" : "0";
-          btn.dataset.side = side;
-          btn.dataset.type = t;
-
-          if (state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) {
-            btn.classList.add("selected");
-          }
-
-          const now = Date.now();
-          const remaining = interactive ? getHandCooldownRemaining(side, now) : 0;
-
-          btn.disabled = !interactive || count <= 0 || remaining > 0;
-          btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span><span class="handCooldown" aria-hidden="true"></span>`;
-
-          const ring = btn.querySelector(".handCooldown");
-          if (ring) {
-            if (remaining > 0) {
-              ring.style.opacity = "1";
-              ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
-            } else {
-              ring.style.opacity = "0";
-            }
-          }
-
-          const selectHand = (e) => {
-            if (!interactive || count <= 0 || remaining > 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            state.selected = { kind: "hand", side, type: t };
-            state.dragSource = "hand";
-            refreshHands();
-            scheduleRender(0);
-          };
-
-          btn.addEventListener("pointerdown", selectHand);
-          btn.addEventListener("click", selectHand);
-          el.appendChild(btn);
-        }
-      };
-
-      if (session.kind === "local_dual") {
-        enemyHandsEl.classList.add("rot180");
-        renderHandArea(enemyHandsEl, "white", true, "上の持ち駒");
-        renderHandArea(myHandsEl, "black", true, "下の持ち駒");
-        return;
-      }
-
-      enemyHandsEl.classList.remove("rot180");
-
-      if (session.kind === "cpu") {
-        renderHandArea(enemyHandsEl, "white", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "black", true, "自分の持ち駒");
-        return;
-      }
-
-      if (state.mySide === "black") {
-        renderHandArea(enemyHandsEl, "white", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "black", true, "自分の持ち駒");
-      } else if (state.mySide === "white") {
-        renderHandArea(enemyHandsEl, "black", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "white", true, "自分の持ち駒");
+    function renderHub() {
+      if (state.view !== "hub") {
+        hubView.style.display = "block";
+        editorWrap.classList.remove("show");
       } else {
-        renderHandArea(enemyHandsEl, "black", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "white", false, "自分の持ち駒");
+        hubView.style.display = "block";
+        editorWrap.classList.remove("show");
+      }
+
+      hubList.innerHTML = "";
+      const keys = Object.keys(state.mods).sort((a,b) => {
+        const ma = state.mods[a];
+        const mb = state.mods[b];
+        return (mb.updatedAt || 0) - (ma.updatedAt || 0);
+      });
+
+      const newCard = document.createElement("div");
+      newCard.className = "modCard new";
+      newCard.innerHTML = "<h3>+新規MOD</h3><p>新しいMODを作る</p>";
+      newCard.addEventListener("click", () => {
+        const draft = defaultModDraft();
+        draft.key = `MOD_${Date.now().toString(36).toUpperCase()}`;
+        draft.name = "";
+        draft.draftMode = "create";
+        draft.versions = [];
+        state.mods[draft.key] = draft;
+        saveMods();
+        switchToEditor(draft.key);
+      });
+      hubList.appendChild(newCard);
+
+      for (const key of keys) {
+        const mod = state.mods[key];
+        const card = document.createElement("div");
+        card.className = "modCard";
+        const latest = latestVersion(mod);
+        card.innerHTML = `
+          <h3>${mod.name || key}</h3>
+          <p>${latest ? latest.result?.summary || latest.result?.versionNotes || "説明なし" : "まだバージョンがない"}</p>
+          <p class="small">versions: ${mod.versions.length}</p>
+        `;
+        card.addEventListener("click", () => switchToEditor(key));
+        hubList.appendChild(card);
       }
     }
 
-    function resizeCanvas(){
-      const rect = boardCanvas.getBoundingClientRect();
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      boardCanvas.width = Math.floor(rect.width * dpr);
-      boardCanvas.height = Math.floor(rect.height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      state.boardReady = true;
+    function renderEditor() {
+      if (state.view !== "editor") {
+        editorWrap.classList.remove("show");
+        return;
+      }
+      editorWrap.classList.add("show");
+
+      const mod = state.mods[state.currentModKey];
+      if (!mod) return;
+
+      modNameInput.value = mod.name || "";
+      promptInput.value = state.editorPrompt || mod.draftPrompt || "";
+      promptLabel.textContent = mod.draftMode === "revise"
+        ? "AIにどのような修正をしたいか説明"
+        : "AIにどのようなMODを作るか説明";
+
+      versionList.innerHTML = "";
+      const versions = mod.versions || [];
+      versions.forEach((v, i) => {
+        const btn = document.createElement("button");
+        btn.className = "verBtn" + (state.editorSelectedVersion === i ? " active" : "");
+        btn.textContent = versionLabel(i);
+        btn.addEventListener("click", () => {
+          state.editorSelectedVersion = i;
+          renderEditor();
+        });
+        versionList.appendChild(btn);
+      });
+
+      const show = state.editorSelectedVersion == null ? latestVersion(mod) : mod.versions[state.editorSelectedVersion];
+      if (!show) {
+        previewEl.textContent = "まだバージョンがない。";
+      } else {
+        const rules = show.result?.rules || {};
+        previewEl.textContent =
+          `MOD名: ${show.result?.name || mod.name}\n` +
+          `説明: ${show.result?.summary || ""}\n` +
+          `版コメント: ${show.result?.versionNotes || ""}\n` +
+          `cooldownMs: ${rules.cooldownMs ?? "-"}\n` +
+          `boardDark: ${rules.boardDark ?? "-"}\n` +
+          `boardLight: ${rules.boardLight ?? "-"}\n` +
+          `pieceLabelOverrides: ${JSON.stringify(rules.pieceLabelOverrides || {}, null, 2)}\n` +
+          `extra: ${rules.extra || "-"}`;
+      }
+    }
+
+    function switchToEditor(modKey, versionIndex = null) {
+      state.currentModKey = modKey;
+      state.editorSelectedVersion = versionIndex;
+      const mod = state.mods[modKey];
+      state.editorPrompt = mod?.draftPrompt || "";
+      showModal("editor");
+    }
+
+    function sanitizeNameLive(value) {
+      return value.replace(/[a-z]/g, c => c.toUpperCase());
+    }
+
+    function currentMod() {
+      return state.mods[state.currentModKey] || null;
+    }
+
+    async function buildModWithAI(mode) {
+      const mod = currentMod();
+      if (!mod) return;
+
+      const name = sanitizeModName(modNameInput.value || mod.name || "");
+      const prompt = promptInput.value.trim();
+      if (!name || !prompt) {
+        setStatus("MOD名と説明を入れてね。");
+        return;
+      }
+
+      saveBtnBusy(true, mode === "revise" ? "修正中..." : "生成中...");
+
+      try {
+        const resp = await fetch("/api/mod-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode,
+            name,
+            prompt,
+            previous: latestVersion(mod)?.result || null
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || "AI生成に失敗");
+        const result = data.result;
+
+        mod.key = sanitizeModName(name);
+        mod.name = sanitizeNameLive(result.name || name);
+        mod.draftPrompt = prompt;
+        mod.draftMode = mode;
+
+        const nextVersion = (mod.versions?.length || 0) + 1;
+        mod.versions = mod.versions || [];
+        mod.versions.push({
+          version: nextVersion,
+          createdAt: Date.now(),
+          prompt,
+          result
+        });
+        mod.updatedAt = Date.now();
+        state.mods[mod.key] = mod;
+        saveMods();
+
+        state.currentModKey = mod.key;
+        state.editorSelectedVersion = mod.versions.length - 1;
+        state.editorPrompt = prompt;
+        setStatus(`${mod.name} を ${versionLabel(nextVersion)} として保存したよ。`);
+        renderHub();
+        renderEditor();
+      } catch (err) {
+        setStatus(`AI生成に失敗した: ${err.message}`);
+      } finally {
+        saveBtnBusy(false);
+      }
+    }
+
+    function saveBtnBusy(flag, label = "AIで保存") {
+      saveModBtn.disabled = flag;
+      cloneVerBtn.disabled = flag;
+      deleteModBtn.disabled = flag;
+      saveModBtn.textContent = label;
+    }
+
+    function currentCooldownMs() {
+      const compiled = state.activeMods || [];
+      for (let i = compiled.length - 1; i >= 0; i--) {
+        const n = compiled[i].result?.rules?.cooldownMs;
+        if (typeof n === "number") return Math.max(250, Math.floor(n));
+      }
+      return COOLDOWN_MS;
+    }
+
+    function applyThemeFromActiveMods() {
+      const compiled = state.activeMods || [];
+      const root = document.documentElement;
+      for (const mod of compiled) {
+        const r = mod.result?.rules || {};
+        if (typeof r.boardDark === "string") root.style.setProperty("--board-dark", r.boardDark);
+        if (typeof r.boardLight === "string") root.style.setProperty("--board-light", r.boardLight);
+      }
+    }
+
+    function setActiveModsFromRoomCode() {
+      state.activeMods = activeModsFromRoomCode();
+      activeModsSave(parseMatchCode(roomInput.value).mods.slice(0,2));
+      applyThemeFromActiveMods();
+    }
+
+    function makeOnlineRoomDoc(playerId, labels = randomRoyalLabels()) {
+      return {
+        players: { black: playerId, white: null },
+        presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
+        playerResults: {},
+        modsSnapshot: [],
+        state: freshState(labels),
+        matchStartAt: null,
+        rematchVotes: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    }
+
+    function clearGameState() {
+      state.selected = null;
+      state.dragPointerId = null;
+      state.dragStart = null;
+      state.dragging = false;
+    }
+
+    function leaveToHome() {
+      if (state.unsub) state.unsub();
+      state.unsub = null;
+      if (state.heartbeat) clearInterval(state.heartbeat);
+      state.heartbeat = null;
+      if (state.cpuTimer) clearInterval(state.cpuTimer);
+      state.cpuTimer = null;
+      state.roomId = "";
+      state.roomRef = null;
+      state.roomData = null;
+      state.mySide = "spectator";
+      clearGameState();
+      hideModal();
+      roomInput.value = "";
+      updateMePill();
+      refreshHands();
+      setStatus("ROOM CODE を入れて「入室 / 作成」を押してね。");
       scheduleRender(0);
     }
 
-    function getViewSide(){
-      if (session.kind === "local_dual") return "black";
-      return state.mySide === "white" ? "white" : "black";
+    function getCountdownText(matchStartAt, now) {
+      if (!matchStartAt) return null;
+      const remain = matchStartAt - now;
+      if (remain <= 0) return now - matchStartAt < 700 ? "開始" : null;
+      if (remain > 2000) return "3";
+      if (remain > 1000) return "2";
+      return "1";
     }
 
-    function boardToScreen(x, y){
-      if (session.kind === "local_dual") return { x, y };
-      if (getViewSide() === "white") return { x: 8 - x, y: 8 - y };
-      return { x, y };
-    }
-
-    function screenToBoard(x, y){
-      if (session.kind === "local_dual") return { x, y };
-      if (getViewSide() === "white") return { x: 8 - x, y: 8 - y };
-      return { x, y };
-    }
-
-    function moveColor(kind){
-      if (kind === "base") return "rgba(216,75,67,.34)";
-      if (kind === "promo") return "rgba(53,105,214,.30)";
-      return "rgba(242,201,76,.34)";
-    }
-
-    function octantFromVector(dx, dy){
-      if (dx === 0 && dy === 0) return null;
-      const angle = Math.atan2(dy, dx);
-      let idx = Math.round(angle / (Math.PI / 4));
-      idx = ((idx % 8) + 8) % 8;
-      return idx;
-    }
-
-    function pieceScreenCenter(piece){
-      const s = boardToScreen(piece.x, piece.y);
-      return { x: s.x + 0.5, y: s.y + 0.5 };
-    }
-
-    function drawPiece(piece, cell, now, selected){
+    function drawPiece(piece, cell, now, selected) {
       const x = cell.x + cell.size / 2;
       const y = cell.y + cell.size / 2;
       const s = cell.size;
-      const w = s * 0.62;
-      const h = s * 0.72;
 
       ctx.save();
-
       if (selected) {
         ctx.strokeStyle = "rgba(138,180,255,.95)";
         ctx.lineWidth = 4;
@@ -1162,8 +1504,10 @@
       }
 
       ctx.translate(x, y);
-      ctx.rotate(piece.side === getViewSide() ? 0 : Math.PI);
+      ctx.rotate(piece.side === boardViewSide() ? 0 : Math.PI);
 
+      const w = s * 0.62;
+      const h = s * 0.72;
       ctx.beginPath();
       ctx.moveTo(0, -h * 0.48);
       ctx.lineTo(w * 0.34, -h * 0.16);
@@ -1173,8 +1517,8 @@
       ctx.closePath();
 
       const grad = ctx.createLinearGradient(-s/2, -s/2, s/2, s/2);
-      grad.addColorStop(0, theme.piece1);
-      grad.addColorStop(1, theme.piece2);
+      grad.addColorStop(0, getComputedStyle(document.documentElement).getPropertyValue("--piece-fill-1").trim());
+      grad.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue("--piece-fill-2").trim());
       ctx.fillStyle = grad;
       ctx.strokeStyle = "rgba(65,45,18,.75)";
       ctx.lineWidth = 2;
@@ -1182,117 +1526,69 @@
       ctx.stroke();
 
       ctx.fillStyle = pieceTextColor(piece);
-      ctx.font = `700 ${Math.max(14, s * 0.21)}px "Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif`;
+      ctx.font = `700 ${Math.max(14, s * 0.21)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(moveTextLabel(piece, now), 0, 1);
+      ctx.fillText(pieceLabelFor(piece), 0, 1);
 
       const remain = Math.max(0, piece.cooldownUntil - now);
       if (remain > 0) {
-        const ratio = remain / COOLDOWN_MS;
+        const ratio = remain / currentCooldownMs();
         ctx.beginPath();
         ctx.arc(0, 0, s * 0.36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio, false);
         ctx.strokeStyle = "rgba(255,255,255,.95)";
         ctx.lineWidth = 5;
         ctx.lineCap = "round";
         ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(0, 0, s * 0.36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio, false);
-        ctx.strokeStyle = "rgba(20,20,20,.22)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
       }
 
       ctx.restore();
     }
 
-    function getCountdownText(matchStartAt, now){
-      if (!matchStartAt) return null;
-      const remain = matchStartAt - now;
-      if (remain <= 0) {
-        if (now - matchStartAt < 700) return "開始";
-        return null;
-      }
-      if (remain > 2000) return "3";
-      if (remain > 1000) return "2";
-      return "1";
-    }
-
-    function hasAnimatingState(){
-      const live = state.roomData?.state;
-      if (!live) return false;
-      const now = Date.now();
-      if (session.kind === "online" && state.roomData?.matchStartAt && state.roomData.matchStartAt > now) return true;
-      if (live.pieces.some(p => p.cooldownUntil > now || p.promoMode === "can")) return true;
-      if ((live.handCooldownUntil?.black || 0) > now) return true;
-      if ((live.handCooldownUntil?.white || 0) > now) return true;
-      return false;
-    }
-
-    function scheduleRender(delay = null){
-      if (session.renderTimer) clearTimeout(session.renderTimer);
-      if (delay === null) {
-        if (!hasAnimatingState()) return;
-        const now = Date.now();
-        let next = 250;
-        const live = state.roomData?.state;
-        if (session.kind === "online" && state.roomData?.matchStartAt && state.roomData.matchStartAt > now) {
-          next = Math.min(next, Math.max(50, state.roomData.matchStartAt - now));
-        }
-        for (const p of live?.pieces || []) {
-          if (p.cooldownUntil > now) next = Math.min(next, Math.max(50, p.cooldownUntil - now));
-        }
-        const hs = live?.handCooldownUntil || {};
-        if ((hs.black || 0) > now) next = Math.min(next, Math.max(50, hs.black - now));
-        if ((hs.white || 0) > now) next = Math.min(next, Math.max(50, hs.white - now));
-        delay = next;
-      }
-
-      session.renderTimer = setTimeout(() => {
-        session.renderTimer = null;
-        renderFrame();
-      }, delay);
-    }
-
-    function updateHandCooldownIndicators(now){
+    function updateHandCooldownIndicators(now) {
       const live = state.roomData?.state;
       if (!live) return;
-
       const buttons = [...myHandsEl.querySelectorAll(".handBtn"), ...enemyHandsEl.querySelectorAll(".handBtn")];
       for (const btn of buttons) {
         const side = btn.dataset.side;
         const ring = btn.querySelector(".handCooldown");
         if (!ring) continue;
         const rem = Math.max(0, (live.handCooldownUntil?.[side] || 0) - now);
-        if (rem > 0) {
-          ring.style.opacity = "1";
-          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, rem / COOLDOWN_MS))));
-          if (btn.dataset.interactive === "1") btn.disabled = true;
-        } else {
-          ring.style.opacity = "0";
-        }
+        ring.style.opacity = rem > 0 ? "1" : "0";
+        if (rem > 0) ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, rem / currentCooldownMs()))));
       }
     }
 
-    function renderFrame(){
-      if (!state.boardReady) return;
+    function refreshModHubText() {
+      openHubBtn.textContent = state.view === "editor" ? "MOD編集中" : "MOD";
+    }
 
+    function renderFrame() {
+      if (!boardCanvas.width) return;
       const rect = boardCanvas.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
       const cell = w / 9;
       const now = Date.now();
 
-      updateHandCooldownIndicators(now);
-
       ctx.clearRect(0, 0, w, h);
+
+      const live = state.roomData?.state;
+      if (!live) {
+        ctx.fillStyle = "rgba(0,0,0,.45)";
+        ctx.font = "600 16px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("ルーム接続待ち", w / 2, h / 2);
+        scheduleRender();
+        return;
+      }
 
       for (let sy = 0; sy < 9; sy++) {
         for (let sx = 0; sx < 9; sx++) {
           const board = screenToBoard(sx, sy);
-          const light = (board.x + board.y) % 2 === 0;
-          ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
+          ctx.fillStyle = (board.x + board.y) % 2 === 0
+            ? getComputedStyle(document.documentElement).getPropertyValue("--board-light").trim()
+            : getComputedStyle(document.documentElement).getPropertyValue("--board-dark").trim();
           ctx.fillRect(sx * cell, sy * cell, cell, cell);
         }
       }
@@ -1310,29 +1606,16 @@
         ctx.stroke();
       }
 
-      const live = state.roomData?.state;
-      const room = state.roomData;
-
-      if (!live) {
-        ctx.fillStyle = "rgba(0,0,0,.55)";
-        ctx.font = "600 16px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("ルーム接続待ち", w / 2, h / 2);
-        scheduleRender();
-        return;
-      }
-
-      const legal = selectedLegalMoves(live);
-
-      for (const m of legal) {
+      const selectedLegal = selectedLegalMoves(live);
+      for (const m of selectedLegal) {
         const s = boardToScreen(m.x, m.y);
-        ctx.fillStyle = moveColor(m.kind);
+        ctx.fillStyle = m.kind === "promo" ? "rgba(53,105,214,.30)" : m.kind === "both" ? "rgba(242,201,76,.34)" : "rgba(242,201,76,.34)";
         ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
       }
 
-      const selectedPiece = selectedPieceObj();
-      if (selectedPiece) {
-        const s = boardToScreen(selectedPiece.x, selectedPiece.y);
+      const sel = selectedPieceObj();
+      if (sel) {
+        const s = boardToScreen(sel.x, sel.y);
         ctx.strokeStyle = "rgba(138,180,255,.95)";
         ctx.lineWidth = 4;
         ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
@@ -1344,60 +1627,68 @@
         drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
       }
 
-      const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
-      const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
-
       if (live.winner) {
-        ctx.fillStyle = "rgba(0,0,0,.35)";
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "rgba(0,0,0,.38)";
+        ctx.fillRect(0,0,w,h);
         ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
         ctx.font = "800 26px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
+        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 6);
         ctx.font = "500 15px system-ui, sans-serif";
-        ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
-      } else if (!bothReady) {
-        ctx.fillStyle = "rgba(0,0,0,.28)";
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = "#fff";
-        ctx.font = "800 22px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("相手待ち", w / 2, h / 2 - 6);
-        ctx.font = "500 14px system-ui, sans-serif";
-        ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
-      } else if (countdownText) {
-        ctx.fillStyle = "rgba(0,0,0,.28)";
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = "#fff";
-        ctx.font = "900 54px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(countdownText, w / 2, h / 2 + 10);
-        ctx.font = "600 16px system-ui, sans-serif";
-        ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
+        ctx.fillText("この対局は終了したよ", w / 2, h / 2 + 20);
+      } else if (session.kind === "online" && state.roomData?.matchStartAt) {
+        const t = getCountdownText(state.roomData.matchStartAt, now);
+        if (t) {
+          ctx.fillStyle = "rgba(0,0,0,.28)";
+          ctx.fillRect(0,0,w,h);
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.font = "900 54px system-ui, sans-serif";
+          ctx.fillText(t, w / 2, h / 2 + 10);
+        }
       }
 
-      updateRematchOverlay();
+      updateHandCooldownIndicators(now);
       scheduleRender();
     }
 
-    function pointToSquare(ev){
+    function scheduleRender(delay = null) {
+      if (state._renderTimer) clearTimeout(state._renderTimer);
+      if (delay === null) {
+        const now = Date.now();
+        delay = 200;
+        if (state.roomData?.matchStartAt && state.roomData.matchStartAt > now) delay = Math.min(delay, state.roomData.matchStartAt - now);
+        const live = state.roomData?.state;
+        if (live) {
+          for (const p of live.pieces) if (p.cooldownUntil > now) delay = Math.min(delay, p.cooldownUntil - now);
+          const hc = live.handCooldownUntil || {};
+          if (hc.black > now) delay = Math.min(delay, hc.black - now);
+          if (hc.white > now) delay = Math.min(delay, hc.white - now);
+        }
+      }
+      state._renderTimer = setTimeout(() => {
+        state._renderTimer = null;
+        renderFrame();
+      }, Math.max(16, delay));
+    }
+
+    function resizeCanvas() {
       const rect = boardCanvas.getBoundingClientRect();
-      const px = (ev.clientX - rect.left) / rect.width * 9;
-      const py = (ev.clientY - rect.top) / rect.height * 9;
-      const sx = Math.floor(px);
-      const sy = Math.floor(py);
-      if (!isInside(sx, sy)) return null;
-      return { x: sx, y: sy, px, py };
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      boardCanvas.width = Math.floor(rect.width * dpr);
+      boardCanvas.height = Math.floor(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      scheduleRender(0);
     }
 
-    function pieceUnderSquare(screenX, screenY){
-      const live = state.roomData?.state;
-      if (!live) return null;
-      const b = screenToBoard(screenX, screenY);
-      return live.pieces.find(p => p.x === b.x && p.y === b.y) || null;
+    function canControlSide(side) {
+      if (session.kind === "local_dual") return true;
+      if (session.kind === "cpu") return side === "black";
+      if (state.mySide === "spectator") return false;
+      return side === state.mySide;
     }
 
-    function canAct(){
+    function canAct() {
       if (session.kind !== "online") return true;
       const room = state.roomData;
       const now = Date.now();
@@ -1408,441 +1699,7 @@
       return true;
     }
 
-    function leaveToHome(){
-      if (state.unsub) {
-        state.unsub();
-        state.unsub = null;
-      }
-      clearTimers();
-      state.roomId = "";
-      state.roomRef = null;
-      state.roomData = null;
-      state.mySide = "spectator";
-      state.selected = null;
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-      state.dragSource = null;
-      hideRematchOverlay();
-      roomInput.value = "";
-      updateMePill();
-      refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
-      scheduleRender(0);
-    }
-
-    function clearSelection(){
-      state.selected = null;
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-      state.dragSource = null;
-      refreshHands();
-      scheduleRender(0);
-    }
-
-    function cpuPieceValue(type){
-      return {
-        king: 10000,
-        rook: 500,
-        bishop: 450,
-        gold: 320,
-        silver: 280,
-        knight: 240,
-        lance: 220,
-        pawn: 120,
-        tokin: 200,
-        proLance: 200,
-        proKnight: 200,
-        proSilver: 200,
-        horse: 650,
-        dragon: 700
-      }[type] || 100;
-    }
-
-    function cpuCaptureReward(type){
-      return cpuPieceValue(type) * 0.12;
-    }
-
-    function mergeCpuMemory(base, incoming){
-      const out = defaultCpuMemory();
-      const copyMap = (dst, src) => {
-        for (const k of Object.keys(dst)) {
-          if (src && typeof src[k] === "number") dst[k] = src[k];
-        }
-      };
-
-      if (incoming && typeof incoming === "object") {
-        out.version = incoming.version || out.version;
-        out.games = incoming.games || 0;
-        copyMap(out.moveBias, incoming.moveBias);
-        copyMap(out.captureBias, incoming.captureBias);
-        copyMap(out.dropBias, incoming.dropBias);
-        copyMap(out.promoteBias, incoming.promoteBias);
-        copyMap(out.lossBias, incoming.lossBias);
-        if (typeof incoming.checkBias === "number") out.checkBias = incoming.checkBias;
-        if (typeof incoming.winBias === "number") out.winBias = incoming.winBias;
-        if (typeof incoming.lossGameBias === "number") out.lossGameBias = incoming.lossGameBias;
-      }
-
-      if (base && typeof base === "object") {
-        out.games = Math.max(out.games, base.games || 0);
-        copyMap(out.moveBias, base.moveBias);
-        copyMap(out.captureBias, base.captureBias);
-        copyMap(out.dropBias, base.dropBias);
-        copyMap(out.promoteBias, base.promoteBias);
-        copyMap(out.lossBias, base.lossBias);
-        if (typeof base.checkBias === "number") out.checkBias = base.checkBias;
-        if (typeof base.winBias === "number") out.winBias = base.winBias;
-        if (typeof base.lossGameBias === "number") out.lossGameBias = base.lossGameBias;
-      }
-
-      return out;
-    }
-
-    async function loadCpuMemory(){
-      if (state.cpuMemoryLoaded) return;
-      state.cpuMemoryLoaded = true;
-
-      try{
-        const raw = localStorage.getItem(CPU_MEMORY_KEY);
-        if (raw) state.cpuMemory = mergeCpuMemory(state.cpuMemory, JSON.parse(raw));
-      }catch{}
-
-      try{
-        const ref = doc(db, "ai_memory", "cpu_v4");
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          state.cpuMemory = mergeCpuMemory(state.cpuMemory, snap.data());
-          try{ localStorage.setItem(CPU_MEMORY_KEY, JSON.stringify(state.cpuMemory)); }catch{}
-        }
-      }catch{}
-    }
-
-    async function saveCpuMemory(){
-      try{
-        localStorage.setItem(CPU_MEMORY_KEY, JSON.stringify(state.cpuMemory));
-      }catch{}
-
-      try{
-        const ref = doc(db, "ai_memory", "cpu_v4");
-        await setDoc(ref, state.cpuMemory, { merge: true });
-      }catch{}
-    }
-
-    function updateCpuMemoryFromEvent(event){
-      const lr = 0.0018;
-      const reward = event.reward || 0;
-      const pieceType = event.pieceType;
-      if (pieceType && state.cpuMemory.moveBias[pieceType] !== undefined) {
-        state.cpuMemory.moveBias[pieceType] = clamp(state.cpuMemory.moveBias[pieceType] + reward * lr, -250, 250);
-      }
-      if (event.capturedType && state.cpuMemory.captureBias[event.capturedType] !== undefined) {
-        state.cpuMemory.captureBias[event.capturedType] = clamp(state.cpuMemory.captureBias[event.capturedType] + reward * lr * 1.2, -250, 250);
-      }
-      if (event.dropType && state.cpuMemory.dropBias[event.dropType] !== undefined) {
-        state.cpuMemory.dropBias[event.dropType] = clamp(state.cpuMemory.dropBias[event.dropType] + reward * lr * 0.7, -250, 250);
-      }
-      if (event.promoted && pieceType && state.cpuMemory.promoteBias[pieceType] !== undefined) {
-        state.cpuMemory.promoteBias[pieceType] = clamp(state.cpuMemory.promoteBias[pieceType] + reward * lr * 1.0, -250, 250);
-      }
-      if (event.lossType && state.cpuMemory.lossBias[event.lossType] !== undefined) {
-        state.cpuMemory.lossBias[event.lossType] = clamp(state.cpuMemory.lossBias[event.lossType] + reward * lr * 1.4, -250, 250);
-      }
-    }
-
-    function cpuFinalizeGame(winnerSide){
-      const final = winnerSide === CPU_SIDE ? 12000 : -12000;
-      const n = Math.max(1, state.cpuTrace.length);
-      for (const event of state.cpuTrace) {
-        const scaled = final / n;
-        updateCpuMemoryFromEvent({ ...event, reward: (event.reward || 0) + scaled });
-      }
-      state.cpuMemory.games = (state.cpuMemory.games || 0) + 1;
-      state.cpuMemory.winBias = clamp((state.cpuMemory.winBias || 0) + (winnerSide === CPU_SIDE ? 1 : -1), -1000, 1000);
-      state.cpuMemory.lossGameBias = clamp((state.cpuMemory.lossGameBias || 0) + (winnerSide === CPU_SIDE ? -1 : 1), -1000, 1000);
-      state.cpuTrace = [];
-      saveCpuMemory();
-    }
-
-    function detectCpuLosses(prev, next){
-      if (session.kind !== "cpu") return;
-      const nextIds = new Set(next.pieces.map(p => p.id));
-
-      for (const p of prev.pieces) {
-        if (p.side !== CPU_SIDE) continue;
-        if (!nextIds.has(p.id)) {
-          const penalty = -cpuPieceValue(p.type) * 0.20;
-          state.cpuTrace.push({
-            kind: "loss",
-            pieceType: p.type,
-            reward: penalty,
-            lossType: p.type
-          });
-        }
-      }
-
-      for (const p of prev.pieces) {
-        if (p.side === CPU_SIDE) continue;
-        if (!nextIds.has(p.id)) {
-          const reward = cpuCaptureReward(p.type);
-          state.cpuTrace.push({
-            kind: "capture",
-            pieceType: "captured",
-            capturedType: p.type,
-            reward
-          });
-        }
-      }
-    }
-
-    function applyActionToGame(game, selected, actorSide, destBoard, anySide = false, checkSafety = true){
-      const next = cloneState(game);
-      const now = Date.now();
-      next.rev = (next.rev || 0) + 1;
-      next.updatedAt = now;
-      next.handCooldownUntil = next.handCooldownUntil || { black: 0, white: 0 };
-
-      if (selected.kind === "piece") {
-        const piece = next.pieces.find(p => p.id === selected.id);
-        if (!piece) return null;
-        if (!anySide && actorSide && piece.side !== actorSide) return null;
-        if (piece.cooldownUntil && now < piece.cooldownUntil) return null;
-
-        const legal = legalMovesForPiece(next, piece, checkSafety);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        if (!move) return null;
-
-        const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
-        if (occupant && occupant.side === piece.side) return null;
-
-        if (occupant) {
-          next.pieces = next.pieces.filter(p => p.id !== occupant.id);
-          next.hands[piece.side][occupant.type] += 1;
-          if (occupant.type === "king") next.winner = piece.side;
-        }
-
-        piece.x = destBoard.x;
-        piece.y = destBoard.y;
-        piece.cooldownUntil = now + COOLDOWN_MS;
-        piece.promoMode = move.nextMode || "normal";
-        return next;
-      }
-
-      if (selected.kind === "hand") {
-        const side = selected.side;
-        if (!anySide && actorSide && side !== actorSide) return null;
-        if ((next.hands[side]?.[selected.type] || 0) <= 0) return null;
-        if ((next.handCooldownUntil?.[side] || 0) > now) return null;
-
-        const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
-        if (occupant) return null;
-
-        next.hands[side][selected.type] -= 1;
-        next.pieces.push({
-          id: `drop_${side}_${selected.type}_${now}_${Math.random().toString(16).slice(2)}`,
-          side,
-          type: selected.type,
-          x: destBoard.x,
-          y: destBoard.y,
-          promoMode: "normal",
-          cooldownUntil: now + COOLDOWN_MS
-        });
-        next.handCooldownUntil[side] = now + COOLDOWN_MS;
-        return next;
-      }
-
-      return null;
-    }
-
-    function setLocalWinner(winnerSide){
-      state.roomData.state.winner = winnerSide;
-      state.localResults = {
-        black: winnerSide === "black" ? "win" : "lose",
-        white: winnerSide === "white" ? "win" : "lose"
-      };
-      saveLocalResults();
-      if (session.kind === "cpu" && !session.cpuFinalized) {
-        session.cpuFinalized = true;
-        cpuFinalizeGame(winnerSide);
-      }
-      updateRematchOverlay();
-      scheduleRender(0);
-    }
-
-    function maybeHandleGameEnd(prev, next){
-      if (!prev || prev.winner || !next.winner) return;
-      if (session.kind === "online") return;
-      setLocalWinner(next.winner);
-    }
-
-    function syncOnlineWinResults(room, winnerSide){
-      const playerResults = { ...(room.playerResults || {}) };
-      const players = room.players || {};
-      for (const [side, pid] of Object.entries(players)) {
-        if (!pid) continue;
-        playerResults[pid] = side === winnerSide ? "win" : "lose";
-      }
-      return playerResults;
-    }
-
-    function cpuActionScore(live, selected, dest, move){
-      let score = Math.random() * 3;
-
-      if (selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === selected.id);
-        if (!piece) return score;
-        score += state.cpuMemory.moveBias[piece.type] || 0;
-
-        const target = pieceAt(live.pieces, dest.x, dest.y);
-        if (target && target.side !== piece.side) {
-          score += cpuCaptureReward(target.type);
-          score += state.cpuMemory.captureBias[target.type] || 0;
-        }
-
-        if (move.nextMode === "promoted") {
-          score += (state.cpuMemory.promoteBias[piece.type] || 0) + 30;
-        }
-
-        const sim = applyActionToGame(live, selected, CPU_SIDE, dest, false, true);
-        if (sim) {
-          if (isKingInCheck(sim.pieces, "black")) score += (state.cpuMemory.checkBias || 0) + 20;
-          if (sim.winner === CPU_SIDE) score += 5000;
-        }
-      } else if (selected.kind === "hand") {
-        score += 20 + (state.cpuMemory.dropBias[selected.type] || 0);
-        const sim = applyActionToGame(live, selected, CPU_SIDE, dest, false, true);
-        if (sim && sim.winner === CPU_SIDE) score += 5000;
-      }
-
-      return score;
-    }
-
-    function collectCpuActions(live, relaxed = false){
-      const actions = [];
-      const now = Date.now();
-
-      for (const p of live.pieces) {
-        if (p.side !== CPU_SIDE) continue;
-        if (p.cooldownUntil && now < p.cooldownUntil) continue;
-
-        const moves = relaxed
-          ? pseudoMovesForType(p.side, p.type, p.x, p.y, live.pieces)
-          : legalMovesForPiece(live, p, true);
-
-        for (const mv of moves) {
-          const move = relaxed
-            ? classifyMoveForPiece(live, p, mv, false)
-            : mv;
-
-          if (!move || move.x === undefined) continue;
-          actions.push({
-            selected: { kind: "piece", id: p.id },
-            dest: { x: move.x, y: move.y },
-            nextMode: move.nextMode || "normal",
-            score: cpuActionScore(live, { kind: "piece", id: p.id }, { x: move.x, y: move.y }, move)
-          });
-        }
-      }
-
-      if ((live.handCooldownUntil?.white || 0) <= now) {
-        for (const t of pieceOrder) {
-          const count = live.hands.white?.[t] || 0;
-          if (!count) continue;
-          for (let y = 0; y < 9; y++) {
-            for (let x = 0; x < 9; x++) {
-              if (pieceAt(live.pieces, x, y)) continue;
-              actions.push({
-                selected: { kind: "hand", side: "white", type: t },
-                dest: { x, y },
-                nextMode: "normal",
-                score: (state.cpuMemory.dropBias[t] || 0) + Math.random() * 3
-              });
-            }
-          }
-        }
-      }
-
-      return actions;
-    }
-
-    function scheduleCpuThink(delay = 250){
-      if (session.kind !== "cpu") return;
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.cpuTimer = setTimeout(cpuThink, delay);
-    }
-
-    function cpuThink(){
-      if (session.kind !== "cpu") return;
-      const live = state.roomData?.state;
-      if (!live) {
-        scheduleCpuThink(300);
-        return;
-      }
-      if (live.winner) {
-        if (!session.cpuFinalized) {
-          session.cpuFinalized = true;
-          cpuFinalizeGame(live.winner);
-        }
-        return;
-      }
-      if (session.cpuBusy) {
-        scheduleCpuThink(120);
-        return;
-      }
-
-      session.cpuBusy = true;
-      try{
-        const strictActions = collectCpuActions(live, false);
-        const relaxedActions = strictActions.length ? strictActions : collectCpuActions(live, true);
-        const actions = relaxedActions;
-
-        if (!actions.length) {
-          scheduleCpuThink(200);
-          return;
-        }
-
-        actions.sort((a,b) => b.score - a.score);
-        const top = actions.slice(0, Math.min(8, actions.length));
-        const pick = top[Math.floor(Math.random() * top.length)];
-
-        const next = applyActionToGame(live, pick.selected, CPU_SIDE, pick.dest, false, true)
-                  || applyActionToGame(live, pick.selected, CPU_SIDE, pick.dest, false, false);
-
-        if (!next) {
-          scheduleCpuThink(180);
-          return;
-        }
-
-        detectCpuLosses(live, next);
-        state.cpuTrace.push({
-          kind: pick.selected.kind,
-          pieceType: pick.selected.kind === "piece"
-            ? (live.pieces.find(p => p.id === pick.selected.id)?.type || "pawn")
-            : pick.selected.type,
-          capturedType: pieceAt(live.pieces, pick.dest.x, pick.dest.y)?.type || null,
-          promoted: pick.nextMode === "promoted",
-          dropType: pick.selected.kind === "hand" ? pick.selected.type : null,
-          reward: cpuActionScore(live, pick.selected, pick.dest, pick)
-        });
-
-        const prev = state.roomData.state;
-        state.roomData.state = next;
-        state.roomData.updatedAt = Date.now();
-        maybeHandleGameEnd(prev, next);
-        scheduleRender(0);
-
-        if (next.winner && !session.cpuFinalized) {
-          session.cpuFinalized = true;
-          cpuFinalizeGame(next.winner);
-        }
-      } finally {
-        session.cpuBusy = false;
-        scheduleCpuThink(260);
-      }
-    }
-
-    function selectedSideOfSelection(){
+    function selectedSideOfSelection() {
       if (!state.selected) return null;
       if (state.selected.kind === "piece") {
         const live = state.roomData?.state;
@@ -1853,14 +1710,89 @@
       return null;
     }
 
-    function canControlSide(side){
-      if (session.kind === "local_dual") return true;
-      if (session.kind === "cpu") return side === "black";
-      if (state.mySide === "spectator") return false;
-      return side === state.mySide;
+    function selectedLegalMoves(live) {
+      if (!live || !state.selected || live.winner) return [];
+      if (state.selected.kind === "piece") {
+        const piece = live.pieces.find(p => p.id === state.selected.id);
+        return piece ? legalMovesForPiece(live, piece) : [];
+      }
+      if (state.selected.kind === "hand") return dropLegalSquares(live);
+      return [];
     }
 
-    async function commitMove(destBoard, nextMode = null){
+    function setLocalWinner(winnerSide) {
+      state.roomData.state.winner = winnerSide;
+      state.localResults = {
+        black: winnerSide === "black" ? "win" : "lose",
+        white: winnerSide === "white" ? "win" : "lose"
+      };
+      saveResults();
+      scheduleRender(0);
+    }
+
+    function maybeHandleGameEnd(prev, next) {
+      if (!prev || prev.winner || !next.winner) return;
+      if (session.kind === "online") return;
+      setLocalWinner(next.winner);
+    }
+
+    function applyMove(game, selected, actorSide, destBoard, anySide = false, checkSafety = true) {
+      const next = cloneState(game);
+      const now = Date.now();
+      const cooldown = currentCooldownMs();
+
+      if (selected.kind === "piece") {
+        const piece = next.pieces.find(p => p.id === selected.id);
+        if (!piece) return null;
+        if (!anySide && actorSide && piece.side !== actorSide) return null;
+        if (!canMovePiece(piece)) return null;
+        const legal = legalMovesForPiece(next, piece);
+        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
+        if (!move) return null;
+
+        const hit = pieceAt(next.pieces, destBoard.x, destBoard.y);
+        if (hit && hit.side === piece.side) return null;
+
+        if (hit) {
+          next.pieces = next.pieces.filter(p => p.id !== hit.id);
+          next.hands[piece.side][hit.type] += 1;
+          if (hit.type === "king") next.winner = piece.side;
+        }
+
+        piece.x = destBoard.x;
+        piece.y = destBoard.y;
+        piece.cooldownUntil = now + cooldown;
+        if (move.nextMode === "promoted") piece.promoMode = "promoted";
+        else if (move.nextMode === "can") piece.promoMode = "can";
+        else piece.promoMode = piece.promoMode === "fixed" ? "fixed" : "normal";
+        return next;
+      }
+
+      if (selected.kind === "hand") {
+        const side = selected.side;
+        if (!anySide && actorSide && side !== actorSide) return null;
+        if ((next.hands[side]?.[selected.type] || 0) <= 0) return null;
+        if ((next.handCooldownUntil?.[side] || 0) > now) return null;
+        if (pieceAt(next.pieces, destBoard.x, destBoard.y)) return null;
+
+        next.hands[side][selected.type] -= 1;
+        next.pieces.push({
+          id: makeId("drop"),
+          side,
+          type: selected.type,
+          x: destBoard.x,
+          y: destBoard.y,
+          promoMode: "normal",
+          cooldownUntil: now + cooldown
+        });
+        next.handCooldownUntil[side] = now + cooldown;
+        return next;
+      }
+
+      return null;
+    }
+
+    async function commitMove(destBoard) {
       const live = state.roomData?.state;
       if (!live || !state.selected) return false;
 
@@ -1868,71 +1800,57 @@
         if (!state.roomRef) return false;
         if (!canAct()) return false;
 
-        let moved = false;
-
-        await runTransaction(db, async (tx) => {
+        let ok = false;
+        await runTransaction(db, async tx => {
           const snap = await tx.get(state.roomRef);
           if (!snap.exists()) return;
-
           const room = snap.data();
           const currentLive = room.state;
           if (!currentLive || currentLive.winner) return;
-
           const now = Date.now();
           if (room.matchStartAt && now < room.matchStartAt) return;
 
-          const side = room.players?.black === state.playerId ? "black"
-                    : room.players?.white === state.playerId ? "white"
+          const side = room.players?.black === state.pid ? "black"
+                    : room.players?.white === state.pid ? "white"
                     : "spectator";
           if (side === "spectator") return;
           if (!canControlSide(selectedSideOfSelection())) return;
 
-          const next = applyActionToGame(currentLive, state.selected, side, destBoard, false, true);
+          const next = applyMove(currentLive, state.selected, side, destBoard, false, true);
           if (!next) return;
 
           const presence = room.presence || {};
-          presence[state.playerId] = { side, lastSeen: now };
-
+          presence[state.pid] = { side, lastSeen: now };
+          const update = { state: next, presence, updatedAt: now };
           if (next.winner) {
-            const playerResults = syncOnlineWinResults(room, next.winner);
-            tx.update(state.roomRef, {
-              state: next,
-              playerResults,
-              presence,
-              updatedAt: now
-            });
-          } else {
-            tx.update(state.roomRef, {
-              state: next,
-              presence,
-              updatedAt: now
-            });
+            const results = { ...(room.playerResults || {}) };
+            for (const [s, pid] of Object.entries(room.players || {})) if (pid) results[pid] = s === next.winner ? "win" : "lose";
+            update.playerResults = results;
           }
-          moved = true;
-        }).catch(err => {
-          setStatus(`動かせなかった: ${err.message}`);
+          tx.update(state.roomRef, update);
+          ok = true;
         });
-
-        if (moved) scheduleRender(0);
-        return moved;
+        if (ok) scheduleRender(0);
+        return ok;
       }
 
       const actorSide = session.kind === "cpu" ? "black" : null;
       const anySide = session.kind === "local_dual";
-      const next = applyActionToGame(live, state.selected, actorSide, destBoard, anySide, true);
+      const next = applyMove(live, state.selected, actorSide, destBoard, anySide, true);
       if (!next) return false;
-
       const prev = state.roomData.state;
       state.roomData.state = next;
       state.roomData.updatedAt = Date.now();
       maybeHandleGameEnd(prev, next);
       scheduleRender(0);
-
-      if (session.kind === "cpu") scheduleCpuThink(120);
       return true;
     }
 
-    function getSlidePieceTarget(releasePoint){
+    function canPromoteType(type) {
+      return !!PROMOTED_MOVE[type];
+    }
+
+    function getSlidePieceTarget(releasePoint) {
       const live = state.roomData?.state;
       const piece = selectedPieceObj();
       if (!live || !piece) return null;
@@ -1942,18 +1860,15 @@
       if (dragOct === null) return null;
 
       const legal = selectedLegalMoves(live);
-      if (!legal.length) return null;
-
       let best = null;
       let bestD = Infinity;
 
       for (const m of legal) {
         const s = boardToScreen(m.x, m.y);
-        const center = { x: s.x + 0.5, y: s.y + 0.5 };
-        const moveOct = octantFromVector(center.x - start.x, center.y - start.y);
-        if (moveOct !== dragOct) continue;
-
-        const d = (center.x - releasePoint.x) ** 2 + (center.y - releasePoint.y) ** 2;
+        const c = { x: s.x + 0.5, y: s.y + 0.5 };
+        const oct = octantFromVector(c.x - start.x, c.y - start.y);
+        if (oct !== dragOct) continue;
+        const d = (c.x - releasePoint.x) ** 2 + (c.y - releasePoint.y) ** 2;
         if (d < bestD) {
           bestD = d;
           best = m;
@@ -1963,248 +1878,239 @@
       return best;
     }
 
-    function getHandDropTarget(ev){
+    function getHandDropTarget(ev) {
       const sq = pointToSquare(ev);
       if (!sq) return null;
-      const board = screenToBoard(sq.x, sq.y);
+      const b = screenToBoard(sq.x, sq.y);
       const live = state.roomData?.state;
       if (!live) return null;
-      if (pieceAt(live.pieces, board.x, board.y)) return null;
-      return board;
+      if (pieceAt(live.pieces, b.x, b.y)) return null;
+      return b;
     }
 
-    function pointFromEvent(ev){
-      const rect = boardCanvas.getBoundingClientRect();
-      return {
-        x: (ev.clientX - rect.left) / rect.width * 9,
-        y: (ev.clientY - rect.top) / rect.height * 9
-      };
+    function pieceScreenCenter(piece) {
+      const s = boardToScreen(piece.x, piece.y);
+      return { x: s.x + 0.5, y: s.y + 0.5 };
     }
 
-    function resetLocalGameAfterRematch(){
-      const labels = royalLabelsForLocal();
-      state.roomData.state = freshState(labels);
-      state.roomData.rematchVotes = {};
-      state.roomData.matchStartAt = null;
-      state.roomData.updatedAt = Date.now();
-      state.selected = null;
-      session.cpuFinalized = false;
-      refreshHands();
-      scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(120);
-    }
-
-    async function enterRoom(){
-      const code = normalizeRoomId(roomInput.value);
-      const mode = specialModeFromCode(code);
-
-      if (mode === "cpu") {
-        await loadCpuMemory();
-        clearTimers();
-        session.kind = "cpu";
-        state.roomId = "CPU";
-        state.roomRef = null;
-        state.unsub = null;
-        state.mySide = "black";
-        state.selected = null;
-        state.localResults = loadLocalResults();
-        session.cpuFinalized = false;
-        state.roomData = {
-          mode: "cpu",
-          players: { black: "local", white: "cpu" },
-          presence: {},
-          playerResults: {},
-          state: freshState(royalLabelsForLocal()),
-          matchStartAt: null,
-          rematchVotes: {}
-        };
-        updateMePill();
-        refreshHands();
-        setStatus("CPUモードで始めたよ。");
-        scheduleRender(0);
-        scheduleCpuThink(120);
+    function runCpuThink() {
+      if (session.kind !== "cpu") return;
+      if (state.cpuBusy) return;
+      const live = state.roomData?.state;
+      if (!live || live.winner) {
+        if (live?.winner) state.cpuTimer = null;
         return;
       }
 
-      if (mode === "local_dual") {
-        clearTimers();
-        session.kind = "local_dual";
-        state.roomId = "1 SMARTPHONE";
-        state.roomRef = null;
-        state.unsub = null;
-        state.mySide = "both";
-        state.selected = null;
-        session.cpuFinalized = false;
-        state.roomData = {
-          mode: "local_dual",
-          players: { black: "local", white: "local2" },
-          presence: {},
-          playerResults: {},
-          state: freshState(royalLabelsForLocal()),
-          matchStartAt: null,
-          rematchVotes: {}
-        };
-        updateMePill();
-        refreshHands();
-        setStatus("1 SMARTPHONEモードで始めたよ。");
+      const now = Date.now();
+      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) return;
+
+      state.cpuBusy = true;
+      try {
+        const actions = [];
+        for (const p of live.pieces) {
+          if (p.side !== "white") continue;
+          if (!canMovePiece(p)) continue;
+          const moves = legalMovesForPiece(live, p);
+          for (const mv of moves) {
+            actions.push({
+              selected: { kind:"piece", id: p.id },
+              dest: { x: mv.x, y: mv.y },
+              score: Math.random() + (mv.kind === "promo" ? 0.5 : 0)
+            });
+          }
+        }
+
+        if ((live.handCooldownUntil?.white || 0) <= now) {
+          for (const t of pieceOrder) {
+            if (!live.hands.white?.[t]) continue;
+            for (let y = 0; y < 9; y++) {
+              for (let x = 0; x < 9; x++) {
+                if (pieceAt(live.pieces, x, y)) continue;
+                actions.push({
+                  selected: { kind:"hand", side:"white", type:t },
+                  dest: { x, y },
+                  score: Math.random() * 0.8
+                });
+              }
+            }
+          }
+        }
+
+        actions.sort((a,b) => b.score - a.score);
+        const pick = actions[0];
+        if (!pick) return;
+
+        const next = applyMove(live, pick.selected, "white", pick.dest, false, true);
+        if (!next) return;
+
+        state.roomData.state = next;
+        state.roomData.updatedAt = now;
+        if (next.winner && !state._cpuFinalized) {
+          state._cpuFinalized = true;
+          state.localResults = {
+            black: next.winner === "black" ? "win" : "lose",
+            white: next.winner === "white" ? "win" : "lose"
+          };
+          saveResults();
+        }
         scheduleRender(0);
+      } finally {
+        state.cpuBusy = false;
+      }
+    }
+
+    function scheduleCpuLoop() {
+      if (state.cpuTimer) clearInterval(state.cpuTimer);
+      if (session.kind !== "cpu") return;
+      state.cpuTimer = setInterval(runCpuThink, 350);
+      runCpuThink();
+    }
+
+    function openOrToggleHub() {
+      if (modal.classList.contains("show")) {
+        hideModal();
+      } else {
+        showModal("hub");
+      }
+    }
+
+    async function enterRoom() {
+      const parsed = parseMatchCode(roomInput.value);
+      if (parsed.base === "MOD" || parsed.base === "MODS") {
+        showModal("hub");
+        setStatus("MOD制作画面を開いたよ。もう一回押すと戻れる。");
         return;
       }
 
       session.kind = "online";
-      clearTimers();
+      setActiveModsFromRoomCode();
 
       try {
-        let roomId = code;
-        if (!roomId) {
-          roomId = Math.random().toString(36).slice(2, 8).toUpperCase();
-          roomInput.value = roomId;
+        let code = parsed.base;
+        if (!code) {
+          code = Math.random().toString(36).slice(2, 8).toUpperCase();
+          roomInput.value = code;
         }
 
-        const ref = doc(db, "rooms", roomId);
+        const ref = doc(db, "rooms", code);
         const snap = await getDoc(ref);
 
         if (!snap.exists()) {
-          await setDoc(ref, makeOnlineRoomDoc(state.playerId));
+          await setDoc(ref, makeOnlineRoomDoc(state.pid));
         }
 
-        await connectOnlineRoom(roomId);
+        await connectOnlineRoom(code);
       } catch (err) {
         setStatus(`入室に失敗した: ${err.message}`);
       }
     }
 
-    async function connectOnlineRoom(roomId){
-      roomId = normalizeRoomId(roomId);
-      if (!roomId) return;
-
+    async function connectOnlineRoom(roomId) {
       if (state.unsub) state.unsub();
+      if (state.heartbeat) clearInterval(state.heartbeat);
+
       state.roomId = roomId;
       state.roomRef = doc(db, "rooms", roomId);
       state.selected = null;
       state.mySide = "spectator";
       updateMePill();
 
-      await runTransaction(db, async (tx) => {
+      await runTransaction(db, async tx => {
         const now = Date.now();
         const snap = await tx.get(state.roomRef);
 
         if (!snap.exists()) {
-          tx.set(state.roomRef, makeOnlineRoomDoc(state.playerId));
+          tx.set(state.roomRef, makeOnlineRoomDoc(state.pid));
           return;
         }
 
         const data = snap.data() || {};
-        let players = data.players || { black: null, white: null };
+        let players = data.players || { black:null, white:null };
         let presence = data.presence || {};
         let playerResults = data.playerResults || {};
-        let roomState = data.state || freshState(royalLabelsFromResults("lose", "lose"));
+        let roomState = data.state || freshState(royalLabelsFromResults("lose","lose"));
         let matchStartAt = data.matchStartAt || null;
         let rematchVotes = data.rematchVotes || {};
+        let modsSnapshot = data.modsSnapshot || [];
         let forceHomeAt = data.forceHomeAt || null;
 
-        const currentAlready = players.black === state.playerId || players.white === state.playerId;
+        const currentAlready = players.black === state.pid || players.white === state.pid;
 
-        const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < STALE_MS);
-        const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < STALE_MS);
+        const blackActive = !!players.black && !!presence[players.black] && now - (presence[players.black].lastSeen || 0) < STALE_MS;
+        const whiteActive = !!players.white && !!presence[players.white] && now - (presence[players.white].lastSeen || 0) < STALE_MS;
         const bothInactive = !blackActive && !whiteActive;
 
         if (forceHomeAt) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          playerResults = playerResults || {};
-          roomState = freshState(royalLabelsFromResults("lose", "lose"));
+          players = { black: state.pid, white: null };
+          presence = { [state.pid]: { side:"black", lastSeen:now } };
+          roomState = freshState(royalLabelsFromResults("lose","lose"));
           matchStartAt = null;
           rematchVotes = {};
+          modsSnapshot = [];
           forceHomeAt = null;
         } else if (bothInactive && !roomState.winner) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState(royalLabelsFromResults("lose", "lose"));
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (roomState.winner && bothInactive) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState(royalLabelsFromResults("lose", "lose"));
+          players = { black: state.pid, white: null };
+          presence = { [state.pid]: { side:"black", lastSeen:now } };
+          roomState = freshState(royalLabelsFromResults("lose","lose"));
           matchStartAt = null;
           rematchVotes = {};
         } else if (!currentAlready) {
           if (!blackActive) {
-            players.black = state.playerId;
-            presence[state.playerId] = { side: "black", lastSeen: now };
+            players.black = state.pid;
+            presence[state.pid] = { side:"black", lastSeen:now };
           } else if (!whiteActive) {
-            players.white = state.playerId;
-            presence[state.playerId] = { side: "white", lastSeen: now };
+            players.white = state.pid;
+            presence[state.pid] = { side:"white", lastSeen:now };
           } else {
-            presence[state.playerId] = { side: "spectator", lastSeen: now };
+            presence[state.pid] = { side:"spectator", lastSeen:now };
           }
         } else {
-          const side = players.black === state.playerId ? "black" : "white";
-          presence[state.playerId] = { side, lastSeen: now };
+          presence[state.pid] = { side: players.black === state.pid ? "black" : "white", lastSeen: now };
         }
 
         const bothReady = !!players.black && !!players.white;
-        if (bothReady && !matchStartAt && !roomState.winner) {
-          matchStartAt = now + COUNTDOWN_MS;
-        }
+        if (bothReady && !matchStartAt && !roomState.winner) matchStartAt = now + COUNTDOWN_MS;
+
+        const localMods = activeModsFromRoomCode();
+        if (localMods.length) modsSnapshot = localMods;
 
         tx.update(state.roomRef, {
-          players,
-          presence,
-          playerResults,
-          state: roomState,
-          matchStartAt,
-          rematchVotes,
-          forceHomeAt,
-          updatedAt: now
+          players, presence, playerResults, state: roomState,
+          matchStartAt, rematchVotes, modsSnapshot, forceHomeAt, updatedAt: now
         });
       });
 
-      state.unsub = onSnapshot(state.roomRef, (snap) => {
+      state.unsub = onSnapshot(state.roomRef, snap => {
         if (!snap.exists()) {
           setStatus("ルームが見つからないよ。");
           return;
         }
-
         const data = snap.data();
-
         if (data.forceHomeAt) {
           leaveToHome();
           return;
         }
 
-        const prev = state.roomData?.state || null;
         state.roomData = data;
+        state.activeMods = data.modsSnapshot || activeModsFromRoomCode();
+        updateThemeFromActiveMods();
 
-        const players = state.roomData.players || {};
-        state.mySide =
-          players.black === state.playerId ? "black" :
-          players.white === state.playerId ? "white" :
-          "spectator";
+        const players = data.players || {};
+        state.mySide = players.black === state.pid ? "black" : players.white === state.pid ? "white" : "spectator";
+        updateMePill();
 
         if (state.selected?.kind === "piece") {
           const stillThere = state.roomData.state?.pieces?.some(p => p.id === state.selected.id);
           if (!stillThere) state.selected = null;
         }
 
-        updateMePill();
-        const live = state.roomData.state || {};
-        if (live.winner) {
+        if (data.state?.winner) {
           setStatus("勝敗がついたよ。");
         } else if (!players.black || !players.white) {
           setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
         } else {
-          const now = Date.now();
-          if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-            setStatus(`ルーム ${state.roomId} に接続中。開始カウントダウン中。`);
-          } else {
-            setStatus(`ルーム ${state.roomId} に接続中。`);
-          }
-        }
-
-        if (session.kind === "online" && prev && !prev.winner && live.winner) {
-          state.roomData.playerResults = syncOnlineWinResults(state.roomData, live.winner);
+          setStatus(`ルーム ${state.roomId} に接続中。`);
         }
 
         refreshHands();
@@ -2213,28 +2119,13 @@
 
       state.heartbeat = setInterval(() => {
         if (!state.roomRef || !state.roomData || state.mySide === "spectator") return;
-        runTransaction(db, async (tx) => {
+        runTransaction(db, async tx => {
           const snap = await tx.get(state.roomRef);
           if (!snap.exists()) return;
-
           const data = snap.data() || {};
           const presence = data.presence || {};
-          const players = data.players || {};
-          const now = Date.now();
-
-          presence[state.playerId] = { side: state.mySide, lastSeen: now };
-
-          let matchStartAt = data.matchStartAt || null;
-          const bothReady = !!players.black && !!players.white;
-          if (bothReady && !matchStartAt && !(data.state && data.state.winner)) {
-            matchStartAt = now + COUNTDOWN_MS;
-          }
-
-          tx.update(state.roomRef, {
-            presence,
-            matchStartAt,
-            updatedAt: now
-          });
+          presence[state.pid] = { side: state.mySide, lastSeen: Date.now() };
+          tx.update(state.roomRef, { presence, updatedAt: Date.now() });
         }).catch(() => {});
       }, 25000);
 
@@ -2242,80 +2133,93 @@
       scheduleRender(0);
     }
 
-    async function voteRematch(yes){
+    function localReset() {
+      const labels = state.localResults;
+      const royal = royalLabelsFromResults(labels.black, labels.white);
+      state.roomData = {
+        mode: session.kind,
+        players: { black:"local", white: session.kind === "cpu" ? "cpu" : "local2" },
+        state: freshState(royal),
+        matchStartAt: null,
+        rematchVotes: {},
+        modsSnapshot: state.activeMods
+      };
+      state.selected = null;
+      state._cpuFinalized = false;
+      refreshHands();
+      scheduleRender(0);
+      if (session.kind === "cpu") scheduleCpuLoop();
+    }
+
+    async function voteRematch(yes) {
       if (session.kind !== "online") {
         if (yes) {
-          resetLocalGameAfterRematch();
-          rematchOverlay.classList.remove("show");
+          localReset();
+          hideModal();
         } else {
           leaveToHome();
         }
         return;
       }
 
-      if (!state.roomRef || !state.roomData) return;
-      const room = state.roomData;
-      if (!room.state?.winner || !isBothPlayersReady(room)) return;
+      if (!state.roomRef || !state.roomData?.state?.winner) return;
 
-      await runTransaction(db, async (tx) => {
+      await runTransaction(db, async tx => {
         const snap = await tx.get(state.roomRef);
         if (!snap.exists()) return;
-
         const data = snap.data() || {};
-        const live = data.state || {};
         const players = data.players || {};
         const rematchVotes = data.rematchVotes || {};
-        const playerResults = data.playerResults || {};
         const now = Date.now();
 
-        const mySide = players.black === state.playerId ? "black"
-                     : players.white === state.playerId ? "white"
-                     : "spectator";
-        if (mySide === "spectator") return;
-        if (!live.winner || !players.black || !players.white) return;
+        const side = players.black === state.pid ? "black" : players.white === state.pid ? "white" : "spectator";
+        if (side === "spectator") return;
 
-        if (yes) rematchVotes[state.playerId] = true;
-        else delete rematchVotes[state.playerId];
+        if (yes) rematchVotes[state.pid] = true;
+        else delete rematchVotes[state.pid];
 
-        const blackPid = players.black;
-        const whitePid = players.white;
-        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
-
+        const bothYes = !!rematchVotes[players.black] && !!rematchVotes[players.white];
         if (bothYes) {
-          const labels = royalLabelsForOnline({ players, playerResults });
+          const labels = royalLabelsFromResults(
+            data.playerResults?.[players.black] || "lose",
+            data.playerResults?.[players.white] || "lose"
+          );
           tx.update(state.roomRef, {
             state: freshState(labels),
             matchStartAt: now + COUNTDOWN_MS,
             rematchVotes: {},
-            forceHomeAt: null,
             updatedAt: now
           });
-          return;
-        }
-
-        if (!yes) {
+        } else if (!yes) {
           tx.update(state.roomRef, {
             rematchVotes: {},
             forceHomeAt: now,
             updatedAt: now
           });
-          return;
+        } else {
+          tx.update(state.roomRef, { rematchVotes, updatedAt: now });
         }
-
-        tx.update(state.roomRef, {
-          rematchVotes,
-          updatedAt: now
-        });
-      }).catch(err => {
-        setStatus(`リマッチの処理に失敗した: ${err.message}`);
       });
 
       if (!yes) leaveToHome();
     }
 
-    boardCanvas.addEventListener("click", async (ev) => {
+    function openModManager() {
+      if (state.view === "editor" || state.view === "hub") {
+        hideModal();
+        return;
+      }
+      showModal("hub");
+    }
+
+    async function ensureAINameUppercase() {
+      modNameInput.value = sanitizeNameLive(modNameInput.value);
+    }
+
+    boardCanvas.addEventListener("click", async ev => {
       if (performance.now() < state.suppressClickUntil) return;
-      if (!state.roomData) return;
+      if (!state.roomData?.state) return;
+      if (state.view !== "game") return;
 
       const sq = pointToSquare(ev);
       if (!sq) return;
@@ -2327,8 +2231,7 @@
       if (mode === "tap") {
         if (!state.selected) {
           if (clicked) {
-            state.selected = { kind: "piece", id: clicked.id };
-            state.dragSource = "board";
+            state.selected = { kind:"piece", id: clicked.id };
             refreshHands();
             scheduleRender(0);
           }
@@ -2336,36 +2239,39 @@
         }
 
         if (state.selected.kind === "piece") {
-          const selectedPiece = live.pieces.find(p => p.id === state.selected.id);
-
-          if (selectedPiece) {
-            const destBoard = screenToBoard(sq.x, sq.y);
-            const legal = legalMovesForPiece(live, selectedPiece, true);
-            const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-            if (move && canControlSide(selectedPiece.side)) {
-              const selectedKind = state.selected.kind;
-              const moved = await commitMove(destBoard, move.nextMode);
-              if (moved && selectedKind === "piece") clearSelection();
+          const selPiece = live.pieces.find(p => p.id === state.selected.id);
+          if (selPiece) {
+            const board = screenToBoard(sq.x, sq.y);
+            const legal = legalMovesForPiece(live, selPiece);
+            const move = legal.find(m => m.x === board.x && m.y === board.y);
+            if (move && canControlSide(selPiece.side)) {
+              const moved = await commitMove(board);
+              if (moved) {
+                state.selected = null;
+                refreshHands();
+                scheduleRender(0);
+              }
               return;
             }
           }
 
           if (clicked) {
-            state.selected = { kind: "piece", id: clicked.id };
-            state.dragSource = "board";
+            state.selected = { kind:"piece", id: clicked.id };
             refreshHands();
             scheduleRender(0);
-            return;
+          } else {
+            state.selected = null;
+            refreshHands();
+            scheduleRender(0);
           }
-
-          clearSelection();
           return;
         }
 
         if (state.selected.kind === "hand") {
-          const destBoard = screenToBoard(sq.x, sq.y);
-          const moved = await commitMove(destBoard, "normal");
+          const board = screenToBoard(sq.x, sq.y);
+          const moved = await commitMove(board);
           if (moved) {
+            state.selected = null;
             refreshHands();
             scheduleRender(0);
           }
@@ -2375,9 +2281,10 @@
 
       if (mode === "slide") {
         if (state.selected?.kind === "hand") {
-          const destBoard = screenToBoard(sq.x, sq.y);
-          const moved = await commitMove(destBoard, "normal");
+          const board = screenToBoard(sq.x, sq.y);
+          const moved = await commitMove(board);
           if (moved) {
+            state.selected = null;
             refreshHands();
             scheduleRender(0);
           }
@@ -2385,21 +2292,19 @@
         }
 
         if (clicked) {
-          state.selected = { kind: "piece", id: clicked.id };
-          state.dragSource = "board";
+          state.selected = { kind:"piece", id: clicked.id };
           refreshHands();
           scheduleRender(0);
         }
       }
     });
 
-    boardCanvas.addEventListener("pointerdown", (ev) => {
-      if (modeSelect.value !== "slide") return;
+    boardCanvas.addEventListener("pointerdown", ev => {
+      if (modeSelect.value !== "slide" || state.view !== "game") return;
       boardCanvas.setPointerCapture(ev.pointerId);
       state.dragPointerId = ev.pointerId;
       state.dragStart = { x: ev.clientX, y: ev.clientY };
       state.dragging = false;
-      state.dragSource = "board";
 
       const sq = pointToSquare(ev);
       if (!sq) return;
@@ -2408,59 +2313,59 @@
 
       if (state.selected?.kind === "hand") {
         const live = state.roomData?.state;
-        const empty = live && !pieceAt(live.pieces, board.x, board.y);
-        if (empty) {
-          commitMove(board, "normal").then((moved) => {
-            if (moved) {
-              refreshHands();
-              scheduleRender(0);
-            }
+        if (live && !pieceAt(live.pieces, board.x, board.y)) {
+          commitMove(board).then(() => {
+            state.selected = null;
+            refreshHands();
+            scheduleRender(0);
           });
           return;
         }
       }
 
       if (clicked) {
-        state.selected = { kind: "piece", id: clicked.id };
-        state.dragSource = "board";
+        state.selected = { kind:"piece", id: clicked.id };
         refreshHands();
         scheduleRender(0);
       }
     });
 
-    boardCanvas.addEventListener("pointermove", (ev) => {
-      if (modeSelect.value !== "slide") return;
+    boardCanvas.addEventListener("pointermove", ev => {
+      if (modeSelect.value !== "slide" || state.view !== "game") return;
       if (state.dragPointerId !== ev.pointerId || !state.dragStart) return;
       const dx = ev.clientX - state.dragStart.x;
       const dy = ev.clientY - state.dragStart.y;
       if (Math.hypot(dx, dy) > 6) state.dragging = true;
     });
 
-    function finishSlidePointer(ev){
-      if (modeSelect.value !== "slide") return;
+    document.addEventListener("pointerup", ev => {
+      if (modeSelect.value !== "slide" || state.view !== "game") return;
       if (state.dragPointerId != null && state.dragPointerId !== ev.pointerId) return;
-
       state.suppressClickUntil = performance.now() + 250;
 
-      if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const releasePoint = pointFromEvent(ev);
-        const targetMove = getSlidePieceTarget(releasePoint);
-        if (targetMove) {
-          const live = state.roomData?.state;
-          const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
-          if (selectedPiece && canControlSide(selectedPiece.side)) {
-            commitMove({ x: targetMove.x, y: targetMove.y }, targetMove.nextMode).then((moved) => {
-              if (moved) clearSelection();
-            });
-          }
+      if (state.selected?.kind === "piece" && state.dragging) {
+        const release = { x: ev.clientX, y: ev.clientY };
+        const target = getSlidePieceTarget({
+          x: (release.x - boardCanvas.getBoundingClientRect().left) / boardCanvas.getBoundingClientRect().width * 9,
+          y: (release.y - boardCanvas.getBoundingClientRect().top) / boardCanvas.getBoundingClientRect().height * 9
+        });
+        if (target) {
+          commitMove({ x: target.x, y: target.y }).then(moved => {
+            if (moved) {
+              state.selected = null;
+              refreshHands();
+              scheduleRender(0);
+            }
+          });
         }
       }
 
-      if (state.selected && state.selected.kind === "hand" && state.dragSource === "hand") {
-        const targetBoard = getHandDropTarget(ev);
-        if (targetBoard) {
-          commitMove(targetBoard, "normal").then((moved) => {
+      if (state.selected?.kind === "hand" && state.dragStart) {
+        const target = getHandDropTarget(ev);
+        if (target) {
+          commitMove(target).then(moved => {
             if (moved) {
+              state.selected = null;
               refreshHands();
               scheduleRender(0);
             }
@@ -2471,64 +2376,183 @@
       state.dragPointerId = null;
       state.dragStart = null;
       state.dragging = false;
-    }
+    }, true);
 
-    document.addEventListener("pointerup", finishSlidePointer, true);
+    openHubBtn.addEventListener("click", openModManager);
+    hubBackBtn.addEventListener("click", hideModal);
+    editorBackBtn.addEventListener("click", () => { state.view = "hub"; renderHub(); renderEditor(); });
 
-    boardCanvas.addEventListener("pointercancel", () => {
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-      state.dragSource = null;
+    newModBtn.addEventListener("click", () => {
+      const key = `MOD_${Date.now().toString(36).toUpperCase()}`;
+      state.mods[key] = {
+        key,
+        name: "",
+        versions: [],
+        draftPrompt: "",
+        draftMode: "create",
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      saveMods();
+      switchToEditor(key);
+    });
+
+    modNameInput.addEventListener("input", () => {
+      modNameInput.value = sanitizeNameLive(modNameInput.value);
+      const mod = currentMod();
+      if (mod) {
+        mod.name = modNameInput.value;
+        mod.updatedAt = Date.now();
+        saveMods();
+        renderHub();
+      }
+    });
+
+    promptInput.addEventListener("input", () => {
+      const mod = currentMod();
+      if (mod) {
+        mod.draftPrompt = promptInput.value;
+        mod.updatedAt = Date.now();
+        saveMods();
+      }
+    });
+
+    saveModBtn.addEventListener("click", async () => {
+      const mod = currentMod();
+      if (!mod) return;
+      mod.name = sanitizeNameLive(modNameInput.value || mod.name || "");
+      mod.draftPrompt = promptInput.value.trim();
+      mod.draftMode = "create";
+      await buildModWithAI("create");
+      renderHub();
+    });
+
+    cloneVerBtn.addEventListener("click", async () => {
+      const mod = currentMod();
+      if (!mod || !mod.versions.length) return;
+      mod.draftMode = "revise";
+      await buildModWithAI("revise");
+      renderHub();
+    });
+
+    deleteModBtn.addEventListener("click", () => {
+      const mod = currentMod();
+      if (!mod) return;
+      if (!confirm(`MOD「${mod.name || mod.key}」を削除する？`)) return;
+      delete state.mods[state.currentModKey];
+      saveMods();
+      state.currentModKey = "";
+      state.editorSelectedVersion = null;
+      state.editorPrompt = "";
+      state.view = "hub";
+      renderHub();
+      renderEditor();
+    });
+
+    modNameInput.addEventListener("blur", ensureAINameUppercase);
+
+    shareBtn.addEventListener("click", async () => {
+      const code = normalizeCode(roomInput.value || state.roomId);
+      if (!code) return setStatus("共有するコードがないよ。");
+      try {
+        await navigator.share?.({ text: code });
+        setStatus(`コードを共有したよ: ${code}`);
+      } catch {}
     });
 
     enterBtn.addEventListener("click", enterRoom);
-
-    shareBtn.addEventListener("click", async () => {
-      const code = normalizeRoomId(roomInput.value || state.roomId);
-      if (!code) {
-        setStatus("共有するコードがないよ。");
-        return;
-      }
-
-      if (!navigator.share) {
-        setStatus("この端末は共有に対応していないよ。");
-        return;
-      }
-
-      try{
-        await navigator.share({ text: code });
-        setStatus(`コードを共有したよ: ${code}`);
-      } catch (err) {
-        if (err && err.name !== "AbortError") {
-          setStatus(`共有できなかった: ${err.message}`);
-        }
-      }
-    });
-
-    roomInput.addEventListener("keydown", (e) => {
+    roomInput.addEventListener("keydown", e => {
       if (e.key === "Enter") enterRoom();
     });
 
     modeSelect.addEventListener("change", () => {
-      localStorage.setItem("shogi_of_speed_mode", modeSelect.value);
+      localStorage.setItem(LS_MODE, modeSelect.value);
       state.selected = null;
-      state.dragSource = null;
       refreshHands();
       scheduleRender(0);
     });
 
-    rematchYes.addEventListener("click", () => voteRematch(true));
-    rematchNo.addEventListener("click", () => voteRematch(false));
+    openHubBtn.addEventListener("click", openModManager);
 
-    window.addEventListener("resize", resizeCanvas);
+    function updateViewFromRoomInput() {
+      const parsed = parseMatchCode(roomInput.value);
+      if (parsed.base === "MOD" || parsed.base === "MODS") {
+        openModManager();
+      }
+    }
 
-    resizeCanvas();
-    refreshHands();
+    roomInput.addEventListener("input", () => {
+      if (normalizeCode(roomInput.value) === "MOD" || normalizeCode(roomInput.value) === "MODS") {
+        openModManager();
+      }
+    });
+
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && modal.classList.contains("show")) hideModal();
+    });
+
+    function renderEditorPreviewFromSelection() {
+      const mod = currentMod();
+      if (!mod) return;
+      const idx = state.editorSelectedVersion;
+      const v = idx == null ? latestVersion(mod) : mod.versions[idx];
+      if (!v) {
+        previewEl.textContent = "まだ何も選ばれていないよ。";
+        return;
+      }
+      const r = v.result?.rules || {};
+      previewEl.textContent =
+        `MOD名: ${v.result?.name || mod.name}\n` +
+        `説明: ${v.result?.summary || ""}\n` +
+        `版コメント: ${v.result?.versionNotes || ""}\n` +
+        `cooldownMs: ${r.cooldownMs ?? "-"}\n` +
+        `boardDark: ${r.boardDark ?? "-"}\n` +
+        `boardLight: ${r.boardLight ?? "-"}\n` +
+        `pieceLabelOverrides: ${JSON.stringify(r.pieceLabelOverrides || {}, null, 2)}\n` +
+        `extra: ${r.extra || "-"}`;
+    }
+
+    const originalRenderEditor = renderEditor;
+    renderEditor = function() {
+      originalRenderEditor();
+      renderEditorPreviewFromSelection();
+      refreshModHubText();
+    };
+
+    function applyActiveModsOnStart() {
+      state.activeMods = compileSelectedMods();
+      applyThemeFromActiveMods();
+    }
+
+    applyActiveModsOnStart();
+
+    function restoreMode() {
+      const saved = localStorage.getItem(LS_MODE);
+      if (saved === "tap" || saved === "slide") modeSelect.value = saved;
+    }
+
+    restoreMode();
     updateMePill();
-    updateRematchOverlay();
-    setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+    refreshHands();
+    resizeCanvas();
     scheduleRender(0);
+
+    // 入室/作成時は MOD=... を読む
+    const originalEnterRoom = enterRoom;
+    enterRoom = async function() {
+      const parsed = parseMatchCode(roomInput.value);
+      if (parsed.base === "MOD" || parsed.base === "MODS") {
+        openModManager();
+        setStatus("MOD制作画面を開いたよ。もう一度入室/作成で戻れる。");
+        return;
+      }
+      state.activeMods = [];
+      applyThemeFromActiveMods();
+      await originalEnterRoom();
+    };
+
+    // すぐ使えるように、モダンな最小スタート
+    setStatus("ROOM CODE を入れて「入室 / 作成」を押してね。MOD と入力するとMOD制作画面になるよ。");
   </script>
 </body>
 </html>
