@@ -78,7 +78,7 @@
     }
 
     #roomInput{
-      width:170px;
+      width:180px;
       max-width:100%;
       padding:9px 10px;
       border-radius:11px;
@@ -347,6 +347,7 @@
     const app = initializeApp(firebaseConfig);
     try { getAnalytics(app); } catch {}
     const db = getFirestore(app);
+    const cpuMemoryDoc = doc(db, "ai", "cpu_policy_v3");
 
     const boardCanvas = document.getElementById("board");
     const ctx = boardCanvas.getContext("2d");
@@ -408,22 +409,29 @@
     const session = {
       kind: "online", // online | cpu | local_dual
       renderTimer: null,
-      cpuTimer: null,
-      heartbeatTimer: null,
-      cpuCloudSyncing: null
+      cpuTimer: null
     };
 
-    const cpuBrainStorageKey = "shogi_of_speed_cpu_brain_v2";
-    const lastOutcomeStorageKey = "shogi_of_speed_last_outcome";
+    const cpuMemoryKey = "shogi_of_speed_cpu_policy_v3";
+    const cpuDefaultWeights = {
+      bias: 0,
+      capture: 1.8,
+      promotion: 0.9,
+      check: 0.8,
+      center: 0.18,
+      mobility: 0.10,
+      kingSafety: 1.4,
+      enemyKingDist: 0.18,
+      selfThreat: -2.2,
+      hangPenalty: -1.4,
+      dropValue: 0.22
+    };
 
     const cpuBrain = {
-      brain: loadCpuBrainFromStorage(),
-      cloudLoaded: false,
-      episode: [],
-      pieceMoveIndex: {},
-      deltaWeights: {},
-      deltaStats: { games: 0, wins: 0, losses: 0, moves: 0, captures: 0 },
-      finalizedKey: ""
+      loaded: false,
+      weights: { ...cpuDefaultWeights },
+      stats: { games: 0, wins: 0, losses: 0 },
+      episode: null
     };
 
     const state = {
@@ -439,51 +447,15 @@
       dragStart: null,
       dragging: false,
       dragSource: null,
-      suppressClickUntil: 0,
-      gameEndKey: "",
-      outcomeSaveKey: ""
+      suppressClickUntil: 0
     };
     localStorage.setItem("shogi_of_speed_pid", state.playerId);
 
     const savedMode = localStorage.getItem("shogi_of_speed_mode");
     if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
 
-    function loadCpuBrainFromStorage() {
-      try {
-        const raw = localStorage.getItem(cpuBrainStorageKey);
-        if (!raw) {
-          return {
-            version: 2,
-            weights: {},
-            stats: { games: 0, wins: 0, losses: 0, moves: 0, captures: 0 }
-          };
-        }
-        const parsed = JSON.parse(raw);
-        return {
-          version: 2,
-          weights: parsed.weights || {},
-          stats: {
-            games: parsed.stats?.games || 0,
-            wins: parsed.stats?.wins || 0,
-            losses: parsed.stats?.losses || 0,
-            moves: parsed.stats?.moves || 0,
-            captures: parsed.stats?.captures || 0
-          }
-        };
-      } catch {
-        return {
-          version: 2,
-          weights: {},
-          stats: { games: 0, wins: 0, losses: 0, moves: 0, captures: 0 }
-        };
-      }
-    }
-
-    function saveCpuBrainToStorage() {
-      try {
-        localStorage.setItem(cpuBrainStorageKey, JSON.stringify(cpuBrain.brain));
-      } catch {}
-    }
+    function isCPU() { return session.kind === "cpu"; }
+    function isLocalDual() { return session.kind === "local_dual"; }
 
     function applyThemeFromCSS(){
       const cs = getComputedStyle(document.documentElement);
@@ -496,25 +468,14 @@
     applyThemeFromCSS();
 
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    if (mq.addEventListener) {
-      mq.addEventListener("change", () => {
-        applyThemeFromCSS();
-        scheduleRender(0);
-      });
-    } else if (mq.addListener) {
-      mq.addListener(() => {
-        applyThemeFromCSS();
-        scheduleRender(0);
-      });
-    }
+    if (mq.addEventListener) mq.addEventListener("change", () => { applyThemeFromCSS(); scheduleRender(0); });
+    else if (mq.addListener) mq.addListener(() => { applyThemeFromCSS(); scheduleRender(0); });
 
     function clearTimers(){
       if (session.renderTimer) clearTimeout(session.renderTimer);
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      if (session.heartbeatTimer) clearInterval(session.heartbeatTimer);
       session.renderTimer = null;
       session.cpuTimer = null;
-      session.heartbeatTimer = null;
     }
 
     function normalizeRoomId(v) {
@@ -542,24 +503,6 @@
         };
       }
       return randomRoyalLabels();
-    }
-
-    function royalLabelsFromOutcomes(blackOutcome, whiteOutcome, blackPid, whitePid) {
-      const normalize = (outcome, pid) => {
-        if (outcome === "win" || outcome === "loss") return outcome;
-        const stored = pid === state.playerId ? localStorage.getItem(lastOutcomeStorageKey) : null;
-        if (stored === "win" || stored === "loss") return stored;
-        return null;
-      };
-
-      const b = normalize(blackOutcome, blackPid);
-      const w = normalize(whiteOutcome, whitePid);
-
-      if (!b || !w) return randomRoyalLabels();
-      if (b === w) return randomRoyalLabels();
-      return b === "win"
-        ? { black: "王", white: "玉" }
-        : { black: "玉", white: "王" };
     }
 
     function isPromotableType(type) {
@@ -604,7 +547,7 @@
       return pieces;
     }
 
-    function freshState(royalLabels = randomRoyalLabels()) {
+    function freshState(royalLabels = buildRoyalLabels(null)) {
       return {
         pieces: initialPieces(),
         hands: makeHands(),
@@ -634,7 +577,7 @@
       return {
         players: { black: playerId, white: null },
         presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
-        state: freshState(randomRoyalLabels()),
+        state: freshState(buildRoyalLabels(null)),
         lastWinnerSide: null,
         matchStartAt: null,
         rematchVotes: {},
@@ -648,7 +591,7 @@
         mode: kind,
         players: { black: "local", white: kind === "cpu" ? "cpu" : "local2" },
         presence: {},
-        state: freshState(randomRoyalLabels()),
+        state: freshState(buildRoyalLabels(null)),
         lastWinnerSide: null,
         matchStartAt: null,
         rematchVotes: {},
@@ -656,30 +599,25 @@
       };
     }
 
-    function forward(side) {
-      return side === "black" ? -1 : 1;
-    }
-
-    function opposite(side) {
-      return side === "black" ? "white" : "black";
-    }
-
-    function isInside(x, y) {
-      return x >= 0 && x < 9 && y >= 0 && y < 9;
-    }
-
-    function isInPromotionZone(side, y) {
-      return PROMOTION_ZONE[side].includes(y);
-    }
-
-    function forcePromoteNeeded(piece, destY) {
-      if (piece.type === "pawn" || piece.type === "lance") {
-        return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
+    function setLocalRoom(kind){
+      clearTimers();
+      if (state.unsub) {
+        state.unsub();
+        state.unsub = null;
       }
-      if (piece.type === "knight") {
-        return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
+      state.roomRef = null;
+      state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
+      state.mySide = kind === "cpu" ? "black" : "both";
+      state.roomData = makeLocalRoom(kind);
+      state.selected = null;
+      updateMePill();
+      refreshHands();
+      scheduleRender(0);
+      setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
+      if (kind === "cpu") {
+        cpuNewEpisode();
+        scheduleCpuThink(400);
       }
-      return false;
     }
 
     function boardMap(pieces) {
@@ -708,6 +646,32 @@
         }
       }
       return out;
+    }
+
+    function forward(side) {
+      return side === "black" ? -1 : 1;
+    }
+
+    function opposite(side) {
+      return side === "black" ? "white" : "black";
+    }
+
+    function isInside(x, y) {
+      return x >= 0 && x < 9 && y >= 0 && y < 9;
+    }
+
+    function isInPromotionZone(side, y) {
+      return PROMOTION_ZONE[side].includes(y);
+    }
+
+    function forcePromoteNeeded(piece, destY) {
+      if (piece.type === "pawn" || piece.type === "lance") {
+        return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
+      }
+      if (piece.type === "knight") {
+        return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
+      }
+      return false;
     }
 
     function pseudoMovesForType(side, type, x, y, pieces) {
@@ -881,12 +845,10 @@
 
       if (piece.promoMode === "normal") {
         if (!baseReach) return null;
-
         if (forced) {
           if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         }
-
         const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
         if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode };
@@ -971,17 +933,6 @@
       if (session.kind === "cpu") return side === "black";
       if (state.mySide === "spectator") return false;
       return side === state.mySide;
-    }
-
-    function selectedSideOfSelection() {
-      if (!state.selected) return null;
-      if (state.selected.kind === "piece") {
-        const live = state.roomData?.state;
-        const p = live?.pieces.find(x => x.id === state.selected.id);
-        return p?.side || null;
-      }
-      if (state.selected.kind === "hand") return state.selected.side;
-      return null;
     }
 
     function selectedLegalMoves(live) {
@@ -1321,18 +1272,8 @@
 
       session.renderTimer = setTimeout(() => {
         session.renderTimer = null;
-        safeRenderFrame();
-      }, delay);
-    }
-
-    function safeRenderFrame() {
-      try {
         renderFrame();
-      } catch (err) {
-        console.error(err);
-        setStatus(`描画で止まったみたい。復帰中: ${err?.message || err}`);
-        scheduleRender(500);
-      }
+      }, delay);
     }
 
     function scheduleCpuThink(delay = 400) {
@@ -1364,120 +1305,109 @@
       }
     }
 
-    let lastPaintAt = 0;
-
     function renderFrame() {
       if (!state.boardReady) return;
 
-      try {
-        const rect = boardCanvas.getBoundingClientRect();
-        const w = rect.width;
-        const h = rect.height;
-        const cell = w / 9;
-        const now = Date.now();
+      const rect = boardCanvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      const cell = w / 9;
+      const now = Date.now();
 
-        updateHandCooldownIndicators(now);
+      updateHandCooldownIndicators(now);
 
-        ctx.clearRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
-        for (let sy = 0; sy < 9; sy++) {
-          for (let sx = 0; sx < 9; sx++) {
-            const board = screenToBoard(sx, sy);
-            const light = (board.x + board.y) % 2 === 0;
-            ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
-            ctx.fillRect(sx * cell, sy * cell, cell, cell);
-          }
+      for (let sy = 0; sy < 9; sy++) {
+        for (let sx = 0; sx < 9; sx++) {
+          const board = screenToBoard(sx, sy);
+          const light = (board.x + board.y) % 2 === 0;
+          ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
+          ctx.fillRect(sx * cell, sy * cell, cell, cell);
         }
-
-        ctx.strokeStyle = "rgba(104,79,42,.55)";
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= 9; i++) {
-          ctx.beginPath();
-          ctx.moveTo(i * cell, 0);
-          ctx.lineTo(i * cell, 9 * cell);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(0, i * cell);
-          ctx.lineTo(9 * cell, i * cell);
-          ctx.stroke();
-        }
-
-        const live = state.roomData?.state;
-        const room = state.roomData;
-
-        if (!live) {
-          ctx.fillStyle = "rgba(0,0,0,.55)";
-          ctx.font = "600 16px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("ルーム接続待ち", w / 2, h / 2);
-          lastPaintAt = now;
-          scheduleRender();
-          return;
-        }
-
-        const legal = selectedLegalMoves(live);
-
-        for (const m of legal) {
-          const s = boardToScreen(m.x, m.y);
-          ctx.fillStyle = moveColor(m.kind);
-          ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
-        }
-
-        const selectedPiece = selectedPieceObj();
-        if (selectedPiece) {
-          const s = boardToScreen(selectedPiece.x, selectedPiece.y);
-          ctx.strokeStyle = "rgba(138,180,255,.95)";
-          ctx.lineWidth = 4;
-          ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
-        }
-
-        for (const p of live.pieces) {
-          const sp = boardToScreen(p.x, p.y);
-          const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-          drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
-        }
-
-        const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
-        const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
-
-        if (live.winner) {
-          ctx.fillStyle = "rgba(0,0,0,.35)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 26px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
-          ctx.font = "500 15px system-ui, sans-serif";
-          ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
-        } else if (!bothReady) {
-          ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 22px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("相手待ち", w / 2, h / 2 - 6);
-          ctx.font = "500 14px system-ui, sans-serif";
-          ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
-        } else if (countdownText) {
-          ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "900 54px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(countdownText, w / 2, h / 2 + 10);
-          ctx.font = "600 16px system-ui, sans-serif";
-          ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
-        }
-
-        updateRematchOverlay();
-        lastPaintAt = now;
-        scheduleRender();
-        void handleGameEndIfNeeded();
-      } catch (err) {
-        console.error(err);
-        setStatus(`描画が止まったので復帰中: ${err?.message || err}`);
-        scheduleRender(500);
       }
+
+      ctx.strokeStyle = "rgba(104,79,42,.55)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 9; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cell, 0);
+        ctx.lineTo(i * cell, 9 * cell);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * cell);
+        ctx.lineTo(9 * cell, i * cell);
+        ctx.stroke();
+      }
+
+      const live = state.roomData?.state;
+      const room = state.roomData;
+
+      if (!live) {
+        ctx.fillStyle = "rgba(0,0,0,.55)";
+        ctx.font = "600 16px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("ルーム接続待ち", w / 2, h / 2);
+        scheduleRender();
+        return;
+      }
+
+      const legal = selectedLegalMoves(live);
+
+      for (const m of legal) {
+        const s = boardToScreen(m.x, m.y);
+        ctx.fillStyle = moveColor(m.kind);
+        ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
+      }
+
+      const selectedPiece = selectedPieceObj();
+      if (selectedPiece) {
+        const s = boardToScreen(selectedPiece.x, selectedPiece.y);
+        ctx.strokeStyle = "rgba(138,180,255,.95)";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
+      }
+
+      for (const p of live.pieces) {
+        const sp = boardToScreen(p.x, p.y);
+        const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
+        drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
+      }
+
+      const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
+      const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
+
+      if (live.winner) {
+        ctx.fillStyle = "rgba(0,0,0,.35)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 26px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
+        ctx.font = "500 15px system-ui, sans-serif";
+        ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
+      } else if (!bothReady) {
+        ctx.fillStyle = "rgba(0,0,0,.28)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 22px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("相手待ち", w / 2, h / 2 - 6);
+        ctx.font = "500 14px system-ui, sans-serif";
+        ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
+      } else if (countdownText) {
+        ctx.fillStyle = "rgba(0,0,0,.28)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "900 54px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(countdownText, w / 2, h / 2 + 10);
+        ctx.font = "600 16px system-ui, sans-serif";
+        ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
+      }
+
+      updateRematchOverlay();
+      scheduleRender();
     }
 
     function pointToSquare(ev) {
@@ -1523,13 +1453,11 @@
       state.dragStart = null;
       state.dragging = false;
       state.dragSource = null;
-      state.gameEndKey = "";
-      state.outcomeSaveKey = "";
       hideRematchOverlay();
       roomInput.value = "";
       updateMePill();
       refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね.");
       scheduleRender(0);
     }
 
@@ -1605,428 +1533,15 @@
       return null;
     }
 
-    function selectedLegalMoveByScreen(live, selectedPiece, destBoard) {
-      const legal = legalMovesForPiece(live, selectedPiece, true);
-      return legal.find(m => m.x === destBoard.x && m.y === destBoard.y) || null;
-    }
-
-    function cpuWeight(key) {
-      return cpuBrain.brain.weights[key] || 0;
-    }
-
-    function cpuAdjustWeight(key, amount) {
-      const next = (cpuBrain.brain.weights[key] || 0) + amount;
-      cpuBrain.brain.weights[key] = next;
-      cpuBrain.deltaWeights[key] = (cpuBrain.deltaWeights[key] || 0) + amount;
-    }
-
-    function cpuAdjustStat(name, amount) {
-      cpuBrain.brain.stats[name] = (cpuBrain.brain.stats[name] || 0) + amount;
-      cpuBrain.deltaStats[name] = (cpuBrain.deltaStats[name] || 0) + amount;
-    }
-
-    function cpuValue(type) {
-      return {
-        king: 10000,
-        rook: 500,
-        bishop: 450,
-        gold: 320,
-        silver: 280,
-        knight: 240,
-        lance: 220,
-        pawn: 120,
-        tokin: 200,
-        proLance: 200,
-        proKnight: 200,
-        proSilver: 200,
-        horse: 650,
-        dragon: 700
-      }[type] || 100;
-    }
-
-    function cpuFeatureKeys(live, selected, dest, move, capturedPiece, unsafe, givesCheck) {
-      const keys = [];
-
-      if (selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === selected.id);
-        if (piece) keys.push(`piece:${piece.type}`);
-        keys.push("action:move");
-      } else {
-        keys.push(`drop:${selected.type}`);
-        keys.push("action:drop");
+    function selectedSideOfSelection() {
+      if (!state.selected) return null;
+      if (state.selected.kind === "piece") {
+        const live = state.roomData?.state;
+        const p = live?.pieces.find(x => x.id === state.selected.id);
+        return p?.side || null;
       }
-
-      if (capturedPiece) keys.push(`capture:${capturedPiece.type}`);
-      if (move.nextMode === "promoted") keys.push("promote");
-      if (move.kind === "promo") keys.push("promoPath");
-      if (move.kind === "both") keys.push("bothPath");
-      if (givesCheck) keys.push("check");
-      if (unsafe) keys.push("unsafe");
-      else keys.push("safe");
-
-      const dist = Math.abs(dest.x - 4) + Math.abs(dest.y - 4);
-      if (dist <= 1) keys.push("dst:center");
-      else if (dist <= 3) keys.push("dst:mid");
-      else keys.push("dst:edge");
-
-      keys.push(`row:${dest.y}`);
-      keys.push(`col:${dest.x}`);
-
-      return keys;
-    }
-
-    function cpuApplyRewardToEntry(entry, reward) {
-      if (!entry || !entry.features || !entry.features.length) return;
-      const alpha = 0.04;
-      const per = (reward / entry.features.length) * alpha;
-      for (const key of entry.features) cpuAdjustWeight(key, per);
-      entry.reward = (entry.reward || 0) + reward;
-    }
-
-    function cpuRewardImmediateFromCapture(capturedPiece, entry) {
-      if (!capturedPiece || !entry) return;
-      const reward = Math.max(0.12, cpuValue(capturedPiece.type) / 1000);
-      cpuAdjustStat("captures", 1);
-      cpuAdjustWeight(`capture:${capturedPiece.type}`, reward * 0.15);
-      cpuApplyRewardToEntry(entry, reward);
-      saveCpuBrainToStorage();
-    }
-
-    function cpuPenaltyForCapturedWhitePiece(piece) {
-      if (!piece) return;
-      const penalty = -Math.max(0.12, cpuValue(piece.type) / 1000);
-      cpuAdjustWeight(`lost:${piece.type}`, penalty);
-      const idx = cpuBrain.pieceMoveIndex[piece.id];
-      if (idx != null && cpuBrain.episode[idx]) {
-        cpuApplyRewardToEntry(cpuBrain.episode[idx], -Math.max(0.5, cpuValue(piece.type) / 500));
-      }
-      saveCpuBrainToStorage();
-    }
-
-    async function syncCpuBrainFromCloud() {
-      if (session.kind !== "cpu") return;
-      if (session.cpuCloudSyncing) return session.cpuCloudSyncing;
-
-      session.cpuCloudSyncing = (async () => {
-        try {
-          const ref = doc(db, "ai_models", "cpu_brain_v2");
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            const data = snap.data() || {};
-            const remoteWeights = data.weights || {};
-            for (const [k, v] of Object.entries(remoteWeights)) {
-              cpuBrain.brain.weights[k] = (cpuBrain.brain.weights[k] || 0) * 0.7 + v * 0.3;
-            }
-            const remoteStats = data.stats || {};
-            cpuBrain.brain.stats.games = Math.max(cpuBrain.brain.stats.games || 0, remoteStats.games || 0);
-            cpuBrain.brain.stats.wins = Math.max(cpuBrain.brain.stats.wins || 0, remoteStats.wins || 0);
-            cpuBrain.brain.stats.losses = Math.max(cpuBrain.brain.stats.losses || 0, remoteStats.losses || 0);
-            cpuBrain.brain.stats.moves = Math.max(cpuBrain.brain.stats.moves || 0, remoteStats.moves || 0);
-            cpuBrain.brain.stats.captures = Math.max(cpuBrain.brain.stats.captures || 0, remoteStats.captures || 0);
-            saveCpuBrainToStorage();
-          }
-        } catch {}
-        cpuBrain.cloudLoaded = true;
-        session.cpuCloudSyncing = null;
-      })();
-
-      return session.cpuCloudSyncing;
-    }
-
-    async function flushCpuBrainToCloud() {
-      if (session.kind !== "cpu") return;
-      const hasDeltaWeights = Object.keys(cpuBrain.deltaWeights).length > 0;
-      const hasDeltaStats = Object.values(cpuBrain.deltaStats).some(v => v !== 0);
-      if (!hasDeltaWeights && !hasDeltaStats) return;
-
-      const ref = doc(db, "ai_models", "cpu_brain_v2");
-      const deltaWeights = { ...cpuBrain.deltaWeights };
-      const deltaStats = { ...cpuBrain.deltaStats };
-
-      cpuBrain.deltaWeights = {};
-      cpuBrain.deltaStats = { games: 0, wins: 0, losses: 0, moves: 0, captures: 0 };
-
-      try {
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(ref);
-          const remote = snap.exists() ? snap.data() || {} : {};
-          const nextWeights = { ...(remote.weights || {}) };
-          const nextStats = {
-            games: (remote.stats?.games || 0) + (deltaStats.games || 0),
-            wins: (remote.stats?.wins || 0) + (deltaStats.wins || 0),
-            losses: (remote.stats?.losses || 0) + (deltaStats.losses || 0),
-            moves: (remote.stats?.moves || 0) + (deltaStats.moves || 0),
-            captures: (remote.stats?.captures || 0) + (deltaStats.captures || 0)
-          };
-          for (const [k, v] of Object.entries(deltaWeights)) {
-            nextWeights[k] = (nextWeights[k] || 0) + v;
-          }
-          tx.set(ref, {
-            version: 2,
-            weights: nextWeights,
-            stats: nextStats,
-            updatedAt: Date.now()
-          }, { merge: true });
-        });
-      } catch {}
-      saveCpuBrainToStorage();
-    }
-
-    function scoreCpuAction(live, selected, dest, move, nextState, capturedPiece) {
-      const features = cpuFeatureKeys(live, selected, dest, move, capturedPiece, false, false);
-
-      let score = 0;
-      for (const key of features) score += cpuWeight(key);
-
-      if (capturedPiece) score += cpuValue(capturedPiece.type) * 1.5;
-      if (move.nextMode === "promoted") score += 40;
-      if (move.kind === "promo") score += 18;
-      if (move.kind === "both") score += 10;
-
-      const dist = Math.abs(dest.x - 4) + Math.abs(dest.y - 4);
-      score += dist <= 1 ? 12 : dist <= 3 ? 5 : 0;
-
-      if (selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === selected.id);
-        if (piece) {
-          const moved = nextState.pieces.find(p => p.id === piece.id);
-          if (moved && isSquareAttacked(nextState.pieces, moved.x, moved.y, "black")) {
-            score -= 160;
-          }
-        }
-      }
-
-      if (selected.kind === "hand") score += 4;
-
-      score += Math.random() * 3;
-      return { score, features };
-    }
-
-    function cpuCandidateActions(live) {
-      const now = Date.now();
-      const actions = [];
-      const side = "white";
-
-      for (const p of live.pieces) {
-        if (p.side !== side) continue;
-        if (p.cooldownUntil && now < p.cooldownUntil) continue;
-        const moves = legalMovesForPiece(live, p, true);
-        for (const mv of moves) {
-          actions.push({
-            selected: { kind: "piece", id: p.id },
-            dest: { x: mv.x, y: mv.y },
-            move: mv
-          });
-        }
-      }
-
-      if ((live.handCooldownUntil?.white || 0) <= now) {
-        for (const t of pieceOrder) {
-          const count = live.hands.white?.[t] || 0;
-          if (!count) continue;
-          for (let y = 0; y < 9; y++) {
-            for (let x = 0; x < 9; x++) {
-              if (pieceAt(live.pieces, x, y)) continue;
-              actions.push({
-                selected: { kind: "hand", side: "white", type: t },
-                dest: { x, y },
-                move: { x, y, kind: "normal", nextMode: "normal" }
-              });
-            }
-          }
-        }
-      }
-
-      return actions;
-    }
-
-    function cpuThink() {
-      if (!isCPU() || !state.roomData) return;
-      const live = state.roomData.state;
-      if (!live || live.winner) return;
-
-      const now = Date.now();
-      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-        scheduleCpuThink(state.roomData.matchStartAt - now + 30);
-        return;
-      }
-
-      const actions = cpuCandidateActions(live);
-      if (!actions.length) {
-        scheduleCpuThink(500);
-        return;
-      }
-
-      const scored = [];
-      for (const action of actions) {
-        const next = applyActionToLive(live, action.selected, "white", action.dest, false);
-        if (!next) continue;
-        const captured = pieceAt(live.pieces, action.dest.x, action.dest.y);
-        const result = scoreCpuAction(live, action.selected, action.dest, action.move, next, captured && captured.side === "white" ? captured : null);
-        scored.push({ ...action, next, score: result.score, features: result.features, captured });
-      }
-
-      if (!scored.length) {
-        scheduleCpuThink(350);
-        return;
-      }
-
-      scored.sort((a, b) => b.score - a.score);
-      const top = scored.slice(0, Math.min(6, scored.length));
-      const pick = top[Math.floor(Math.random() * top.length)];
-
-      if (pick.selected.kind === "piece") {
-        const movedPieceId = pick.selected.id;
-        cpuBrain.episode.push({
-          pieceId: movedPieceId,
-          features: pick.features,
-          reward: 0
-        });
-        cpuBrain.pieceMoveIndex[movedPieceId] = cpuBrain.episode.length - 1;
-        cpuAdjustStat("moves", 1);
-        if (pick.captured && pick.captured.side === "white") {
-          cpuRewardImmediateFromCapture(pick.captured, cpuBrain.episode[cpuBrain.episode.length - 1]);
-        }
-      } else {
-        cpuBrain.episode.push({
-          pieceId: null,
-          features: pick.features,
-          reward: 0
-        });
-        cpuAdjustStat("moves", 1);
-      }
-
-      const next = pick.next;
-      state.roomData.state = next;
-      state.roomData.updatedAt = now;
-      scheduleRender(0);
-      scheduleCpuThink(450);
-    }
-
-    function cpuFinalizeEpisode(winnerSide) {
-      if (session.kind !== "cpu") return;
-      if (!cpuBrain.episode.length) return;
-      const key = `${winnerSide}:${state.roomData?.state?.rev || 0}`;
-      if (cpuBrain.finalizedKey === key) return;
-      cpuBrain.finalizedKey = key;
-
-      const cpuWon = winnerSide === "white";
-      const finalReward = cpuWon ? 12 : -12;
-      let factor = 1;
-
-      for (let i = cpuBrain.episode.length - 1; i >= 0; i--) {
-        cpuApplyRewardToEntry(cpuBrain.episode[i], finalReward * factor);
-        factor *= 0.97;
-      }
-
-      cpuAdjustStat("games", 1);
-      if (cpuWon) cpuAdjustStat("wins", 1);
-      else cpuAdjustStat("losses", 1);
-
-      saveCpuBrainToStorage();
-      void flushCpuBrainToCloud();
-      cpuBrain.episode = [];
-      cpuBrain.pieceMoveIndex = {};
-    }
-
-    async function fetchProfileOutcome(tx, pid) {
-      try {
-        const snap = await tx.get(doc(db, "player_profiles", pid));
-        if (!snap.exists()) return null;
-        const val = snap.data()?.lastOutcome;
-        return val === "win" || val === "loss" ? val : null;
-      } catch {
-        return null;
-      }
-    }
-
-    async function maybeSaveOutcomeProfile(winnerSide) {
-      if (session.kind === "local_dual") return;
-
-      const humanSide = session.kind === "cpu" ? "black" : state.mySide;
-      if (humanSide !== "black" && humanSide !== "white") return;
-
-      const outcome = winnerSide === humanSide ? "win" : "loss";
-      localStorage.setItem(lastOutcomeStorageKey, outcome);
-
-      const key = `${session.kind}:${state.roomId || "local"}:${state.roomData?.state?.rev || 0}:${outcome}`;
-      if (state.outcomeSaveKey === key) return;
-      state.outcomeSaveKey = key;
-
-      try {
-        await setDoc(doc(db, "player_profiles", state.playerId), {
-          lastOutcome: outcome,
-          updatedAt: Date.now()
-        }, { merge: true });
-      } catch {}
-    }
-
-    async function handleGameEndIfNeeded() {
-      const live = state.roomData?.state;
-      if (!live || !live.winner) {
-        state.gameEndKey = "";
-        state.outcomeSaveKey = "";
-        if (session.kind === "cpu") {
-          cpuBrain.finalizedKey = "";
-        }
-        return;
-      }
-
-      const key = `${session.kind}:${state.roomId || "local"}:${live.rev}:${live.winner}`;
-      if (state.gameEndKey === key) return;
-      state.gameEndKey = key;
-
-      await maybeSaveOutcomeProfile(live.winner).catch(() => {});
-      if (session.kind === "cpu") cpuFinalizeEpisode(live.winner);
-    }
-
-    function refreshLocalGame(royalLabels = randomRoyalLabels()) {
-      if (!state.roomData) return;
-      state.roomData.state = freshState(royalLabels);
-      state.roomData.state.royalLabels = royalLabels;
-      state.roomData.lastWinnerSide = null;
-      state.roomData.matchStartAt = null;
-      state.roomData.rematchVotes = {};
-      state.roomData.updatedAt = Date.now();
-      state.selected = null;
-      state.gameEndKey = "";
-      state.outcomeSaveKey = "";
-      cpuBrain.finalizedKey = "";
-      cpuBrain.episode = [];
-      cpuBrain.pieceMoveIndex = {};
-      refreshHands();
-      scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(350);
-    }
-
-    function setLocalRoom(kind){
-      clearTimers();
-      if (state.unsub) {
-        state.unsub();
-        state.unsub = null;
-      }
-      state.roomRef = null;
-      state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
-      state.mySide = kind === "cpu" ? "black" : "both";
-      state.roomData = makeLocalRoom(kind);
-      state.selected = null;
-      state.gameEndKey = "";
-      state.outcomeSaveKey = "";
-      updateMePill();
-      refreshHands();
-      scheduleRender(0);
-      setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
-      if (kind === "cpu") {
-        void syncCpuBrainFromCloud();
-        scheduleCpuThink(400);
-      }
-    }
-
-    function maybeUpdateLocalRoyalLabelsAfterRematch() {
-      if (!state.roomData) return;
-      const historyWinner = state.roomData.lastWinnerSide || state.roomData.state?.lastWinnerSide || null;
-      const royalLabels = buildRoyalLabels(historyWinner);
-      refreshLocalGame(royalLabels);
+      if (state.selected.kind === "hand") return state.selected.side;
+      return null;
     }
 
     function getSlidePieceTarget(releasePoint) {
@@ -2078,12 +1593,559 @@
       };
     }
 
+    function cpuWeightsFromStorage() {
+      try {
+        const raw = localStorage.getItem(cpuMemoryKey);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== "object") return null;
+        return data;
+      } catch {
+        return null;
+      }
+    }
+
+    function cpuSaveToStorage() {
+      try {
+        localStorage.setItem(cpuMemoryKey, JSON.stringify({
+          weights: cpuBrain.weights,
+          stats: cpuBrain.stats,
+          savedAt: Date.now()
+        }));
+      } catch {}
+    }
+
+    async function cpuLoadMemory() {
+      if (cpuBrain.loaded) return;
+
+      const local = cpuWeightsFromStorage();
+      if (local?.weights) {
+        cpuBrain.weights = { ...cpuBrain.weights, ...local.weights };
+      }
+      if (local?.stats) {
+        cpuBrain.stats = { ...cpuBrain.stats, ...local.stats };
+      }
+
+      try {
+        const snap = await getDoc(cpuMemoryDoc);
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          if (data.weights && typeof data.weights === "object") {
+            cpuBrain.weights = { ...cpuBrain.weights, ...data.weights };
+          }
+          if (data.stats && typeof data.stats === "object") {
+            cpuBrain.stats = { ...cpuBrain.stats, ...data.stats };
+          }
+        }
+      } catch {}
+
+      cpuBrain.loaded = true;
+      cpuSaveToStorage();
+    }
+
+    async function cpuSaveMemory() {
+      cpuSaveToStorage();
+      try {
+        await setDoc(cpuMemoryDoc, {
+          weights: cpuBrain.weights,
+          stats: cpuBrain.stats,
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch {}
+    }
+
+    function cpuNewEpisode() {
+      cpuBrain.episode = {
+        startedAt: Date.now(),
+        actions: [],
+        pieceToActionIndex: new Map(),
+        pendingLossRewards: 0
+      };
+    }
+
+    function cpuClampWeights() {
+      for (const key of Object.keys(cpuBrain.weights)) {
+        cpuBrain.weights[key] = Math.max(-20, Math.min(20, cpuBrain.weights[key]));
+      }
+    }
+
+    function cpuFeatureDot(features) {
+      let s = 0;
+      for (const [k, v] of Object.entries(features)) {
+        s += (cpuBrain.weights[k] || 0) * v;
+      }
+      return s;
+    }
+
+    function cpuFindMovedPiece(nextState, selected, dest, actorSide) {
+      if (selected.kind === "piece") {
+        return nextState.pieces.find(p => p.id === selected.id) || null;
+      }
+      if (selected.kind === "hand") {
+        return nextState.pieces.find(p => p.side === actorSide && p.type === selected.type && p.x === dest.x && p.y === dest.y) || null;
+      }
+      return null;
+    }
+
+    function cpuBaseValue(type) {
+      return {
+        king: 10000,
+        rook: 500,
+        bishop: 450,
+        gold: 320,
+        silver: 280,
+        knight: 240,
+        lance: 220,
+        pawn: 120,
+        tokin: 200,
+        proLance: 210,
+        proKnight: 210,
+        proSilver: 210,
+        horse: 650,
+        dragon: 700
+      }[type] || 100;
+    }
+
+    function cpuImmediateReward(live, selected, dest, move, nextState, actorSide) {
+      let reward = 0;
+      const piece = selected.kind === "piece" ? live.pieces.find(p => p.id === selected.id) : null;
+      const occ = pieceAt(live.pieces, dest.x, dest.y);
+      if (occ && occ.side !== actorSide) reward += cpuBaseValue(occ.type) / 90;
+
+      if (move.nextMode === "promoted") reward += 0.6;
+      if (move.kind === "promo") reward += 0.3;
+
+      const enemySide = opposite(actorSide);
+      const enemyKing = kingPos(nextState.pieces, enemySide);
+      if (enemyKing && isSquareAttacked(nextState.pieces, enemyKing.x, enemyKing.y, actorSide)) reward += 0.7;
+
+      const movedPiece = cpuFindMovedPiece(nextState, selected, dest, actorSide);
+      if (movedPiece) {
+        const attacked = isSquareAttacked(nextState.pieces, movedPiece.x, movedPiece.y, enemySide);
+        if (attacked) reward -= 0.7;
+        const center = 1 - ((Math.abs(4 - movedPiece.x) + Math.abs(4 - movedPiece.y)) / 8);
+        reward += center * 0.14;
+
+        const mob = legalMovesForPiece(nextState, movedPiece, false).length;
+        reward += Math.min(1, mob / 18) * 0.10;
+      }
+
+      if (selected.kind === "hand") {
+        reward += 0.12;
+      }
+
+      return reward;
+    }
+
+    function cpuExtractFeatures(live, selected, dest, move, nextState, actorSide) {
+      const f = {
+        bias: 1,
+        capture: 0,
+        promotion: 0,
+        check: 0,
+        center: 0,
+        mobility: 0,
+        kingSafety: 0,
+        enemyKingDist: 0,
+        selfThreat: 0,
+        hangPenalty: 0,
+        dropValue: 0
+      };
+
+      const occ = pieceAt(live.pieces, dest.x, dest.y);
+      if (occ && occ.side !== actorSide) f.capture = cpuBaseValue(occ.type) / 100;
+
+      if (move.nextMode === "promoted") f.promotion = 1;
+      if (move.kind === "promo") f.promotion = 0.6;
+
+      const enemySide = opposite(actorSide);
+      const enemyKing = kingPos(nextState.pieces, enemySide);
+      if (enemyKing) {
+        const oldK = kingPos(live.pieces, enemySide);
+        if (oldK) {
+          const oldD = Math.abs(oldK.x - dest.x) + Math.abs(oldK.y - dest.y);
+          const newD = Math.abs(enemyKing.x - dest.x) + Math.abs(enemyKing.y - dest.y);
+          f.enemyKingDist = (oldD - newD) / 8;
+        }
+        f.check = isSquareAttacked(nextState.pieces, enemyKing.x, enemyKing.y, actorSide) ? 1 : 0;
+      }
+
+      const movedPiece = cpuFindMovedPiece(nextState, selected, dest, actorSide);
+      if (movedPiece) {
+        const center = 1 - ((Math.abs(4 - movedPiece.x) + Math.abs(4 - movedPiece.y)) / 8);
+        f.center = Math.max(-1, Math.min(1, center));
+        f.mobility = Math.min(1, legalMovesForPiece(nextState, movedPiece, false).length / 18);
+        f.selfThreat = isSquareAttacked(nextState.pieces, movedPiece.x, movedPiece.y, enemySide) ? 1 : 0;
+        f.kingSafety = movedPiece.type === "king" ? (f.selfThreat ? 1 : 0) : 0;
+      }
+
+      if (selected.kind === "hand") {
+        f.dropValue = 1;
+      }
+
+      if (f.selfThreat) f.hangPenalty = 1;
+
+      return f;
+    }
+
+    function cpuRecordAction(action) {
+      if (!cpuBrain.episode) cpuNewEpisode();
+      const idx = cpuBrain.episode.actions.length;
+      action.index = idx;
+      cpuBrain.episode.actions.push(action);
+      if (action.pieceId) {
+        cpuBrain.episode.pieceToActionIndex.set(action.pieceId, idx);
+      }
+    }
+
+    function cpuPenalizeLostPieces(prevLive, nextLive, cpuSide) {
+      if (!cpuBrain.episode) cpuNewEpisode();
+      const prevById = new Map(prevLive.pieces.map(p => [p.id, p]));
+      const nextById = new Map(nextLive.pieces.map(p => [p.id, p]));
+      for (const [id, piece] of prevById.entries()) {
+        if (nextById.has(id)) continue;
+        if (piece.side !== cpuSide) continue;
+        const idx = cpuBrain.episode.pieceToActionIndex.get(id);
+        const penalty = -cpuBaseValue(piece.type) / 100;
+        if (idx != null && cpuBrain.episode.actions[idx]) {
+          cpuBrain.episode.actions[idx].reward += penalty;
+          cpuBrain.episode.actions[idx].lossPenalty = (cpuBrain.episode.actions[idx].lossPenalty || 0) + penalty;
+        }
+      }
+    }
+
+    async function cpuFinalizeEpisode(winnerSide) {
+      if (!cpuBrain.episode) cpuNewEpisode();
+      const cpuSide = "white";
+      const terminal = winnerSide === cpuSide ? 50 : -50;
+      const alpha = 0.016;
+      const gamma = 0.95;
+      const actions = cpuBrain.episode.actions;
+
+      if (winnerSide === cpuSide) cpuBrain.stats.wins += 1;
+      else cpuBrain.stats.losses += 1;
+      cpuBrain.stats.games += 1;
+
+      for (let i = 0; i < actions.length; i++) {
+        const a = actions[i];
+        const futureFactor = Math.pow(gamma, actions.length - 1 - i);
+        const total = a.reward + terminal * futureFactor;
+        for (const [k, v] of Object.entries(a.features)) {
+          if (k === "bias") continue;
+          cpuBrain.weights[k] = (cpuBrain.weights[k] || 0) + alpha * total * v;
+        }
+      }
+
+      cpuBrain.weights.bias += alpha * terminal * 0.1;
+      cpuClampWeights();
+      await cpuSaveMemory();
+      cpuNewEpisode();
+    }
+
+    function cpuBuildActions(live) {
+      const cpuSide = "white";
+      const now = Date.now();
+      const actions = [];
+
+      for (const p of live.pieces) {
+        if (p.side !== cpuSide) continue;
+        if (p.cooldownUntil && now < p.cooldownUntil) continue;
+        const moves = legalMovesForPiece(live, p, true);
+        for (const mv of moves) {
+          const selected = { kind: "piece", id: p.id };
+          const next = applyActionToLive(live, selected, cpuSide, { x: mv.x, y: mv.y }, false);
+          if (!next) continue;
+          const features = cpuExtractFeatures(live, selected, { x: mv.x, y: mv.y }, mv, next, cpuSide);
+          const immediate = cpuImmediateReward(live, selected, { x: mv.x, y: mv.y }, mv, next, cpuSide);
+          const score = cpuFeatureDot(features) + immediate + (Math.random() * 0.08);
+          actions.push({
+            selected,
+            dest: { x: mv.x, y: mv.y },
+            nextMode: mv.nextMode,
+            features,
+            reward: immediate,
+            score,
+            pieceId: p.id,
+            fromType: p.type
+          });
+        }
+      }
+
+      if ((live.handCooldownUntil?.white || 0) <= now) {
+        for (const t of pieceOrder) {
+          const count = live.hands.white?.[t] || 0;
+          if (!count) continue;
+          for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+              if (pieceAt(live.pieces, x, y)) continue;
+              const selected = { kind: "hand", side: "white", type: t };
+              const next = applyActionToLive(live, selected, cpuSide, { x, y }, false);
+              if (!next) continue;
+              const features = cpuExtractFeatures(live, selected, { x, y }, { nextMode: "normal", kind: "normal" }, next, cpuSide);
+              const immediate = cpuImmediateReward(live, selected, { x, y }, { nextMode: "normal", kind: "normal" }, next, cpuSide);
+              const score = cpuFeatureDot(features) + immediate + (Math.random() * 0.08);
+              actions.push({
+                selected,
+                dest: { x, y },
+                nextMode: "normal",
+                features,
+                reward: immediate,
+                score,
+                pieceId: null,
+                fromType: t
+              });
+            }
+          }
+        }
+      }
+
+      return actions;
+    }
+
+    function cpuChooseAction(live) {
+      const actions = cpuBuildActions(live);
+      if (!actions.length) return null;
+
+      actions.sort((a, b) => b.score - a.score);
+      const topN = Math.max(3, Math.min(10, Math.ceil(actions.length * 0.2)));
+      const pickPool = actions.slice(0, topN);
+      const epsilon = 0.10;
+
+      if (Math.random() < epsilon) {
+        return pickPool[Math.floor(Math.random() * pickPool.length)];
+      }
+      return pickPool[0];
+    }
+
+    function cpuApplyAction(action) {
+      if (!action || !state.roomData) return false;
+      const live = state.roomData.state;
+      if (!live || live.winner) return false;
+
+      const now = Date.now();
+      const next = applyActionToLive(live, action.selected, "white", action.dest, false);
+      if (!next) return false;
+
+      cpuPenalizeLostPieces(live, next, "white");
+      cpuRecordAction({
+        ...action,
+        time: now
+      });
+
+      state.roomData.state = next;
+      state.roomData.updatedAt = now;
+      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner;
+      scheduleRender(0);
+
+      if (next.winner) {
+        cpuFinalizeEpisode(next.winner).catch(() => {});
+      }
+
+      return true;
+    }
+
+    function cpuThink() {
+      if (!isCPU() || !state.roomData) return;
+      const live = state.roomData.state;
+      if (!live || live.winner) return;
+
+      const now = Date.now();
+      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
+        scheduleCpuThink(state.roomData.matchStartAt - now + 30);
+        return;
+      }
+
+      const action = cpuChooseAction(live);
+      if (!action) {
+        scheduleCpuThink(500);
+        return;
+      }
+
+      const ok = cpuApplyAction(action);
+      if (ok) {
+        scheduleCpuThink(450);
+      } else {
+        scheduleCpuThink(300);
+      }
+    }
+
+    async function refreshLocalRematchImmediate() {
+      if (!state.roomData) return;
+      const historyWinner = state.roomData.lastWinnerSide || state.roomData.state?.lastWinnerSide || state.roomData.state?.winner || null;
+      const royalLabels = buildRoyalLabels(historyWinner);
+      state.roomData.state = freshState(royalLabels);
+      state.roomData.state.royalLabels = royalLabels;
+      state.roomData.state.lastWinnerSide = historyWinner;
+      state.roomData.lastWinnerSide = historyWinner;
+      state.roomData.matchStartAt = null;
+      state.roomData.rematchVotes = {};
+      state.roomData.updatedAt = Date.now();
+      state.selected = null;
+      clearSelection();
+      refreshHands();
+      scheduleRender(0);
+      if (session.kind === "cpu") {
+        cpuNewEpisode();
+        await cpuLoadMemory().catch(() => {});
+        scheduleCpuThink(500);
+      }
+    }
+
+    async function voteRematch(yes) {
+      if (session.kind !== "online") {
+        if (yes) {
+          await refreshLocalRematchImmediate();
+          rematchOverlay.classList.remove("show");
+        } else {
+          leaveToHome();
+        }
+        return;
+      }
+
+      if (!state.roomRef || !state.roomData) return;
+      const room = state.roomData;
+      if (!room.state?.winner || !isBothPlayersReady(room)) return;
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(state.roomRef);
+        if (!snap.exists()) return;
+
+        const data = snap.data() || {};
+        const live = data.state || {};
+        const players = data.players || {};
+        const rematchVotes = data.rematchVotes || {};
+        const now = Date.now();
+
+        const mySide = players.black === state.playerId ? "black"
+                     : players.white === state.playerId ? "white"
+                     : "spectator";
+        if (mySide === "spectator") return;
+
+        if (!live.winner || !players.black || !players.white) return;
+
+        if (yes) rematchVotes[state.playerId] = true;
+        else delete rematchVotes[state.playerId];
+
+        const blackPid = players.black;
+        const whitePid = players.white;
+        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
+        const historyWinner = data.lastWinnerSide || live.lastWinnerSide || live.winner || null;
+
+        if (bothYes) {
+          const royalLabels = buildRoyalLabels(historyWinner);
+          tx.update(state.roomRef, {
+            state: freshState(royalLabels),
+            lastWinnerSide: historyWinner,
+            matchStartAt: now + COUNTDOWN_MS,
+            rematchVotes: {},
+            forceHomeAt: null,
+            updatedAt: now
+          });
+          return;
+        }
+
+        if (!yes) {
+          tx.update(state.roomRef, {
+            rematchVotes: {},
+            forceHomeAt: now,
+            updatedAt: now
+          });
+          return;
+        }
+
+        tx.update(state.roomRef, {
+          rematchVotes,
+          updatedAt: now
+        });
+      }).catch(err => {
+        setStatus(`リマッチの処理に失敗した: ${err.message}`);
+      });
+
+      if (!yes) leaveToHome();
+    }
+
+    async function commitMove(destBoard) {
+      const live = state.roomData?.state;
+      if (!live || !state.selected) return;
+
+      if (session.kind === "online") {
+        if (!state.roomRef) return;
+        if (!canAct()) return;
+
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(state.roomRef);
+          if (!snap.exists()) return;
+
+          const room = snap.data();
+          const currentLive = room.state;
+          if (!currentLive || currentLive.winner) return;
+
+          const now = Date.now();
+          if (room.matchStartAt && now < room.matchStartAt) return;
+
+          const side = room.players?.black === state.playerId ? "black"
+                    : room.players?.white === state.playerId ? "white"
+                    : "spectator";
+          if (side === "spectator") return;
+          if (!canControlSide(selectedSideOfSelection())) return;
+
+          const next = applyActionToLive(currentLive, state.selected, side, destBoard, false);
+          if (!next) return;
+
+          const presence = room.presence || {};
+          presence[state.playerId] = { side, lastSeen: now };
+
+          const update = {
+            state: next,
+            presence,
+            updatedAt: now
+          };
+          if (next.winner) update.lastWinnerSide = next.lastWinnerSide || next.winner;
+
+          tx.update(state.roomRef, update);
+        }).catch(err => {
+          setStatus(`動かせなかった: ${err.message}`);
+        });
+
+        scheduleRender(0);
+        return;
+      }
+
+      const liveLocal = state.roomData?.state;
+      if (!liveLocal) return;
+
+      const anySide = session.kind === "local_dual";
+      const actorSide = session.kind === "cpu" ? "black" : null;
+      const next = applyActionToLive(liveLocal, state.selected, actorSide, destBoard, anySide);
+      if (!next) return;
+
+      if (session.kind === "cpu") {
+        cpuPenalizeLostPieces(liveLocal, next, "white");
+      }
+
+      state.roomData.state = next;
+      if (next.winner) {
+        state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
+      }
+      state.roomData.updatedAt = Date.now();
+      scheduleRender(0);
+
+      if (session.kind === "cpu") {
+        if (next.winner) {
+          cpuFinalizeEpisode(next.winner).catch(() => {});
+        } else {
+          scheduleCpuThink(350);
+        }
+      }
+    }
+
     async function enterRoom() {
       const code = normalizeRoomId(roomInput.value);
       const mode = specialModeFromCode(code);
 
       if (mode === "cpu" || mode === "local_dual") {
         session.kind = mode;
+        await cpuLoadMemory();
         setLocalRoom(mode);
         return;
       }
@@ -2120,8 +2182,6 @@
       state.roomRef = doc(db, "rooms", roomId);
       state.selected = null;
       state.mySide = "spectator";
-      state.gameEndKey = "";
-      state.outcomeSaveKey = "";
       updateMePill();
 
       await runTransaction(db, async (tx) => {
@@ -2136,7 +2196,7 @@
         const data = snap.data() || {};
         let players = data.players || { black: null, white: null };
         let presence = data.presence || {};
-        let roomState = data.state || freshState(randomRoyalLabels());
+        let roomState = data.state || freshState(buildRoyalLabels(data.lastWinnerSide || data.state?.lastWinnerSide || null));
         let matchStartAt = data.matchStartAt || null;
         let rematchVotes = data.rematchVotes || {};
         let forceHomeAt = data.forceHomeAt || null;
@@ -2183,9 +2243,6 @@
 
         const bothReady = !!players.black && !!players.white;
         if (bothReady && !matchStartAt && !roomState.winner) {
-          const blackOutcome = await fetchProfileOutcome(tx, players.black);
-          const whiteOutcome = await fetchProfileOutcome(tx, players.white);
-          roomState.royalLabels = royalLabelsFromOutcomes(blackOutcome, whiteOutcome, players.black, players.white);
           matchStartAt = now + COUNTDOWN_MS;
         }
 
@@ -2244,50 +2301,393 @@
 
         refreshHands();
         scheduleRender(0);
-        void handleGameEndIfNeeded();
       });
-
-      if (!session.heartbeatTimer) {
-        session.heartbeatTimer = setInterval(() => {
-          if (!state.roomRef || !state.roomData || state.mySide === "spectator") return;
-          runTransaction(db, async (tx) => {
-            const snap = await tx.get(state.roomRef);
-            if (!snap.exists()) return;
-
-            const data = snap.data() || {};
-            const presence = data.presence || {};
-            const players = data.players || {};
-            const now = Date.now();
-
-            presence[state.playerId] = { side: state.mySide, lastSeen: now };
-
-            let matchStartAt = data.matchStartAt || null;
-            const bothReady = !!players.black && !!players.white;
-            if (bothReady && !matchStartAt && !(data.state && data.state.winner)) {
-              matchStartAt = now + COUNTDOWN_MS;
-            }
-
-            tx.update(state.roomRef, {
-              presence,
-              matchStartAt,
-              updatedAt: now
-            });
-          }).catch(() => {});
-        }, 8000);
-      }
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
       scheduleRender(0);
     }
 
-    function cpuRecordOutcomeAfterMove() {
-      // placeholder hook for future expansion
+    async function loadCpuMemoryIfNeeded() {
+      if (cpuBrain.loaded) return;
+      const local = (() => {
+        try {
+          const raw = localStorage.getItem(cpuMemoryKey);
+          if (!raw) return null;
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      })();
+
+      if (local?.weights) cpuBrain.weights = { ...cpuBrain.weights, ...local.weights };
+      if (local?.stats) cpuBrain.stats = { ...cpuBrain.stats, ...local.stats };
+
+      try {
+        const snap = await getDoc(cpuMemoryDoc);
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          if (data.weights && typeof data.weights === "object") {
+            cpuBrain.weights = { ...cpuBrain.weights, ...data.weights };
+          }
+          if (data.stats && typeof data.stats === "object") {
+            cpuBrain.stats = { ...cpuBrain.stats, ...data.stats };
+          }
+        }
+      } catch {}
+
+      cpuBrain.loaded = true;
+      try {
+        localStorage.setItem(cpuMemoryKey, JSON.stringify({
+          weights: cpuBrain.weights,
+          stats: cpuBrain.stats,
+          savedAt: Date.now()
+        }));
+      } catch {}
+    }
+
+    function cpuClampWeights() {
+      for (const key of Object.keys(cpuBrain.weights)) {
+        cpuBrain.weights[key] = Math.max(-20, Math.min(20, cpuBrain.weights[key]));
+      }
+    }
+
+    function cpuFeatureDot(features) {
+      let s = 0;
+      for (const [k, v] of Object.entries(features)) {
+        s += (cpuBrain.weights[k] || 0) * v;
+      }
+      return s;
+    }
+
+    function cpuBaseValue(type) {
+      return {
+        king: 10000,
+        rook: 500,
+        bishop: 450,
+        gold: 320,
+        silver: 280,
+        knight: 240,
+        lance: 220,
+        pawn: 120,
+        tokin: 200,
+        proLance: 210,
+        proKnight: 210,
+        proSilver: 210,
+        horse: 650,
+        dragon: 700
+      }[type] || 100;
+    }
+
+    function cpuFindMovedPiece(nextState, selected, dest, actorSide) {
+      if (selected.kind === "piece") {
+        return nextState.pieces.find(p => p.id === selected.id) || null;
+      }
+      if (selected.kind === "hand") {
+        return nextState.pieces.find(p => p.side === actorSide && p.type === selected.type && p.x === dest.x && p.y === dest.y) || null;
+      }
+      return null;
+    }
+
+    function cpuExtractFeatures(live, selected, dest, move, nextState, actorSide) {
+      const f = {
+        bias: 1,
+        capture: 0,
+        promotion: 0,
+        check: 0,
+        center: 0,
+        mobility: 0,
+        kingSafety: 0,
+        enemyKingDist: 0,
+        selfThreat: 0,
+        hangPenalty: 0,
+        dropValue: 0
+      };
+
+      const occ = pieceAt(live.pieces, dest.x, dest.y);
+      if (occ && occ.side !== actorSide) f.capture = cpuBaseValue(occ.type) / 100;
+      if (move.nextMode === "promoted") f.promotion = 1;
+      if (move.kind === "promo") f.promotion = 0.6;
+
+      const enemySide = opposite(actorSide);
+      const enemyKing = kingPos(nextState.pieces, enemySide);
+      if (enemyKing) {
+        const oldK = kingPos(live.pieces, enemySide);
+        if (oldK) {
+          const oldD = Math.abs(oldK.x - dest.x) + Math.abs(oldK.y - dest.y);
+          const newD = Math.abs(enemyKing.x - dest.x) + Math.abs(enemyKing.y - dest.y);
+          f.enemyKingDist = (oldD - newD) / 8;
+        }
+        f.check = isSquareAttacked(nextState.pieces, enemyKing.x, enemyKing.y, actorSide) ? 1 : 0;
+      }
+
+      const movedPiece = cpuFindMovedPiece(nextState, selected, dest, actorSide);
+      if (movedPiece) {
+        const center = 1 - ((Math.abs(4 - movedPiece.x) + Math.abs(4 - movedPiece.y)) / 8);
+        f.center = Math.max(-1, Math.min(1, center));
+        f.mobility = Math.min(1, legalMovesForPiece(nextState, movedPiece, false).length / 18);
+        f.selfThreat = isSquareAttacked(nextState.pieces, movedPiece.x, movedPiece.y, enemySide) ? 1 : 0;
+        f.kingSafety = movedPiece.type === "king" ? (f.selfThreat ? 1 : 0) : 0;
+      }
+
+      if (selected.kind === "hand") {
+        f.dropValue = 1;
+      }
+
+      if (f.selfThreat) f.hangPenalty = 1;
+      return f;
+    }
+
+    function cpuImmediateReward(live, selected, dest, move, nextState, actorSide) {
+      let reward = 0;
+      const occ = pieceAt(live.pieces, dest.x, dest.y);
+      if (occ && occ.side !== actorSide) reward += cpuBaseValue(occ.type) / 90;
+      if (move.nextMode === "promoted") reward += 0.6;
+      if (move.kind === "promo") reward += 0.3;
+
+      const enemySide = opposite(actorSide);
+      const enemyKing = kingPos(nextState.pieces, enemySide);
+      if (enemyKing && isSquareAttacked(nextState.pieces, enemyKing.x, enemyKing.y, actorSide)) reward += 0.7;
+
+      const movedPiece = cpuFindMovedPiece(nextState, selected, dest, actorSide);
+      if (movedPiece) {
+        const attacked = isSquareAttacked(nextState.pieces, movedPiece.x, movedPiece.y, enemySide);
+        if (attacked) reward -= 0.7;
+        const center = 1 - ((Math.abs(4 - movedPiece.x) + Math.abs(4 - movedPiece.y)) / 8);
+        reward += center * 0.14;
+        const mob = legalMovesForPiece(nextState, movedPiece, false).length;
+        reward += Math.min(1, mob / 18) * 0.10;
+      }
+
+      if (selected.kind === "hand") reward += 0.12;
+      return reward;
+    }
+
+    function cpuNewEpisode() {
+      cpuBrain.episode = {
+        startedAt: Date.now(),
+        actions: [],
+        pieceToActionIndex: new Map()
+      };
+    }
+
+    function cpuRecordAction(action) {
+      if (!cpuBrain.episode) cpuNewEpisode();
+      const idx = cpuBrain.episode.actions.length;
+      action.index = idx;
+      cpuBrain.episode.actions.push(action);
+      if (action.pieceId) cpuBrain.episode.pieceToActionIndex.set(action.pieceId, idx);
+    }
+
+    function cpuPenalizeLostPieces(prevLive, nextLive, cpuSide) {
+      if (!cpuBrain.episode) cpuNewEpisode();
+      const prevById = new Map(prevLive.pieces.map(p => [p.id, p]));
+      const nextById = new Map(nextLive.pieces.map(p => [p.id, p]));
+      for (const [id, piece] of prevById.entries()) {
+        if (nextById.has(id)) continue;
+        if (piece.side !== cpuSide) continue;
+        const idx = cpuBrain.episode.pieceToActionIndex.get(id);
+        const penalty = -cpuBaseValue(piece.type) / 100;
+        if (idx != null && cpuBrain.episode.actions[idx]) {
+          cpuBrain.episode.actions[idx].reward += penalty;
+          cpuBrain.episode.actions[idx].lossPenalty = (cpuBrain.episode.actions[idx].lossPenalty || 0) + penalty;
+        }
+      }
+    }
+
+    async function cpuFinalizeEpisode(winnerSide) {
+      if (!cpuBrain.episode) cpuNewEpisode();
+      const cpuSide = "white";
+      const terminal = winnerSide === cpuSide ? 50 : -50;
+      const alpha = 0.016;
+      const gamma = 0.95;
+      const actions = cpuBrain.episode.actions;
+
+      if (winnerSide === cpuSide) cpuBrain.stats.wins += 1;
+      else cpuBrain.stats.losses += 1;
+      cpuBrain.stats.games += 1;
+
+      for (let i = 0; i < actions.length; i++) {
+        const a = actions[i];
+        const futureFactor = Math.pow(gamma, actions.length - 1 - i);
+        const total = a.reward + terminal * futureFactor;
+        for (const [k, v] of Object.entries(a.features)) {
+          if (k === "bias") continue;
+          cpuBrain.weights[k] = (cpuBrain.weights[k] || 0) + alpha * total * v;
+        }
+      }
+
+      cpuBrain.weights.bias += alpha * terminal * 0.1;
+      cpuClampWeights();
+      try {
+        localStorage.setItem(cpuMemoryKey, JSON.stringify({
+          weights: cpuBrain.weights,
+          stats: cpuBrain.stats,
+          savedAt: Date.now()
+        }));
+      } catch {}
+      try {
+        await setDoc(cpuMemoryDoc, {
+          weights: cpuBrain.weights,
+          stats: cpuBrain.stats,
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch {}
+      cpuNewEpisode();
+    }
+
+    function cpuBuildActions(live) {
+      const cpuSide = "white";
+      const now = Date.now();
+      const actions = [];
+
+      for (const p of live.pieces) {
+        if (p.side !== cpuSide) continue;
+        if (p.cooldownUntil && now < p.cooldownUntil) continue;
+        const moves = legalMovesForPiece(live, p, true);
+        for (const mv of moves) {
+          const selected = { kind: "piece", id: p.id };
+          const next = applyActionToLive(live, selected, cpuSide, { x: mv.x, y: mv.y }, false);
+          if (!next) continue;
+          const features = cpuExtractFeatures(live, selected, { x: mv.x, y: mv.y }, mv, next, cpuSide);
+          const immediate = cpuImmediateReward(live, selected, { x: mv.x, y: mv.y }, mv, next, cpuSide);
+          const score = cpuFeatureDot(features) + immediate + (Math.random() * 0.08);
+          actions.push({
+            selected,
+            dest: { x: mv.x, y: mv.y },
+            nextMode: mv.nextMode,
+            features,
+            reward: immediate,
+            score,
+            pieceId: p.id,
+            fromType: p.type
+          });
+        }
+      }
+
+      if ((live.handCooldownUntil?.white || 0) <= now) {
+        for (const t of pieceOrder) {
+          const count = live.hands.white?.[t] || 0;
+          if (!count) continue;
+          for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+              if (pieceAt(live.pieces, x, y)) continue;
+              const selected = { kind: "hand", side: "white", type: t };
+              const next = applyActionToLive(live, selected, cpuSide, { x, y }, false);
+              if (!next) continue;
+              const features = cpuExtractFeatures(live, selected, { x, y }, { nextMode: "normal", kind: "normal" }, next, cpuSide);
+              const immediate = cpuImmediateReward(live, selected, { x, y }, { nextMode: "normal", kind: "normal" }, next, cpuSide);
+              const score = cpuFeatureDot(features) + immediate + (Math.random() * 0.08);
+              actions.push({
+                selected,
+                dest: { x, y },
+                nextMode: "normal",
+                features,
+                reward: immediate,
+                score,
+                pieceId: null,
+                fromType: t
+              });
+            }
+          }
+        }
+      }
+
+      return actions;
+    }
+
+    function cpuChooseAction(live) {
+      const actions = cpuBuildActions(live);
+      if (!actions.length) return null;
+
+      actions.sort((a, b) => b.score - a.score);
+      const topN = Math.max(3, Math.min(10, Math.ceil(actions.length * 0.2)));
+      const pickPool = actions.slice(0, topN);
+      const epsilon = 0.10;
+
+      if (Math.random() < epsilon) {
+        return pickPool[Math.floor(Math.random() * pickPool.length)];
+      }
+      return pickPool[0];
+    }
+
+    function cpuApplyAction(action) {
+      if (!action || !state.roomData) return false;
+      const live = state.roomData.state;
+      if (!live || live.winner) return false;
+
+      const now = Date.now();
+      const next = applyActionToLive(live, action.selected, "white", action.dest, false);
+      if (!next) return false;
+
+      cpuPenalizeLostPieces(live, next, "white");
+      cpuRecordAction({
+        ...action,
+        time: now
+      });
+
+      state.roomData.state = next;
+      state.roomData.updatedAt = now;
+      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner;
+      scheduleRender(0);
+
+      if (next.winner) {
+        cpuFinalizeEpisode(next.winner).catch(() => {});
+      }
+
+      return true;
+    }
+
+    function cpuThink() {
+      if (!isCPU() || !state.roomData) return;
+      const live = state.roomData.state;
+      if (!live || live.winner) return;
+
+      const now = Date.now();
+      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
+        scheduleCpuThink(state.roomData.matchStartAt - now + 30);
+        return;
+      }
+
+      const action = cpuChooseAction(live);
+      if (!action) {
+        scheduleCpuThink(500);
+        return;
+      }
+
+      const ok = cpuApplyAction(action);
+      if (ok) {
+        scheduleCpuThink(450);
+      } else {
+        scheduleCpuThink(300);
+      }
+    }
+
+    async function refreshLocalRematchImmediate() {
+      if (!state.roomData) return;
+      const historyWinner = state.roomData.lastWinnerSide || state.roomData.state?.lastWinnerSide || state.roomData.state?.winner || null;
+      const royalLabels = buildRoyalLabels(historyWinner);
+      state.roomData.state = freshState(royalLabels);
+      state.roomData.state.royalLabels = royalLabels;
+      state.roomData.state.lastWinnerSide = historyWinner;
+      state.roomData.lastWinnerSide = historyWinner;
+      state.roomData.matchStartAt = null;
+      state.roomData.rematchVotes = {};
+      state.roomData.updatedAt = Date.now();
+      state.selected = null;
+      clearSelection();
+      refreshHands();
+      scheduleRender(0);
+      if (session.kind === "cpu") {
+        cpuNewEpisode();
+        await cpuLoadMemoryIfNeeded();
+        scheduleCpuThink(500);
+      }
     }
 
     async function voteRematch(yes) {
       if (session.kind !== "online") {
         if (yes) {
-          maybeUpdateLocalRoyalLabelsAfterRematch();
+          await refreshLocalRematchImmediate();
           rematchOverlay.classList.remove("show");
         } else {
           leaveToHome();
@@ -2325,11 +2725,9 @@
         const historyWinner = data.lastWinnerSide || live.lastWinnerSide || live.winner || null;
 
         if (bothYes) {
-          const blackOutcome = await fetchProfileOutcome(tx, blackPid);
-          const whiteOutcome = await fetchProfileOutcome(tx, whitePid);
-          const labels = royalLabelsFromOutcomes(blackOutcome, whiteOutcome, blackPid, whitePid);
+          const royalLabels = buildRoyalLabels(historyWinner);
           tx.update(state.roomRef, {
-            state: freshState(labels),
+            state: freshState(royalLabels),
             lastWinnerSide: historyWinner,
             matchStartAt: now + COUNTDOWN_MS,
             rematchVotes: {},
@@ -2386,7 +2784,8 @@
 
           if (selectedPiece && canControlSide(selectedPiece.side)) {
             const destBoard = screenToBoard(sq.x, sq.y);
-            const move = selectedLegalMoveByScreen(live, selectedPiece, destBoard);
+            const legal = legalMovesForPiece(live, selectedPiece, true);
+            const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
             if (move) {
               await commitMove(destBoard);
               clearSelection();
@@ -2512,16 +2911,6 @@
       state.dragSource = null;
     });
 
-    function clearSelection() {
-      state.selected = null;
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-      state.dragSource = null;
-      refreshHands();
-      scheduleRender(0);
-    }
-
     enterBtn.addEventListener("click", enterRoom);
 
     shareBtn.addEventListener("click", async () => {
@@ -2562,145 +2951,12 @@
     rematchNo.addEventListener("click", () => voteRematch(false));
 
     window.addEventListener("resize", resizeCanvas);
-    window.addEventListener("visibilitychange", () => {
-      if (!document.hidden) scheduleRender(0);
-    });
-    window.addEventListener("error", () => scheduleRender(500));
-    window.addEventListener("unhandledrejection", () => scheduleRender(500));
 
-    setInterval(() => {
-      if (!state.roomData) return;
-      if (Date.now() - lastPaintAt > 2500) {
-        safeRenderFrame();
-      }
-    }, 2500);
-
-    async function maybeSaveOutcomeProfile(winnerSide) {
-      if (session.kind === "local_dual") return;
-
-      const humanSide = session.kind === "cpu" ? "black" : state.mySide;
-      if (humanSide !== "black" && humanSide !== "white") return;
-
-      const outcome = winnerSide === humanSide ? "win" : "loss";
-      localStorage.setItem(lastOutcomeStorageKey, outcome);
-
-      const key = `${session.kind}:${state.roomId || "local"}:${state.roomData?.state?.rev || 0}:${outcome}`;
-      if (state.outcomeSaveKey === key) return;
-      state.outcomeSaveKey = key;
-
-      try {
-        await setDoc(doc(db, "player_profiles", state.playerId), {
-          lastOutcome: outcome,
-          updatedAt: Date.now()
-        }, { merge: true });
-      } catch {}
-    }
-
-    async function syncCpuBrainFromCloudOnce() {
-      if (session.kind !== "cpu") return;
-      if (cpuBrain.cloudLoaded || session.cpuCloudSyncing) return;
-      session.cpuCloudSyncing = (async () => {
-        try {
-          const ref = doc(db, "ai_models", "cpu_brain_v2");
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            const data = snap.data() || {};
-            const remoteWeights = data.weights || {};
-            for (const [k, v] of Object.entries(remoteWeights)) {
-              cpuBrain.brain.weights[k] = (cpuBrain.brain.weights[k] || 0) * 0.7 + v * 0.3;
-            }
-            const remoteStats = data.stats || {};
-            cpuBrain.brain.stats.games = Math.max(cpuBrain.brain.stats.games || 0, remoteStats.games || 0);
-            cpuBrain.brain.stats.wins = Math.max(cpuBrain.brain.stats.wins || 0, remoteStats.wins || 0);
-            cpuBrain.brain.stats.losses = Math.max(cpuBrain.brain.stats.losses || 0, remoteStats.losses || 0);
-            cpuBrain.brain.stats.moves = Math.max(cpuBrain.brain.stats.moves || 0, remoteStats.moves || 0);
-            cpuBrain.brain.stats.captures = Math.max(cpuBrain.brain.stats.captures || 0, remoteStats.captures || 0);
-            saveCpuBrainToStorage();
-          }
-        } catch {}
-        cpuBrain.cloudLoaded = true;
-        session.cpuCloudSyncing = null;
-      })();
-      return session.cpuCloudSyncing;
-    }
-
-    window.addEventListener("load", () => {
-      resizeCanvas();
-      refreshHands();
-      updateMePill();
-      updateRematchOverlay();
-      scheduleRender(0);
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
-      if (session.kind === "cpu") void syncCpuBrainFromCloudOnce();
-    });
-
-    if (session.kind === "cpu") void syncCpuBrainFromCloudOnce();
-
-    async function voteRematchAndSyncCPUIfNeeded(yes) {
-      await voteRematch(yes);
-    }
-
-    function maybeHandleGameEndCpu() {
-      const live = state.roomData?.state;
-      if (!live?.winner) return;
-      if (session.kind === "cpu") cpuFinalizeEpisode(live.winner);
-    }
-
-    function renderFrameGuarded() {
-      safeRenderFrame();
-    }
-
-    async function finalizeIfNeeded() {
-      const live = state.roomData?.state;
-      if (!live?.winner) return;
-      await maybeSaveOutcomeProfile(live.winner).catch(() => {});
-      if (session.kind === "cpu") cpuFinalizeEpisode(live.winner);
-    }
-
-    // keep these names referenced
-    void finalizeIfNeeded;
-    void renderFrameGuarded;
-    void voteRematchAndSyncCPUIfNeeded;
-    void maybeHandleGameEndCpu;
-
-    async function maybeRefreshRoyalLabelsIfNeeded() {
-      if (session.kind !== "online") return;
-      const room = state.roomData;
-      if (!room || !room.players?.black || !room.players?.white) return;
-      if (room.state?.winner) return;
-      if (room.matchStartAt) return;
-
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(state.roomRef);
-        if (!snap.exists()) return;
-        const data = snap.data() || {};
-        const players = data.players || {};
-        if (!players.black || !players.white) return;
-
-        const blackOutcome = await fetchProfileOutcome(tx, players.black);
-        const whiteOutcome = await fetchProfileOutcome(tx, players.white);
-        const labels = royalLabelsFromOutcomes(blackOutcome, whiteOutcome, players.black, players.white);
-
-        tx.update(state.roomRef, {
-          state: {
-            ...(data.state || freshState(labels)),
-            royalLabels: labels
-          },
-          updatedAt: Date.now()
-        });
-      }).catch(() => {});
-    }
-
-    function scheduleCpuCloudSync() {
-      if (session.kind !== "cpu") return;
-      void syncCpuBrainFromCloudOnce();
-    }
-
-    void scheduleCpuCloudSync();
-
-    scheduleRender(0);
+    resizeCanvas();
     refreshHands();
     updateMePill();
+    updateRematchOverlay();
+    scheduleRender(0);
     setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
   </script>
 </body>
