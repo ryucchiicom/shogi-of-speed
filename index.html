@@ -443,7 +443,8 @@
     const session = {
       kind: "online", // online | cpu | local_dual
       renderTimer: null,
-      cpuTimer: null
+      cpuTimer: null,
+      cpuLoop: null
     };
 
     const state = {
@@ -473,7 +474,7 @@
       lastCpuActionKey: null,
       games: 0,
       gameFinalized: false,
-      memoryDoc: doc(db, "ai_memory", "cpu_v1")
+      memoryDoc: null
     };
 
     const AI_LOCAL_KEY = "shogi_of_speed_ai_memory_v1";
@@ -498,6 +499,10 @@
     function clearTimers(){
       if (session.renderTimer) clearTimeout(session.renderTimer);
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
+      if (session.cpuLoop) {
+        clearInterval(session.cpuLoop);
+        session.cpuLoop = null;
+      }
       session.renderTimer = null;
       session.cpuTimer = null;
     }
@@ -607,308 +612,30 @@
       };
     }
 
-    function normalizeStatsBlob(blob) {
-      const src = blob && blob.stats ? blob.stats : blob;
-      const out = {};
-      if (!src || typeof src !== "object") return out;
-      for (const [k, v] of Object.entries(src)) {
-        if (!v || typeof v !== "object") continue;
-        out[k] = {
-          sum: Number(v.sum || 0),
-          count: Number(v.count || 0)
-        };
+    function isInside(x, y) {
+      return x >= 0 && x < 9 && y >= 0 && y < 9;
+    }
+
+    function forward(side) {
+      return side === "black" ? -1 : 1;
+    }
+
+    function opposite(side) {
+      return side === "black" ? "white" : "black";
+    }
+
+    function isInPromotionZone(side, y) {
+      return PROMOTION_ZONE[side].includes(y);
+    }
+
+    function forcePromoteNeeded(piece, destY) {
+      if (piece.type === "pawn" || piece.type === "lance") {
+        return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
       }
-      return pruneStats(out);
-    }
-
-    function pruneStats(stats, maxKeys = 1500) {
-      const entries = Object.entries(stats || {});
-      if (entries.length <= maxKeys) return stats || {};
-      entries.sort((a, b) => {
-        const av = Math.abs(a[1]?.sum || 0) + (a[1]?.count || 0) * 0.25;
-        const bv = Math.abs(b[1]?.sum || 0) + (b[1]?.count || 0) * 0.25;
-        return bv - av;
-      });
-      return Object.fromEntries(entries.slice(0, maxKeys));
-    }
-
-    function saveLocalAIMemory() {
-      try {
-        localStorage.setItem(AI_LOCAL_KEY, JSON.stringify({
-          version: 1,
-          stats: ai.stats,
-          games: ai.games,
-          updatedAt: Date.now()
-        }));
-      } catch {}
-    }
-
-    function loadLocalAIMemory() {
-      try {
-        const raw = localStorage.getItem(AI_LOCAL_KEY);
-        if (!raw) return false;
-        const parsed = JSON.parse(raw);
-        ai.stats = normalizeStatsBlob(parsed);
-        ai.games = Number(parsed.games || 0);
-        return true;
-      } catch {
-        return false;
+      if (piece.type === "knight") {
+        return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
       }
-    }
-
-    function aiAverage(key) {
-      const s = ai.stats[key];
-      if (!s) return 0;
-      return s.sum / Math.max(1, s.count);
-    }
-
-    function aiReward(key, reward) {
-      if (!key || !Number.isFinite(reward)) return;
-      const stat = ai.stats[key] || (ai.stats[key] = { sum: 0, count: 0 });
-      stat.sum += reward;
-      stat.count += 1;
-
-      const pend = ai.pending[key] || (ai.pending[key] = { sum: 0, count: 0 });
-      pend.sum += reward;
-      pend.count += 1;
-
-      saveLocalAIMemory();
-    }
-
-    async function ensureAIMemoryLoaded() {
-      if (ai.loaded) return ai;
-      if (ai.loading) return ai.loading;
-
-      ai.loading = (async () => {
-        const localLoaded = loadLocalAIMemory();
-        try {
-          const snap = await getDoc(ai.memoryDoc);
-          if (snap.exists()) {
-            const data = snap.data() || {};
-            ai.stats = normalizeStatsBlob(data);
-            ai.games = Number(data.games || 0);
-            saveLocalAIMemory();
-          } else if (!localLoaded) {
-            ai.stats = {};
-            ai.games = 0;
-          }
-        } catch {
-          if (!localLoaded) {
-            ai.stats = {};
-            ai.games = 0;
-          }
-        }
-
-        ai.loaded = true;
-        return ai;
-      })();
-
-      return ai.loading;
-    }
-
-    async function saveAIMemoryToFirebase() {
-      if (!ai.loaded) return;
-      const pendingKeys = Object.keys(ai.pending);
-      if (!pendingKeys.length) return;
-
-      try {
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(ai.memoryDoc);
-          const remote = snap.exists() ? normalizeStatsBlob(snap.data()) : {};
-          const merged = { ...remote };
-
-          for (const [k, delta] of Object.entries(ai.pending)) {
-            const cur = merged[k] || { sum: 0, count: 0 };
-            merged[k] = {
-              sum: (cur.sum || 0) + (delta.sum || 0),
-              count: (cur.count || 0) + (delta.count || 0)
-            };
-          }
-
-          const pruned = pruneStats(merged, 1500);
-          tx.set(ai.memoryDoc, {
-            version: 1,
-            stats: pruned,
-            games: Math.max(Number(snap.exists() ? snap.data()?.games || 0 : 0), ai.games || 0),
-            updatedAt: Date.now()
-          }, { merge: true });
-
-          ai.stats = pruned;
-          ai.pending = {};
-          saveLocalAIMemory();
-        });
-      } catch {
-        saveLocalAIMemory();
-      }
-    }
-
-    function countPieces(pieces) {
-      const out = { black: 0, white: 0 };
-      for (const p of pieces || []) out[p.side] = (out[p.side] || 0) + 1;
-      return out;
-    }
-
-    function lostPieceTypes(prevPieces, nextPieces, side) {
-      const nextIds = new Set((nextPieces || []).map(p => p.id));
-      return (prevPieces || [])
-        .filter(p => p.side === side && !nextIds.has(p.id))
-        .map(p => p.type);
-    }
-
-    function captureReward(type) {
-      return Math.max(1.2, cpuValue(type) * 0.02);
-    }
-
-    function lossPenalty(type) {
-      return -Math.max(1.2, cpuValue(type) * 0.02);
-    }
-
-    function terminalRewardForWinner(winnerSide) {
-      return winnerSide === "white" ? 90 : -90;
-    }
-
-    function aiActionKey(meta, actorSide) {
-      if (!meta) return "";
-      if (meta.kind === "hand") {
-        return `hand|${meta.pieceType}|${meta.to.x}|${meta.to.y}|${actorSide}|${meta.nextMode || "normal"}`;
-      }
-      const dx = meta.to.x - meta.from.x;
-      const dy = meta.to.y - meta.from.y;
-      const captured = meta.capturedType || "-";
-      return [
-        "piece",
-        meta.pieceType,
-        meta.promoMode,
-        dx,
-        dy,
-        captured,
-        meta.nextMode || "normal",
-        actorSide
-      ].join("|");
-    }
-
-    function aiHeuristic(meta, live, actorSide) {
-      let score = 0;
-      if (meta.capturedType) score += captureReward(meta.capturedType);
-      if (meta.nextMode === "promoted") score += 0.8;
-      if (meta.kind === "hand") score += 0.2;
-
-      if (meta.pieceType === "pawn" || meta.pieceType === "lance") {
-        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.04;
-      } else if (meta.pieceType === "knight") {
-        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.03;
-      } else {
-        score += (4 - Math.abs(meta.to.x - 4)) * 0.03;
-        score += (4 - Math.abs(meta.to.y - 4)) * 0.03;
-      }
-
-      const oppSide = actorSide === "white" ? "black" : "white";
-      const oppKing = kingPos(live.pieces, oppSide);
-      if (oppKing) {
-        const dist = Math.abs(oppKing.x - meta.to.x) + Math.abs(oppKing.y - meta.to.y);
-        score += Math.max(0, (10 - dist)) * 0.02;
-      }
-
-      return score;
-    }
-
-    function aiEvaluateAction(meta, live, actorSide) {
-      const key = aiActionKey(meta, actorSide);
-      const learned = Math.max(-20, Math.min(20, aiAverage(key) * 2));
-      return aiHeuristic(meta, live, actorSide) + learned;
-    }
-
-    function aiFinishEpisode(winnerSide) {
-      if (ai.gameFinalized) return;
-      ai.gameFinalized = true;
-
-      if (!ai.episode.length) {
-        ai.lastCpuActionKey = null;
-        ai.pending = {};
-        saveLocalAIMemory();
-        void saveAIMemoryToFirebase();
-        return;
-      }
-
-      const base = terminalRewardForWinner(winnerSide);
-      let factor = 1;
-
-      for (let i = ai.episode.length - 1; i >= 0; i--) {
-        aiReward(ai.episode[i], base * factor);
-        factor *= 0.92;
-      }
-
-      ai.episode = [];
-      ai.lastCpuActionKey = null;
-      ai.games += 1;
-      ai.stats = pruneStats(ai.stats, 1500);
-      saveLocalAIMemory();
-      void saveAIMemoryToFirebase();
-    }
-
-    function aiObserveTransition(prevLive, nextLive, actorSide, actionMeta) {
-      if (session.kind !== "cpu") return;
-      if (!prevLive || !nextLive) return;
-
-      const prevCounts = countPieces(prevLive.pieces);
-      const nextCounts = countPieces(nextLive.pieces);
-
-      const blackLost = (prevCounts.black || 0) - (nextCounts.black || 0);
-      const whiteLost = (prevCounts.white || 0) - (nextCounts.white || 0);
-
-      if (actorSide === "white" && actionMeta) {
-        const key = aiActionKey(actionMeta, "white");
-        ai.lastCpuActionKey = key;
-        ai.episode.push(key);
-
-        for (const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "black")) {
-          aiReward(key, captureReward(t));
-        }
-      }
-
-      if (actorSide === "black") {
-        for (const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "white")) {
-          if (ai.lastCpuActionKey) aiReward(ai.lastCpuActionKey, lossPenalty(t));
-        }
-      }
-
-      if (nextLive.winner) {
-        aiFinishEpisode(nextLive.winner);
-      }
-    }
-
-    function freshStateWithRoyalHistory(historyWinnerSide) {
-      const royalLabels = buildRoyalLabels(historyWinnerSide);
-      return freshState(royalLabels);
-    }
-
-    function resetLocalEpisode() {
-      ai.episode = [];
-      ai.lastCpuActionKey = null;
-      ai.gameFinalized = false;
-    }
-
-    function setLocalRoom(kind) {
-      clearTimers();
-      if (state.unsub) {
-        state.unsub();
-        state.unsub = null;
-      }
-
-      state.roomRef = null;
-      state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
-      state.mySide = kind === "cpu" ? "black" : "both";
-      state.roomData = makeLocalRoom(kind);
-      state.selected = null;
-      resetLocalEpisode();
-      updateMePill();
-      refreshHands();
-      scheduleRender(0);
-      setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
-
-      if (kind === "cpu") {
-        void ensureAIMemoryLoaded().then(() => scheduleCpuThink(400));
-      }
+      return false;
     }
 
     function boardMap(pieces) {
@@ -937,32 +664,6 @@
         }
       }
       return out;
-    }
-
-    function forward(side) {
-      return side === "black" ? -1 : 1;
-    }
-
-    function opposite(side) {
-      return side === "black" ? "white" : "black";
-    }
-
-    function isInside(x, y) {
-      return x >= 0 && x < 9 && y >= 0 && y < 9;
-    }
-
-    function isInPromotionZone(side, y) {
-      return PROMOTION_ZONE[side].includes(y);
-    }
-
-    function forcePromoteNeeded(piece, destY) {
-      if (piece.type === "pawn" || piece.type === "lance") {
-        return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
-      }
-      if (piece.type === "knight") {
-        return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
-      }
-      return false;
     }
 
     function pseudoMovesForType(side, type, x, y, pieces) {
@@ -1029,12 +730,8 @@
     }
 
     function movementForms(piece) {
-      if (piece.promoMode === "promoted") {
-        return [PROMOTED_MOVE[piece.type] || piece.type];
-      }
-      if (piece.promoMode === "can") {
-        return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
-      }
+      if (piece.promoMode === "promoted") return [PROMOTED_MOVE[piece.type] || piece.type];
+      if (piece.promoMode === "can") return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
       return [piece.type];
     }
 
@@ -1204,7 +901,7 @@
       return out;
     }
 
-    function dropLegalSquares(stateObj, side, type) {
+    function dropLegalSquares(stateObj) {
       if (!stateObj || stateObj.winner) return [];
       const out = [];
       const occ = boardMap(stateObj.pieces);
@@ -1238,7 +935,7 @@
         return legalMovesForPiece(live, piece, false);
       }
       if (state.selected.kind === "hand") {
-        return dropLegalSquares(live, state.selected.side, state.selected.type);
+        return dropLegalSquares(live);
       }
       return [];
     }
@@ -1321,7 +1018,7 @@
       const otherSide = state.mySide === "black" ? "white" : "black";
       const otherPid = room.players?.[otherSide];
       const otherVote = otherPid ? !!votes[otherPid] : false;
-      const other = otherVote ? "相手もはいを押してるよ。" : "相手の返事待ちだよ.";
+      const other = otherVote ? "相手もはいを押してるよ。" : "相手の返事待ちだよ。";
       rematchDesc.textContent = `${me}\n${other}`;
       rematchOverlay.classList.add("show");
     }
@@ -1549,7 +1246,12 @@
       if (session.renderTimer) clearTimeout(session.renderTimer);
 
       if (delay === null) {
-        if (!hasAnimatingState()) return;
+        if (!hasAnimatingState()) {
+          if (session.kind === "cpu" && state.roomData?.state && !state.roomData.state.winner) {
+            scheduleCpuThink(100);
+          }
+          return;
+        }
         const now = Date.now();
         let next = 250;
         const live = state.roomData?.state;
@@ -1578,6 +1280,24 @@
         session.cpuTimer = null;
         void cpuThink();
       }, delay);
+    }
+
+    function startCpuLoop() {
+      if (!isCPU()) return;
+      if (session.cpuLoop) clearInterval(session.cpuLoop);
+      session.cpuLoop = setInterval(() => {
+        if (session.kind === "cpu" && state.roomData && !state.roomData.state?.winner) {
+          void cpuThink();
+        }
+      }, 450);
+      scheduleCpuThink(120);
+    }
+
+    function stopCpuLoop() {
+      if (session.cpuLoop) clearInterval(session.cpuLoop);
+      session.cpuLoop = null;
+      if (session.cpuTimer) clearTimeout(session.cpuTimer);
+      session.cpuTimer = null;
     }
 
     function updateHandCooldownIndicators(now) {
@@ -1839,162 +1559,296 @@
       return null;
     }
 
-    async function commitMove(destBoard) {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return;
+    function aiActionKey(meta, actorSide) {
+      if (!meta) return "";
+      if (meta.kind === "hand") {
+        return `hand|${meta.pieceType}|${meta.to.x}|${meta.to.y}|${actorSide}|${meta.nextMode || "normal"}`;
+      }
+      const dx = meta.to.x - meta.from.x;
+      const dy = meta.to.y - meta.from.y;
+      const captured = meta.capturedType || "-";
+      return [
+        "piece",
+        meta.pieceType,
+        meta.promoMode,
+        dx,
+        dy,
+        captured,
+        meta.nextMode || "normal",
+        actorSide
+      ].join("|");
+    }
 
-      if (session.kind === "online") {
-        if (!state.roomRef) return;
-        if (!canAct()) return;
+    function aiAverage(key) {
+      const s = ai.stats[key];
+      if (!s) return 0;
+      return s.sum / Math.max(1, s.count);
+    }
 
+    function aiReward(key, reward) {
+      if (!key || !Number.isFinite(reward)) return;
+      const stat = ai.stats[key] || (ai.stats[key] = { sum: 0, count: 0 });
+      stat.sum += reward;
+      stat.count += 1;
+
+      const pend = ai.pending[key] || (ai.pending[key] = { sum: 0, count: 0 });
+      pend.sum += reward;
+      pend.count += 1;
+    }
+
+    function normalizeStatsBlob(blob) {
+      const src = blob && blob.stats ? blob.stats : blob;
+      const out = {};
+      if (!src || typeof src !== "object") return out;
+      for (const [k, v] of Object.entries(src)) {
+        if (!v || typeof v !== "object") continue;
+        out[k] = {
+          sum: Number(v.sum || 0),
+          count: Number(v.count || 0)
+        };
+      }
+      return out;
+    }
+
+    function pruneStats(stats, maxKeys = 1500) {
+      const entries = Object.entries(stats || {});
+      if (entries.length <= maxKeys) return stats || {};
+      entries.sort((a, b) => {
+        const av = Math.abs(a[1]?.sum || 0) + (a[1]?.count || 0) * 0.25;
+        const bv = Math.abs(b[1]?.sum || 0) + (b[1]?.count || 0) * 0.25;
+        return bv - av;
+      });
+      return Object.fromEntries(entries.slice(0, maxKeys));
+    }
+
+    function saveLocalAIMemory() {
+      try {
+        localStorage.setItem(AI_LOCAL_KEY, JSON.stringify({
+          version: 1,
+          stats: ai.stats,
+          games: ai.games,
+          updatedAt: Date.now()
+        }));
+      } catch {}
+    }
+
+    function loadLocalAIMemory() {
+      try {
+        const raw = localStorage.getItem(AI_LOCAL_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        ai.stats = normalizeStatsBlob(parsed);
+        ai.games = Number(parsed.games || 0);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function ensureAIMemoryLoaded() {
+      if (ai.loaded) return ai;
+      if (ai.loading) return ai.loading;
+
+      ai.loading = (async () => {
+        const localLoaded = loadLocalAIMemory();
+        ai.loaded = true;
+
+        try {
+          ai.memoryDoc = doc(db, "ai_memory", "cpu_v1");
+          const snap = await getDoc(ai.memoryDoc);
+          if (snap.exists()) {
+            ai.stats = normalizeStatsBlob(snap.data());
+            ai.games = Number(snap.data()?.games || 0);
+            saveLocalAIMemory();
+          } else if (!localLoaded) {
+            ai.stats = {};
+            ai.games = 0;
+          }
+        } catch {
+          if (!localLoaded) {
+            ai.stats = {};
+            ai.games = 0;
+          }
+        }
+
+        return ai;
+      })();
+
+      return ai.loading;
+    }
+
+    async function saveAIMemoryToFirebase() {
+      if (!ai.loaded || !ai.memoryDoc) return;
+      const pendingKeys = Object.keys(ai.pending);
+      if (!pendingKeys.length) return;
+
+      try {
         await runTransaction(db, async (tx) => {
-          const snap = await tx.get(state.roomRef);
-          if (!snap.exists()) return;
+          const snap = await tx.get(ai.memoryDoc);
+          const remote = snap.exists() ? normalizeStatsBlob(snap.data()) : {};
+          const merged = { ...remote };
 
-          const room = snap.data();
-          const currentLive = room.state;
-          if (!currentLive || currentLive.winner) return;
+          for (const [k, delta] of Object.entries(ai.pending)) {
+            const cur = merged[k] || { sum: 0, count: 0 };
+            merged[k] = {
+              sum: (cur.sum || 0) + (delta.sum || 0),
+              count: (cur.count || 0) + (delta.count || 0)
+            };
+          }
 
-          const now = Date.now();
-          if (room.matchStartAt && now < room.matchStartAt) return;
+          const pruned = pruneStats(merged, 1500);
+          tx.set(ai.memoryDoc, {
+            version: 1,
+            stats: pruned,
+            games: Math.max(Number(snap.exists() ? snap.data()?.games || 0 : 0), ai.games || 0),
+            updatedAt: Date.now()
+          }, { merge: true });
 
-          const side = room.players?.black === state.playerId ? "black"
-                    : room.players?.white === state.playerId ? "white"
-                    : "spectator";
-          if (side === "spectator") return;
-          if (!canControlSide(selectedSideOfSelection())) return;
-
-          const prevLive = cloneState(currentLive);
-          const next = applyActionToLive(currentLive, state.selected, side, destBoard, false);
-          if (!next) return;
-
-          const presence = room.presence || {};
-          presence[state.playerId] = { side, lastSeen: now };
-
-          const update = {
-            state: next,
-            presence,
-            updatedAt: now
-          };
-          if (next.winner) update.lastWinnerSide = next.lastWinnerSide || next.winner;
-
-          tx.update(state.roomRef, update);
-        }).catch(err => {
-          setStatus(`動かせなかった: ${err.message}`);
+          ai.stats = pruned;
+          ai.pending = {};
+          saveLocalAIMemory();
         });
-
-        scheduleRender(0);
-        return;
-      }
-
-      const liveLocal = state.roomData?.state;
-      if (!liveLocal) return;
-
-      const anySide = session.kind === "local_dual";
-      const actorSide = session.kind === "cpu" ? "black" : null;
-      const prevLive = cloneState(liveLocal);
-      const selected = state.selected.kind === "piece" || state.selected.kind === "hand" ? state.selected : null;
-      const next = applyActionToLive(liveLocal, selected, actorSide, destBoard, anySide);
-      if (!next) return;
-
-      state.roomData.state = next;
-      if (next.winner) {
-        state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
-      }
-      state.roomData.updatedAt = Date.now();
-      refreshHands();
-      scheduleRender(0);
-
-      if (session.kind === "cpu") {
-        const actionMeta = buildActionMeta(prevLive, selected, destBoard, next);
-        aiObserveTransition(prevLive, next, actorSide, actionMeta);
-        if (!next.winner) scheduleCpuThink(350);
+      } catch {
+        saveLocalAIMemory();
       }
     }
 
-    function buildActionMeta(live, selected, destBoard, nextState) {
-      if (!selected) return null;
-      if (selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === selected.id);
-        if (!piece) return null;
-        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
-        const legal = legalMovesForPiece(live, piece, true);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        return {
-          kind: "piece",
-          pieceType: piece.type,
-          promoMode: piece.promoMode,
-          from: { x: piece.x, y: piece.y },
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: captured?.type || null,
-          nextMode: move?.nextMode || piece.promoMode || "normal",
-          moveKind: move?.kind || "normal"
-        };
-      }
-
-      if (selected.kind === "hand") {
-        return {
-          kind: "hand",
-          pieceType: selected.type,
-          promoMode: "hand",
-          from: null,
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: null,
-          nextMode: "normal",
-          moveKind: "drop"
-        };
-      }
-
-      return null;
+    function captureReward(type) {
+      return Math.max(1.2, cpuValue(type) * 0.02);
     }
 
-    function getSlidePieceTarget(releasePoint) {
-      const live = state.roomData?.state;
-      const piece = selectedPieceObj();
-      if (!live || !piece) return null;
+    function lossPenalty(type) {
+      return -Math.max(1.2, cpuValue(type) * 0.02);
+    }
 
-      const start = pieceScreenCenter(piece);
-      const dragOct = octantFromVector(releasePoint.x - start.x, releasePoint.y - start.y);
-      if (dragOct === null) return null;
+    function terminalRewardForWinner(winnerSide) {
+      return winnerSide === "white" ? 90 : -90;
+    }
 
-      const legal = selectedLegalMoves(live);
-      if (!legal.length) return null;
+    function aiHeuristic(meta, live, actorSide) {
+      let score = 0;
+      if (meta.capturedType) score += captureReward(meta.capturedType);
+      if (meta.nextMode === "promoted") score += 0.8;
+      if (meta.kind === "hand") score += 0.2;
 
-      let best = null;
-      let bestD = Infinity;
+      if (meta.pieceType === "pawn" || meta.pieceType === "lance") {
+        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.04;
+      } else if (meta.pieceType === "knight") {
+        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.03;
+      } else {
+        score += (4 - Math.abs(meta.to.x - 4)) * 0.03;
+        score += (4 - Math.abs(meta.to.y - 4)) * 0.03;
+      }
 
-      for (const m of legal) {
-        const s = boardToScreen(m.x, m.y);
-        const center = { x: s.x + 0.5, y: s.y + 0.5 };
-        const moveOct = octantFromVector(center.x - start.x, center.y - start.y);
-        if (moveOct !== dragOct) continue;
+      const oppSide = actorSide === "white" ? "black" : "white";
+      const oppKing = kingPos(live.pieces, oppSide);
+      if (oppKing) {
+        const dist = Math.abs(oppKing.x - meta.to.x) + Math.abs(oppKing.y - meta.to.y);
+        score += Math.max(0, (10 - dist)) * 0.02;
+      }
 
-        const d = (center.x - releasePoint.x) ** 2 + (center.y - releasePoint.y) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          best = m;
+      return score;
+    }
+
+    function aiEvaluateAction(meta, live, actorSide) {
+      const key = aiActionKey(meta, actorSide);
+      const learned = Math.max(-20, Math.min(20, aiAverage(key) * 2));
+      return aiHeuristic(meta, live, actorSide) + learned;
+    }
+
+    function lostPieceTypes(prevPieces, nextPieces, side) {
+      const nextIds = new Set((nextPieces || []).map(p => p.id));
+      return (prevPieces || [])
+        .filter(p => p.side === side && !nextIds.has(p.id))
+        .map(p => p.type);
+    }
+
+    function aiObserveTransition(prevLive, nextLive, actorSide, actionMeta) {
+      if (session.kind !== "cpu") return;
+      if (!prevLive || !nextLive) return;
+
+      if (actorSide === "white" && actionMeta) {
+        const key = aiActionKey(actionMeta, "white");
+        ai.lastCpuActionKey = key;
+        ai.episode.push(key);
+
+        for (const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "black")) {
+          aiReward(key, captureReward(t));
         }
       }
 
-      return best;
+      if (actorSide === "black") {
+        for (const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "white")) {
+          if (ai.lastCpuActionKey) aiReward(ai.lastCpuActionKey, lossPenalty(t));
+        }
+      }
+
+      if (nextLive.winner) {
+        aiFinishEpisode(nextLive.winner);
+      }
     }
 
-    function getHandDropTarget(ev) {
-      const sq = pointToSquare(ev);
-      if (!sq) return null;
-      const board = screenToBoard(sq.x, sq.y);
-      const live = state.roomData?.state;
-      if (!live) return null;
-      if (pieceAt(live.pieces, board.x, board.y)) return null;
-      return board;
+    function aiFinishEpisode(winnerSide) {
+      if (ai.gameFinalized) return;
+      ai.gameFinalized = true;
+
+      if (!ai.episode.length) {
+        ai.lastCpuActionKey = null;
+        ai.pending = {};
+        saveLocalAIMemory();
+        void saveAIMemoryToFirebase();
+        return;
+      }
+
+      const base = terminalRewardForWinner(winnerSide);
+      let factor = 1;
+
+      for (let i = ai.episode.length - 1; i >= 0; i--) {
+        aiReward(ai.episode[i], base * factor);
+        factor *= 0.92;
+      }
+
+      ai.episode = [];
+      ai.lastCpuActionKey = null;
+      ai.games += 1;
+      ai.stats = pruneStats(ai.stats, 1500);
+      saveLocalAIMemory();
+      void saveAIMemoryToFirebase();
     }
 
-    function pointFromEvent(ev) {
-      const rect = boardCanvas.getBoundingClientRect();
-      return {
-        x: (ev.clientX - rect.left) / rect.width * 9,
-        y: (ev.clientY - rect.top) / rect.height * 9
-      };
+    function resetLocalEpisode() {
+      ai.episode = [];
+      ai.lastCpuActionKey = null;
+      ai.gameFinalized = false;
+    }
+
+    function setLocalRoom(kind) {
+      clearTimers();
+      if (state.unsub) {
+        state.unsub();
+        state.unsub = null;
+      }
+
+      state.roomRef = null;
+      state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
+      state.mySide = kind === "cpu" ? "black" : "both";
+      state.roomData = makeLocalRoom(kind);
+      state.selected = null;
+      resetLocalEpisode();
+      updateMePill();
+      refreshHands();
+      scheduleRender(0);
+      setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
+
+      if (kind === "cpu") {
+        void ensureAIMemoryLoaded();
+        startCpuLoop();
+      }
+    }
+
+    function freshStateWithRoyalHistory(historyWinnerSide) {
+      const royalLabels = buildRoyalLabels(historyWinnerSide);
+      return freshState(royalLabels);
     }
 
     function refreshLocalRematchImmediate() {
@@ -2011,7 +1865,7 @@
       resetLocalEpisode();
       refreshHands();
       scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(400);
+      if (session.kind === "cpu") scheduleCpuThink(200);
     }
 
     async function enterRoom() {
@@ -2047,11 +1901,20 @@
       }
     }
 
+    function randRoomId() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let s = "";
+      for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+      return s;
+    }
+
     async function connectOnlineRoom(roomId) {
       roomId = normalizeRoomId(roomId);
       if (!roomId) return;
 
       if (state.unsub) state.unsub();
+      stopCpuLoop();
+
       state.roomId = roomId;
       state.roomRef = doc(db, "rooms", roomId);
       state.selected = null;
@@ -2183,12 +2046,40 @@
       scheduleRender(0);
     }
 
-    async function cpuThink() {
-      if (!isCPU() || !state.roomData) return;
-      if (!ai.loaded) {
-        await ensureAIMemoryLoaded();
-        if (!ai.loaded) return;
+    function scoreAction(live, meta, actorSide) {
+      let score = 0;
+      if (meta.capturedType) score += cpuValue(meta.capturedType);
+      if (meta.nextMode === "promoted") score += 30;
+      if (meta.kind === "hand") score += 5;
+
+      const oppSide = actorSide === "white" ? "black" : "white";
+      const oppKing = kingPos(live.pieces, oppSide);
+      if (oppKing) {
+        const dist = Math.abs(oppKing.x - meta.to.x) + Math.abs(oppKing.y - meta.to.y);
+        score += Math.max(0, (10 - dist)) * 2;
       }
+
+      if (meta.pieceType === "pawn" || meta.pieceType === "lance") {
+        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.8;
+      } else if (meta.pieceType === "knight") {
+        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.6;
+      } else {
+        score += (4 - Math.abs(meta.to.x - 4)) * 0.5;
+        score += (4 - Math.abs(meta.to.y - 4)) * 0.5;
+      }
+
+      const key = aiActionKey(meta, actorSide);
+      const learned = Math.max(-20, Math.min(20, aiAverage(key) * 2));
+      score += learned;
+      score += Math.random() * 2;
+      return score;
+    }
+
+    async function cpuThink() {
+      if (session.kind !== "cpu") return;
+      if (!state.roomData) return;
+
+      void ensureAIMemoryLoaded();
 
       const live = state.roomData.state;
       if (!live || live.winner) return;
@@ -2214,16 +2105,15 @@
             promoMode: p.promoMode,
             from: { x: p.x, y: p.y },
             to: { x: mv.x, y: mv.y },
-            capturedType: pieceAt(board, mv.x, mv.y)?.type || null,
+            capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
             nextMode: mv.nextMode || p.promoMode || "normal",
             moveKind: mv.kind || "normal"
           };
           const key = aiActionKey(meta, actorSide);
-          const score = aiEvaluateAction(meta, live, actorSide);
+          const score = scoreAction(live, meta, actorSide);
           actions.push({
             selected: { kind: "piece", id: p.id },
             dest: { x: mv.x, y: mv.y },
-            nextMode: mv.nextMode,
             meta,
             key,
             score
@@ -2250,11 +2140,10 @@
                 moveKind: "drop"
               };
               const key = aiActionKey(meta, actorSide);
-              const score = aiEvaluateAction(meta, live, actorSide);
+              const score = scoreAction(live, meta, actorSide);
               actions.push({
                 selected: { kind: "hand", side: "white", type: t },
                 dest: { x, y },
-                nextMode: "normal",
                 meta,
                 key,
                 score
@@ -2287,7 +2176,7 @@
       aiObserveTransition(prevLive, next, "white", pick.meta);
       scheduleRender(0);
 
-      if (!next.winner) scheduleCpuThink(500);
+      if (!next.winner) scheduleCpuThink(450);
     }
 
     async function voteRematch(yes) {
@@ -2361,6 +2250,206 @@
       });
 
       if (!yes) leaveToHome();
+    }
+
+    function buildActionMeta(live, selected, destBoard) {
+      if (!selected) return null;
+      if (selected.kind === "piece") {
+        const piece = live.pieces.find(p => p.id === selected.id);
+        if (!piece) return null;
+        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
+        const legal = legalMovesForPiece(live, piece, true);
+        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
+        return {
+          kind: "piece",
+          pieceType: piece.type,
+          promoMode: piece.promoMode,
+          from: { x: piece.x, y: piece.y },
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: captured?.type || null,
+          nextMode: move?.nextMode || piece.promoMode || "normal",
+          moveKind: move?.kind || "normal"
+        };
+      }
+
+      if (selected.kind === "hand") {
+        return {
+          kind: "hand",
+          pieceType: selected.type,
+          promoMode: "hand",
+          from: null,
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: null,
+          nextMode: "normal",
+          moveKind: "drop"
+        };
+      }
+
+      return null;
+    }
+
+    async function commitMove(destBoard) {
+      const live = state.roomData?.state;
+      if (!live || !state.selected) return;
+
+      if (session.kind === "online") {
+        if (!state.roomRef) return;
+        if (!canAct()) return;
+
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(state.roomRef);
+          if (!snap.exists()) return;
+
+          const room = snap.data();
+          const currentLive = room.state;
+          if (!currentLive || currentLive.winner) return;
+
+          const now = Date.now();
+          if (room.matchStartAt && now < room.matchStartAt) return;
+
+          const side = room.players?.black === state.playerId ? "black"
+                    : room.players?.white === state.playerId ? "white"
+                    : "spectator";
+          if (side === "spectator") return;
+          if (!canControlSide(selectedSideOfSelection())) return;
+
+          const next = applyActionToLive(currentLive, state.selected, side, destBoard, false);
+          if (!next) return;
+
+          const presence = room.presence || {};
+          presence[state.playerId] = { side, lastSeen: now };
+
+          const update = {
+            state: next,
+            presence,
+            updatedAt: now
+          };
+          if (next.winner) update.lastWinnerSide = next.lastWinnerSide || next.winner;
+
+          tx.update(state.roomRef, update);
+        }).catch(err => {
+          setStatus(`動かせなかった: ${err.message}`);
+        });
+
+        scheduleRender(0);
+        return;
+      }
+
+      const liveLocal = state.roomData?.state;
+      if (!liveLocal) return;
+
+      const anySide = session.kind === "local_dual";
+      const actorSide = session.kind === "cpu" ? "black" : null;
+      const selected = state.selected.kind === "piece" || state.selected.kind === "hand" ? state.selected : null;
+      const prevLive = cloneState(liveLocal);
+      const next = applyActionToLive(liveLocal, selected, actorSide, destBoard, anySide);
+      if (!next) return;
+
+      state.roomData.state = next;
+      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
+      state.roomData.updatedAt = Date.now();
+      refreshHands();
+      scheduleRender(0);
+
+      if (session.kind === "cpu") {
+        const actionMeta = buildActionMeta(prevLive, selected, destBoard);
+        aiObserveTransition(prevLive, next, actorSide, actionMeta);
+        if (!next.winner) scheduleCpuThink(220);
+      }
+    }
+
+    function getSlidePieceTarget(releasePoint) {
+      const live = state.roomData?.state;
+      const piece = selectedPieceObj();
+      if (!live || !piece) return null;
+
+      const start = pieceScreenCenter(piece);
+      const dragOct = octantFromVector(releasePoint.x - start.x, releasePoint.y - start.y);
+      if (dragOct === null) return null;
+
+      const legal = selectedLegalMoves(live);
+      if (!legal.length) return null;
+
+      let best = null;
+      let bestD = Infinity;
+
+      for (const m of legal) {
+        const s = boardToScreen(m.x, m.y);
+        const center = { x: s.x + 0.5, y: s.y + 0.5 };
+        const moveOct = octantFromVector(center.x - start.x, center.y - start.y);
+        if (moveOct !== dragOct) continue;
+
+        const d = (center.x - releasePoint.x) ** 2 + (center.y - releasePoint.y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = m;
+        }
+      }
+
+      return best;
+    }
+
+    function getHandDropTarget(ev) {
+      const sq = pointToSquare(ev);
+      if (!sq) return null;
+      const board = screenToBoard(sq.x, sq.y);
+      const live = state.roomData?.state;
+      if (!live) return null;
+      if (pieceAt(live.pieces, board.x, board.y)) return null;
+      return board;
+    }
+
+    function pointFromEvent(ev) {
+      const rect = boardCanvas.getBoundingClientRect();
+      return {
+        x: (ev.clientX - rect.left) / rect.width * 9,
+        y: (ev.clientY - rect.top) / rect.height * 9
+      };
+    }
+
+    function refreshLocalStateAfterReset() {
+      if (!state.roomData) return;
+      state.roomData.state = freshState();
+      state.roomData.rematchVotes = {};
+      state.roomData.matchStartAt = null;
+      state.roomData.updatedAt = Date.now();
+      state.selected = null;
+      refreshHands();
+      scheduleRender(0);
+      if (session.kind === "cpu") scheduleCpuThink(200);
+    }
+
+    async function enterRoom() {
+      const code = normalizeRoomId(roomInput.value);
+      const mode = specialModeFromCode(code);
+
+      if (mode === "cpu" || mode === "local_dual") {
+        session.kind = mode;
+        setLocalRoom(mode);
+        return;
+      }
+
+      session.kind = "online";
+      clearTimers();
+
+      try {
+        let roomId = code;
+        if (!roomId) {
+          roomId = randRoomId();
+          roomInput.value = roomId;
+        }
+
+        const ref = doc(db, "rooms", roomId);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()) {
+          await setDoc(ref, makeOnlineRoomDoc(state.playerId));
+        }
+
+        await connectOnlineRoom(roomId);
+      } catch (err) {
+        setStatus(`入室に失敗した: ${err.message}`);
+      }
     }
 
     boardCanvas.addEventListener("click", async (ev) => {
@@ -2558,6 +2647,7 @@
 
     window.addEventListener("resize", resizeCanvas);
 
+    void ensureAIMemoryLoaded();
     resizeCanvas();
     refreshHands();
     updateMePill();
