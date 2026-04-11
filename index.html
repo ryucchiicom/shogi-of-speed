@@ -398,47 +398,12 @@
       rook:"dragon"
     };
 
-    function cpuValue(type) {
-      return {
-        king: 10000,
-        rook: 500,
-        bishop: 450,
-        gold: 320,
-        silver: 280,
-        knight: 240,
-        lance: 220,
-        pawn: 120,
-        tokin: 200,
-        proLance: 200,
-        proKnight: 200,
-        proSilver: 200,
-        horse: 650,
-        dragon: 700
-      }[type] || 100;
-    }
-
     const theme = {
       boardDark: "#e0c390",
       boardLight: "#edd9b3",
       piece1: "#d9ba90",
       piece2: "#ba905b"
     };
-
-    function randomRoyalLabels() {
-      return Math.random() < 0.5
-        ? { black: "王", white: "玉" }
-        : { black: "玉", white: "王" };
-    }
-
-    function buildRoyalLabels(lastWinnerSide) {
-      if (lastWinnerSide === "black" || lastWinnerSide === "white") {
-        return {
-          black: lastWinnerSide === "black" ? "王" : "玉",
-          white: lastWinnerSide === "white" ? "王" : "玉"
-        };
-      }
-      return randomRoyalLabels();
-    }
 
     const session = {
       kind: "online", // online | cpu | local_dual
@@ -511,6 +476,22 @@
       if (c === "CPU") return "cpu";
       if (c === "1SMARTPHONE") return "local_dual";
       return "online";
+    }
+
+    function randomRoyalLabels() {
+      return Math.random() < 0.5
+        ? { black: "王", white: "玉" }
+        : { black: "玉", white: "王" };
+    }
+
+    function buildRoyalLabels(lastWinnerSide) {
+      if (lastWinnerSide === "black" || lastWinnerSide === "white") {
+        return {
+          black: lastWinnerSide === "black" ? "王" : "玉",
+          white: lastWinnerSide === "white" ? "王" : "玉"
+        };
+      }
+      return randomRoyalLabels();
     }
 
     function isPromotableType(type) {
@@ -850,9 +831,6 @@
       if (session.kind !== "cpu") return;
       if (!prevLive || !nextLive) return;
 
-      const prevCounts = countPieces(prevLive.pieces);
-      const nextCounts = countPieces(nextLive.pieces);
-
       if (actorSide === "white" && actionMeta) {
         const key = aiActionKey(actionMeta, "white");
         ai.lastCpuActionKey = key;
@@ -887,7 +865,7 @@
       };
     }
 
-    function setLocalRoom(kind) {
+    function setLocalRoom(kind){
       clearTimers();
       if (state.unsub) {
         state.unsub();
@@ -905,8 +883,10 @@
       refreshHands();
       scheduleRender(0);
       setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
+
       if (kind === "cpu") {
-        void ensureAIMemoryLoaded().then(() => scheduleCpuThink(80));
+        void ensureAIMemoryLoaded();
+        scheduleCpuThink(250);
       }
     }
 
@@ -1218,7 +1198,7 @@
       return out;
     }
 
-    function canControlSide(side) {
+    function canControlSide(side){
       if (session.kind === "local_dual") return true;
       if (session.kind === "cpu") return side === "black";
       if (state.mySide === "spectator") return false;
@@ -1699,7 +1679,7 @@
       updateRematchOverlay();
       scheduleRender();
 
-      if (session.kind === "cpu" && ai.loaded && !session.cpuTimer && live && !live.winner) {
+      if (session.kind === "cpu" && live && !live.winner && !session.cpuTimer) {
         scheduleCpuThink(250);
       }
     }
@@ -1906,11 +1886,11 @@
       if (session.kind === "cpu") {
         const actionMeta = buildActionMeta(prevLive, selected, destBoard, next);
         aiObserveTransition(prevLive, next, "white", actionMeta);
-        if (!next.winner) scheduleCpuThink(80);
+        if (!next.winner) scheduleCpuThink(250);
       }
     }
 
-    function buildActionMeta(live, selected, destBoard, nextState) {
+    function buildActionMeta(live, selected, destBoard) {
       if (!selected) return null;
       if (selected.kind === "piece") {
         const piece = live.pieces.find(p => p.id === selected.id);
@@ -1995,27 +1975,23 @@
       };
     }
 
-    function resetLocalEpisode() {
+    function resetWithRoyalHistory(historyWinnerSide) {
+      const royalLabels = buildRoyalLabels(historyWinnerSide);
+      if (state.roomData) {
+        state.roomData.state = freshState(royalLabels);
+        state.roomData.state.royalLabels = royalLabels;
+        state.roomData.lastWinnerSide = historyWinnerSide || null;
+        state.roomData.matchStartAt = null;
+        state.roomData.rematchVotes = {};
+        state.roomData.updatedAt = Date.now();
+      }
+      state.selected = null;
+      ai.gameFinalized = false;
       ai.episode = [];
       ai.lastCpuActionKey = null;
-      ai.gameFinalized = false;
-    }
-
-    function refreshLocalRematchImmediate() {
-      if (!state.roomData) return;
-      const historyWinner = state.roomData.lastWinnerSide || state.roomData.state?.lastWinnerSide || state.roomData.state?.winner || null;
-      const royalLabels = buildRoyalLabels(historyWinner);
-      state.roomData.state = freshState(royalLabels);
-      state.roomData.state.royalLabels = royalLabels;
-      state.roomData.lastWinnerSide = historyWinner;
-      state.roomData.matchStartAt = null;
-      state.roomData.rematchVotes = {};
-      state.roomData.updatedAt = Date.now();
-      state.selected = null;
-      resetLocalEpisode();
       refreshHands();
       scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(80);
+      if (session.kind === "cpu") scheduleCpuThink(250);
     }
 
     async function enterRoom() {
@@ -2187,11 +2163,30 @@
       scheduleRender(0);
     }
 
+    function cpuValue(type) {
+      return {
+        king: 10000,
+        rook: 500,
+        bishop: 450,
+        gold: 320,
+        silver: 280,
+        knight: 240,
+        lance: 220,
+        pawn: 120,
+        tokin: 200,
+        proLance: 200,
+        proKnight: 200,
+        proSilver: 200,
+        horse: 650,
+        dragon: 700
+      }[type] || 100;
+    }
+
     async function cpuThink() {
       if (!isCPU() || !state.roomData) return;
+
       if (!ai.loaded) {
         await ensureAIMemoryLoaded();
-        if (!ai.loaded) return;
       }
 
       const live = state.roomData.state;
@@ -2365,6 +2360,25 @@
       });
 
       if (!yes) leaveToHome();
+    }
+
+    function refreshLocalRematchImmediate() {
+      if (!state.roomData) return;
+      const historyWinner = state.roomData.lastWinnerSide || state.roomData.state?.lastWinnerSide || state.roomData.state?.winner || null;
+      const royalLabels = buildRoyalLabels(historyWinner);
+      state.roomData.state = freshState(royalLabels);
+      state.roomData.state.royalLabels = royalLabels;
+      state.roomData.lastWinnerSide = historyWinner;
+      state.roomData.matchStartAt = null;
+      state.roomData.rematchVotes = {};
+      state.roomData.updatedAt = Date.now();
+      state.selected = null;
+      ai.gameFinalized = false;
+      ai.episode = [];
+      ai.lastCpuActionKey = null;
+      refreshHands();
+      scheduleRender(0);
+      if (session.kind === "cpu") scheduleCpuThink(250);
     }
 
     boardCanvas.addEventListener("click", async (ev) => {
@@ -2562,17 +2576,14 @@
 
     window.addEventListener("resize", resizeCanvas);
 
-    (async () => {
-      try {
-        await ensureAIMemoryLoaded();
-      } catch {}
-      resizeCanvas();
-      refreshHands();
-      updateMePill();
-      updateRematchOverlay();
-      scheduleRender(0);
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
-    })();
+    void ensureAIMemoryLoaded();
+
+    resizeCanvas();
+    refreshHands();
+    updateMePill();
+    updateRematchOverlay();
+    scheduleRender(0);
+    setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
   </script>
 </body>
 </html>
