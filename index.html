@@ -1,2741 +1,1800 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
-  <title>Shogi of Speed</title>
-  <style>
-    :root{
-      --bg:#f7f2e8;
-      --panel:#fffaf2;
-      --ink:#2f2618;
-      --line:#d9c8a6;
-      --accent:#f2c94c;
-      --board-dark:#e0c390;
-      --board-light:#edd9b3;
-      --piece-fill-1:#d9ba90;
-      --piece-fill-2:#ba905b;
-      --overlay:#0000005c;
-      --overlay-card:#fffaf2;
-      --ui-btn:#ffffff;
-      --primary-text:#2f2618;
-    }
-
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#15110d;
-        --panel:#211914;
-        --ink:#f2eadf;
-        --line:#4f4031;
-        --accent:#d9b14f;
-        --board-dark:#52402d;
-        --board-light:#67523c;
-        --piece-fill-1:#8e6b45;
-        --piece-fill-2:#674b2e;
-        --overlay:#0000007a;
-        --overlay-card:#241c16;
-        --ui-btn:#2c231c;
-        --primary-text:#1e140c;
-      }
-    }
-
-    html,body{
-      margin:0;
-      padding:0;
-      background:var(--bg);
-      color:var(--ink);
-      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;
-      user-select:none;
-      -webkit-user-select:none;
-      overscroll-behavior:none;
-    }
-
-    body{
-      touch-action:manipulation;
-    }
-
-    #app{
-      max-width:860px;
-      margin:0 auto;
-      padding:10px;
-      box-sizing:border-box;
-    }
-
-    .panel{
-      background:var(--panel);
-      border:1px solid var(--line);
-      border-radius:14px;
-      box-shadow:0 3px 14px rgba(0,0,0,.05);
-    }
-
-    #topbar{
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      align-items:center;
-      padding:8px;
-      margin-bottom:8px;
-    }
-
-    #roomInput{
-      width:170px;
-      max-width:100%;
-      padding:9px 10px;
-      border-radius:11px;
-      border:1px solid var(--line);
-      font-size:15px;
-      background:var(--ui-btn);
-      color:var(--ink);
-      outline:none;
-      box-sizing:border-box;
-      text-transform:uppercase;
-    }
-
-    button, select{
-      padding:9px 11px;
-      border-radius:11px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      color:var(--ink);
-      font-size:14px;
-      outline:none;
-      touch-action:manipulation;
-    }
-
-    button{
-      cursor:pointer;
-    }
-
-    button.primary{
-      background:linear-gradient(180deg,#fff3bf,#ffe08c);
-      border-color:#d8b84a;
-      color:var(--primary-text);
-      font-weight:800;
-    }
-
-    button:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
-
-    #status{
-      padding:8px 10px;
-      margin-bottom:8px;
-      line-height:1.45;
-      font-size:13px;
-    }
-
-    #layout{
-      display:grid;
-      grid-template-columns:1fr;
-      gap:8px;
-    }
-
-    #handsTop,#handsBottom{
-      padding:8px;
-    }
-
-    .handRow{
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      align-items:center;
-    }
-
-    .rot180{
-      transform:rotate(180deg);
-      transform-origin:center center;
-    }
-
-    .handLabel{
-      font-weight:700;
-      min-width:96px;
-      font-size:13px;
-    }
-
-    .handBtn{
-      min-width:64px;
-      text-align:center;
-      padding:8px 9px;
-      padding-right:34px;
-      font-size:13px;
-      position:relative;
-      overflow:hidden;
-    }
-
-    .handBtn.selected{
-      outline:3px solid rgba(138,180,255,.9);
-      border-color:#7aa4f5;
-    }
-
-    .handCooldown{
-      position:absolute;
-      right:8px;
-      top:50%;
-      transform:translateY(-50%);
-      width:18px;
-      height:18px;
-      border-radius:50%;
-      opacity:0;
-      pointer-events:none;
-      background:conic-gradient(from -90deg, rgba(255,255,255,.95) 0 calc(var(--cd, 0) * 1turn), rgba(0,0,0,.14) 0 1turn);
-      -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-      mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-    }
-
-    #boardWrap{
-      padding:8px;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-    }
-
-    canvas{
-      width:min(88vw,560px);
-      height:min(88vw,560px);
-      max-width:560px;
-      max-height:560px;
-      aspect-ratio:1/1;
-      display:block;
-      border-radius:16px;
-      background:#ead7b4;
-      box-shadow:0 7px 20px rgba(0,0,0,.08);
-      touch-action:none;
-    }
-
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:6px 9px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      font-size:12px;
-    }
-
-    #rematchOverlay{
-      position:fixed;
-      inset:0;
-      background:var(--overlay);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      z-index:60;
-      padding:18px;
-      box-sizing:border-box;
-    }
-
-    #rematchOverlay.show{
-      display:flex;
-    }
-
-    #rematchCard{
-      width:min(92vw,380px);
-      background:var(--overlay-card);
-      color:var(--ink);
-      border:1px solid var(--line);
-      border-radius:18px;
-      box-shadow:0 16px 40px rgba(0,0,0,.25);
-      padding:16px;
-      box-sizing:border-box;
-    }
-
-    #rematchWinner{
-      font-size:28px;
-      font-weight:900;
-      line-height:1.1;
-      margin-bottom:8px;
-      text-align:center;
-    }
-
-    #rematchTitle{
-      font-weight:800;
-      font-size:18px;
-      margin-bottom:8px;
-      text-align:center;
-    }
-
-    #rematchDesc{
-      font-size:13px;
-      line-height:1.55;
-      margin-bottom:14px;
-      opacity:.95;
-      white-space:pre-line;
-      text-align:center;
-    }
-
-    #rematchButtons{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-
-    #rematchButtons button{
-      flex:1 1 100px;
-      min-width:100px;
-      font-weight:700;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>1D Minecraft</title>
+<style>
+  :root{
+    --text:#eef2ff;
+    --muted:#aab3cf;
+    --accent:#7dd3fc;
+    --good:#9ef0b6;
+    --danger:#ffb4b4;
+    --cell-size:48px;
+    --gap:4px;
+  }
+  *{box-sizing:border-box}
+  html,body{
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    color:var(--text);
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    touch-action:none;
+    background:linear-gradient(#171b25,#0f1218);
+    transition:background .25s ease;
+  }
+  button,input{font:inherit}
+  #app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
+  header{
+    padding:8px 10px 6px;
+    background:rgba(0,0,0,.16);
+    border-bottom:1px solid rgba(255,255,255,.08)
+  }
+  .title{font-size:16px;font-weight:800}
+  .sub{margin-top:2px;font-size:12px;color:var(--muted);line-height:1.35}
+  #gameArea{
+    position:relative;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden
+  }
+  #hud{
+    position:absolute;left:8px;top:8px;right:8px;
+    display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);
+    gap:8px;pointer-events:none;z-index:2
+  }
+  .hudBox{
+    background:rgba(28,33,46,.82);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:14px;
+    padding:8px 10px;
+    backdrop-filter:blur(6px);
+    box-shadow:0 8px 20px rgba(0,0,0,.18);
+    min-width:0
+  }
+  .hudLabel{font-size:11px;color:var(--muted)}
+  .hudValue{
+    margin-top:3px;
+    font-size:13px;
+    font-weight:700;
+    max-width:100%;
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+    line-height:1.25;
+    word-break:break-word
+  }
+  .dirStrong{color:var(--accent);font-weight:900;font-size:14px}
+  #line{
+    display:flex;align-items:center;gap:var(--gap);width:max-content;padding:8px 6px;z-index:1
+  }
+  .cell{
+    width:var(--cell-size);
+    height:var(--cell-size);
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    font-size:clamp(18px,5vw,28px);
+    font-weight:800;
+    user-select:none;
+    flex:0 0 auto;
+    border:1px solid rgba(255,255,255,.08);
+    background:#1a1f2a;
+    overflow:hidden;
+  }
+  .cell.empty{background:linear-gradient(180deg,#171b24,#121620);color:#8d96b3}
+  .cell.dirt{background:linear-gradient(180deg,#8a5a3d,#734a31)}
+  .cell.grass{background:linear-gradient(180deg,#4caf50,#388e3c)}
+  .cell.wood{background:linear-gradient(180deg,#8d6e63,#6d4c41)}
+  .cell.leaf{background:linear-gradient(180deg,#66bb6a,#43a047)}
+  .cell.stone{background:linear-gradient(180deg,#9aa0aa,#7f8590);color:#15181f}
+  .cell.cobblestone{background:linear-gradient(180deg,#7d838c,#616773);color:#15181f}
+  .cell.gravel{background:linear-gradient(180deg,#a7acb4,#7e858f);color:#16191f}
+  .cell.coal_ore{background:linear-gradient(180deg,#30343d,#22262d)}
+  .cell.iron_ore{background:linear-gradient(180deg,#8b949f,#666e7a);color:#f3ede2}
+  .cell.gold_ore{background:linear-gradient(180deg,#d8b24c,#a97f1f);color:#1a1d24}
+  .cell.diamond_ore{background:linear-gradient(180deg,#57d8e6,#2ea8bb);color:#0d1416}
+  .cell.sand{background:linear-gradient(180deg,#f4e2a0,#ccb869);color:#201800}
+  .cell.coal{background:linear-gradient(180deg,#44484f,#24272d);color:#f2f2f2}
+  .cell.obsidian{background:linear-gradient(180deg,#42385f,#241e35);color:#f2f0ff}
+  .cell.netherrack{background:linear-gradient(180deg,#8a2f2f,#5d1919);color:#ffe5e5}
+  .cell.soul_sand{background:linear-gradient(180deg,#6d5a45,#4d3d2d);color:#f1debc}
+  .cell.ancient_debris{background:linear-gradient(180deg,#5f4a32,#302116);color:#f4e0b4}
+  .cell.water{background:linear-gradient(180deg,#6cc8ff,#3a8ee6);color:#07131f}
+  .cell.lava{background:linear-gradient(180deg,#ff9f3d,#d55a11);color:#2a1000}
+  .cell.plank{background:linear-gradient(180deg,#c89c6c,#a87747);color:#1b140d}
+  .cell.stick{background:linear-gradient(180deg,#b98a5a,#8f623d);color:#1b140d}
+  .cell.torch{background:linear-gradient(180deg,#ffd97a,#ffbf47);color:#372400}
+  .cell.crafting_table{background:linear-gradient(180deg,#b5875a,#8b5b34)}
+  .cell.furnace{background:linear-gradient(180deg,#818896,#5f6674)}
+  .cell.flint{background:linear-gradient(180deg,#7d828d,#50545e);color:#101216}
+  .cell.gunpowder{background:linear-gradient(180deg,#8d8f96,#5e6169);color:#0f1114}
+  .cell.bucket,.cell.water_bucket,.cell.lava_bucket,.cell.flint_and_steel,.cell.tnt,.cell.nether_portal{
+    background:linear-gradient(180deg,#4f586e,#2b3243)
+  }
+  .cell.wooden_pickaxe,.cell.stone_pickaxe,.cell.iron_pickaxe,.cell.gold_pickaxe,.cell.diamond_pickaxe,
+  .cell.wooden_axe,.cell.stone_axe,.cell.iron_axe,.cell.gold_axe,.cell.diamond_axe,
+  .cell.wooden_shovel,.cell.stone_shovel,.cell.iron_shovel,.cell.gold_shovel,.cell.diamond_shovel,
+  .cell.wooden_sword,.cell.stone_sword,.cell.iron_sword,.cell.gold_sword,.cell.diamond_sword,
+  .cell.wood_alltools,.cell.stone_alltools,.cell.iron_alltools,.cell.gold_alltools,.cell.diamond_alltools{
+    background:linear-gradient(180deg,#4f586e,#2b3243)
+  }
+  .cell.player{
+    outline:3px solid var(--accent);
+    box-shadow:0 0 0 3px rgba(125,211,252,.12),0 0 16px rgba(125,211,252,.18)
+  }
+  .cell.frontTarget{
+    outline:2px solid rgba(255,231,168,.95);
+    box-shadow:0 0 0 3px rgba(255,231,168,.14)
+  }
+  .cell.grave{
+    outline:3px solid #ff7d7d!important;
+    box-shadow:0 0 0 3px rgba(255,125,125,.15),0 0 18px rgba(255,125,125,.35)
+  }
+  .tex{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:fill;
+    pointer-events:none;
+    user-select:none;
+    z-index:0;
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    backface-visibility:hidden;
+    transform:translateZ(0);
+  }
+  .playerMark{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:24px;pointer-events:none;z-index:2
+  }
+  .faceBadge{
+    position:absolute;top:3px;right:4px;font-size:13px;line-height:1;padding:2px 4px;
+    border-radius:999px;background:rgba(0,0,0,.28);color:#fff;pointer-events:none;z-index:3
+  }
+  .graveBadge{
+    position:absolute;left:4px;bottom:3px;font-size:12px;font-weight:900;padding:1px 4px;
+    border-radius:999px;background:rgba(0,0,0,.32);color:#ffb0b0;pointer-events:none;z-index:3
+  }
+  #controls{
+    display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:8px;
+    background:rgba(0,0,0,.18);border-top:1px solid rgba(255,255,255,.08);z-index:3
+  }
+  .ctrl{
+    appearance:none;border:0;border-radius:14px;padding:12px 4px;
+    font-size:clamp(10px,2.6vw,13px);font-weight:800;color:var(--text);
+    background:linear-gradient(180deg,#394058,#252b3b);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 5px 15px rgba(0,0,0,.22);
+    min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  }
+  .ctrl:active{transform:translateY(1px);filter:brightness(1.07)}
+  #invOverlay,#worldOverlay,#confirmOverlay,#difficultyOverlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;
+    z-index:1000;pointer-events:auto
+  }
+  #invOverlay.open,#worldOverlay.open,#confirmOverlay.open,#difficultyOverlay.open{display:flex}
+  #invPanel,#worldPanel,#difficultyPanel{
+    width:min(980px,100vw);max-height:min(86vh,820px);background:rgba(24,28,40,.98);
+    border-top-left-radius:20px;border-top-right-radius:20px;border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 -18px 40px rgba(0,0,0,.35);overflow:hidden;display:grid;grid-template-rows:auto 1fr;pointer-events:auto
+  }
+  #worldPanel{max-height:min(90vh,860px);border-radius:18px;width:min(1100px, calc(100vw - 16px))}
+  #difficultyPanel{max-height:min(72vh,620px);border-radius:18px;width:min(720px, calc(100vw - 16px))}
+  .panelHeader{
+    padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;
+    border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)
+  }
+  .panelClose{
+    appearance:none;border:0;border-radius:12px;background:linear-gradient(180deg,#4e586f,#2c3346);
+    color:#fff;padding:9px 12px;font-weight:800;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)
+  }
+  #tabContent,#worldContent,#difficultyContent{min-height:0;overflow:auto;padding:12px;display:grid;gap:12px}
+  .section{
+    padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)
+  }
+  .section h3{margin:0 0 8px 0;font-size:14px}
+  .small{color:var(--muted);font-size:12px;line-height:1.45;margin-bottom:10px}
+  .searchRow{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px}
+  #invSearch,#cmdInput{
+    width:100%;min-width:0;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2);color:var(--text);
+    border-radius:14px;padding:11px 12px;font-size:14px;outline:none
+  }
+  #invList,#cmdFavList{display:flex;flex-wrap:wrap;gap:8px}
+  .chip,.favCmd,.diffBtn{
+    appearance:none;border:0;font-size:12px;border-radius:999px;padding:7px 10px;background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.08);white-space:nowrap;cursor:pointer;user-select:none;color:var(--text)
+  }
+  .chip.sel{outline:2px solid var(--accent);background:rgba(125,211,252,.16)}
+  .chip.sel.alltools{
+    outline:2px solid rgba(255,255,255,.95);border-color:rgba(255,255,255,.35);
+    background:linear-gradient(90deg,rgba(255,70,130,.98),rgba(255,210,50,.98),rgba(70,255,140,.98),rgba(40,205,255,.98),rgba(185,90,255,.98),rgba(255,70,130,.98));
+    background-size:380% 380%;animation:rainbowGlow 1.4s linear infinite;
+    box-shadow:0 0 0 1px rgba(255,255,255,.55),0 0 12px rgba(255,255,255,.32),0 0 28px rgba(0,210,255,.42),0 0 40px rgba(255,80,200,.28);
+    color:#fff;text-shadow:0 0 4px rgba(255,255,255,.95),0 0 10px rgba(255,255,255,.5);filter:saturate(1.8) brightness(1.18)
+  }
+  @keyframes rainbowGlow{
+    0%{background-position:0% 50%;filter:hue-rotate(0deg) saturate(1.9) brightness(1.18)}
+    25%{filter:hue-rotate(90deg) saturate(2.0) brightness(1.20)}
+    50%{background-position:100% 50%;filter:hue-rotate(180deg) saturate(2.05) brightness(1.22)}
+    75%{filter:hue-rotate(270deg) saturate(2.0) brightness(1.20)}
+    100%{background-position:0% 50%;filter:hue-rotate(360deg) saturate(1.9) brightness(1.18)}
+  }
+  .craftArea{display:grid;gap:10px}
+  .craftInfo{
+    padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);
+    font-size:13px;line-height:1.45
+  }
+  .craftGridWrap{display:inline-grid;gap:6px;padding:8px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)}
+  .slot{
+    appearance:none;border:1px solid rgba(255,255,255,.12);width:54px;height:54px;border-radius:12px;background:linear-gradient(180deg,#161b27,#10131a);
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;user-select:none;position:relative;cursor:pointer;color:var(--text)
+  }
+  .slot.has{background:linear-gradient(180deg,#263045,#1b2130)}
+  .slot small{position:absolute;bottom:3px;right:4px;font-size:9px;color:var(--muted)}
+  .craftBar{display:flex;gap:8px;flex-wrap:wrap}
+  .craftDo,.craftClear,.furnaceBtn,.cmdBtn,.cmdRun,.yesBtn,.noBtn,.saveBtn,.loadBtn,.miniBtn,.dangerBtn,.plainBtn,.diffBigBtn{
+    appearance:none;border:0;border-radius:14px;padding:11px 14px;color:#fff;font-weight:800;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)
+  }
+  .craftDo{background:linear-gradient(180deg,#4d6b52,#31483b)}
+  .craftClear{background:linear-gradient(180deg,#555b73,#313649)}
+  .furnaceBtn,.cmdRun,.saveBtn,.loadBtn,.miniBtn,.plainBtn,.cmdBtn,.diffBigBtn{background:linear-gradient(180deg,#4e586f,#2c3346)}
+  .dangerBtn{background:linear-gradient(180deg,#7e3d3d,#532222)}
+  .yesBtn{background:linear-gradient(180deg,#4b6a51,#30483a)}
+  .noBtn{background:linear-gradient(180deg,#4e586f,#2c3346)}
+  .craftDo:disabled{opacity:.5;filter:saturate(.5)}
+  .furnaceBox{display:grid;gap:10px}
+  .furnaceGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .fSlot{
+    appearance:none;border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:10px;min-height:92px;
+    background:rgba(255,255,255,.05);display:flex;flex-direction:column;justify-content:space-between;gap:8px;cursor:pointer;user-select:none;color:var(--text)
+  }
+  .fSlotTop{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:800;font-size:12px;color:var(--muted)}
+  .fSlotItem{
+    display:flex;align-items:center;justify-content:center;min-height:44px;font-size:13px;font-weight:800;border-radius:10px;background:rgba(0,0,0,.14);border:1px solid rgba(255,255,255,.06);text-align:center;padding:8px
+  }
+  .fSlotItem.has{background:rgba(125,211,252,.08);border-color:rgba(125,211,252,.16)}
+  .cmdBox{display:grid;gap:10px}
+  .cmdLocked{
+    padding:12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)
+  }
+  .cmdInputRow{display:grid;grid-template-columns:1fr auto;gap:8px}
+  #cmdInput:disabled{opacity:.5}
+  .cmdFavNote{color:var(--muted);font-size:11px;margin-top:8px}
+  #confirmBox,#difficultyBox{
+    width:min(560px, calc(100vw - 24px));border-radius:18px;background:#1a2030;border:1px solid rgba(255,255,255,.10);
+    padding:14px;box-shadow:0 18px 50px rgba(0,0,0,.45)
+  }
+  #confirmText,#difficultyText{font-size:14px;line-height:1.5;color:#eef2ff}
+  #confirmBtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+  #worldGrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .worldCard{
+    padding:12px;border-radius:18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);display:grid;gap:10px
+  }
+  .worldThumb{
+    width:100%;aspect-ratio:16/9;border-radius:14px;background:linear-gradient(135deg,#344055,#1b2030);
+    border:1px solid rgba(255,255,255,.08);overflow:hidden;position:relative;display:flex;align-items:flex-end;justify-content:flex-start;padding:8px;color:#fff
+  }
+  .worldThumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .worldThumb .ph{position:relative;z-index:1;background:rgba(0,0,0,.3);padding:4px 8px;border-radius:999px;font-size:12px}
+  .worldName{font-size:15px;font-weight:900;line-height:1.25;word-break:break-word}
+  .worldMeta{font-size:12px;color:var(--muted);line-height:1.4}
+  .worldActions{display:flex;gap:8px;flex-wrap:wrap}
+  .worldHeaderRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .badge{
+    display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.07);font-size:11px;color:var(--muted)
+  }
+  .lockBadge{color:#ffcbcb}
+  .diffPanel{display:grid;gap:10px}
+  .diffGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+  .diffBigBtn{
+    min-height:66px;text-align:left;border-radius:16px
+  }
+  .diffBigBtn strong{display:block;font-size:14px;margin-bottom:4px}
+  .diffBigBtn span{display:block;font-size:11px;color:#d9e0ff;line-height:1.35;opacity:.95}
+  .diffBigBtn[data-d="peaceful"]{background:linear-gradient(180deg,#4e7c5d,#315040)}
+  .diffBigBtn[data-d="easy"]{background:linear-gradient(180deg,#496f8c,#2d3f54)}
+  .diffBigBtn[data-d="normal"]{background:linear-gradient(180deg,#5b6078,#32394d)}
+  .diffBigBtn[data-d="hard"]{background:linear-gradient(180deg,#7d4d4d,#533131)}
+  .diffBigBtn[data-d="hardcore"]{background:linear-gradient(180deg,#3d1010,#210707)}
+  @media (min-width:900px){
+    :root{--cell-size:72px;--gap:6px}
+    .playerMark{font-size:28px}
+    .slot{width:60px;height:60px}
+  }
+</style>
 </head>
 <body>
-  <div id="app">
-    <div class="panel" id="topbar">
-      <input id="roomInput" maxlength="24" placeholder="ROOM CODE" />
-      <button class="primary" id="enterBtn">入室 / 作成</button>
-      <button id="shareBtn">コードを共有</button>
-      <label class="pill">操作
-        <select id="modeSelect">
-          <option value="tap">タップ</option>
-          <option value="slide">スライド</option>
-        </select>
-      </label>
-      <span class="pill" id="mePill">未接続</span>
+<div id="app">
+  <header>
+    <div class="title">1D Minecraft</div>
+    <div class="sub">時間・敵・液体・コマンドつき。地形は「1列ずつ」まとまりで生成する版。</div>
+  </header>
+  <div id="gameArea">
+    <div id="hud">
+      <div class="hudBox">
+        <div class="hudLabel">Position / Direction / Held / HP / Breath / Time / Difficulty</div>
+        <div class="hudValue" id="posText">Overworld x = 0</div>
+      </div>
+      <div class="hudBox">
+        <div class="hudLabel">Message</div>
+        <div class="hudValue" id="msgText">準備中</div>
+      </div>
     </div>
+    <div id="line"></div>
+  </div>
+  <div id="controls">
+    <button class="ctrl" data-act="left">←</button>
+    <button class="ctrl" data-act="mine">掘る</button>
+    <button class="ctrl" data-act="place">置く</button>
+    <button class="ctrl" data-act="inventory">ｲﾝﾍﾞﾝﾄﾘ</button>
+    <button class="ctrl" data-act="right">→</button>
+  </div>
+</div>
 
-    <div class="panel" id="status">ルームコードを入れて「入室 / 作成」を押してね。</div>
-
-    <div id="layout">
-      <div class="panel" id="handsTop">
-        <div class="handRow" id="enemyHands"></div>
+<div id="invOverlay" aria-hidden="true">
+  <div id="invPanel">
+    <div class="panelHeader">
+      <strong>インベントリ</strong>
+      <button class="panelClose" id="closeInv">閉じる</button>
+    </div>
+    <div id="tabContent">
+      <div class="section">
+        <h3>所持品</h3>
+        <div class="small">タップで手持ち変更。0.5秒長押しで固定。固定は上に並ぶ。</div>
+        <div class="searchRow">
+          <input id="invSearch" type="text" placeholder="所持品を検索" autocomplete="off" />
+          <button class="plainBtn" id="searchClearBtn">消す</button>
+        </div>
+        <div id="heldText" class="small"></div>
+        <div id="invList"></div>
       </div>
 
-      <div class="panel" id="boardWrap">
-        <canvas id="board"></canvas>
+      <div class="section">
+        <h3>クラフト</h3>
+        <div class="small" id="craftModeText">現在: 2×2</div>
+        <div class="craftArea">
+          <div class="craftInfo">
+            <div><strong>クラフトスロット</strong></div>
+            <div class="small" style="margin:6px 0 8px">上の所持品から選んで、空スロットを押すと1個入る。スロットを押すと戻る。</div>
+            <div id="craftGridHolder"></div>
+          </div>
+          <div class="craftInfo">
+            <div><strong>結果</strong></div>
+            <div id="craftResultText" style="margin-top:6px;font-size:13px;line-height:1.45;">—</div>
+          </div>
+          <div class="craftBar">
+            <button class="craftDo" id="craftDo">クラフト</button>
+            <button class="craftClear" id="craftClear">全部消す</button>
+          </div>
+        </div>
       </div>
 
-      <div class="panel" id="handsBottom">
-        <div class="handRow" id="myHands"></div>
+      <div class="section" id="furnaceSection" style="display:none;">
+        <h3>かまど</h3>
+        <div class="small" id="furnaceInfo">かまどの前で使える。鉄の原石・金の原石・丸石を入れて、燃料を入れて、精錬する。</div>
+        <div class="furnaceBox">
+          <div class="furnaceGrid">
+            <button class="fSlot" data-fslot="input" type="button">
+              <div class="fSlotTop"><span>物を入れる</span><span id="fInputCount">0</span></div>
+              <div class="fSlotItem" id="fInputItem">空</div>
+            </button>
+            <button class="fSlot" data-fslot="fuel" type="button">
+              <div class="fSlotTop"><span>燃料</span><span id="fFuelCount">0</span></div>
+              <div class="fSlotItem" id="fFuelItem">空</div>
+            </button>
+            <button class="fSlot" data-fslot="output" type="button">
+              <div class="fSlotTop"><span>できあがり</span><span id="fOutCount">0</span></div>
+              <div class="fSlotItem" id="fOutItem">空</div>
+            </button>
+          </div>
+          <button class="furnaceBtn" id="smeltBtn">精錬</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>コマンド</h3>
+        <div class="cmdBox">
+          <div class="cmdLocked" id="cmdLockPrompt">
+            <div class="small">ロック中。下のボタンを押すと使えるようになる。</div>
+            <button class="cmdBtn" id="unlockCmdBtn">コマンドのロックを解除</button>
+          </div>
+          <div id="cmdUnlockedBox" style="display:none;">
+            <div class="small">
+              使い方:<br>
+              /give 〈アイテム名〉 〈個数〉<br>
+              /setblock 〈ブロック名〉 〈数字〉<br>
+              /fill 〈ブロック名〉 〈初めの座標〉 〈終わりの座標〉<br>
+              /tp 〈x座標〉 [y座標]<br>
+              /time 〈昼or夜 or 00:00〜23:59〉<br>
+              /keepinventory<br>
+              /dim 〈overworld / nether〉<br>
+              /spawn 〈モブ名〉 〈数〉<br>
+              /gamemode 〈peaceful / easy / normal / hard〉
+            </div>
+            <div class="cmdInputRow">
+              <input id="cmdInput" type="text" autocomplete="off" placeholder="/give 丸石 32" />
+              <button class="cmdRun" id="runCmdBtn">実行</button>
+            </div>
+            <div class="cmdFavNote">実行ボタンを0.5秒長押しでお気に入り登録。下のボタンはタップで実行、長押しで解除。</div>
+            <div id="cmdFavList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>セーブ</h3>
+        <div class="small">ここから世界を保存できる。セーブが0個なら初回だけ自動で新規ワールドになる。世界は10個まで。</div>
+        <button class="saveBtn" id="saveWorldBtn">セーブ</button>
       </div>
     </div>
   </div>
+</div>
 
-  <div id="rematchOverlay">
-    <div id="rematchCard">
-      <div id="rematchWinner">勝敗: -</div>
-      <div id="rematchTitle">再戦しますか？</div>
-      <div id="rematchDesc">はいを両方が押すと、同じ相手ともう一回始まるよ。</div>
-      <div id="rematchButtons">
-        <button class="primary" id="rematchYes">はい</button>
-        <button id="rematchNo">いいえ</button>
+<div id="worldOverlay" aria-hidden="true">
+  <div id="worldPanel">
+    <div class="panelHeader">
+      <strong>ワールド一覧</strong>
+      <button class="panelClose" id="closeWorldList">閉じる</button>
+    </div>
+    <div id="worldContent">
+      <div class="section">
+        <h3>保存済みワールド</h3>
+        <div class="small">開く・名前変更・画像変更・複製・削除ができる。</div>
+        <div id="worldGrid"></div>
+      </div>
+      <div class="section">
+        <h3>新しいワールド</h3>
+        <div class="small">難易度を選んで新規作成する。</div>
+        <button class="saveBtn" id="createWorldBtn">新しいワールドを作る</button>
       </div>
     </div>
   </div>
+</div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
-    import {
-      getFirestore,
-      doc,
-      setDoc,
-      getDoc,
-      onSnapshot,
-      runTransaction
-    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+<div id="difficultyOverlay" aria-hidden="true">
+  <div id="difficultyPanel">
+    <div class="panelHeader">
+      <strong>難易度を選ぶ</strong>
+      <button class="panelClose" id="closeDifficultyBtn">閉じる</button>
+    </div>
+    <div id="difficultyContent">
+      <div class="section">
+        <div id="difficultyText">新しいワールドの難易度を選んでね。</div>
+        <div class="diffPanel">
+          <div class="diffGrid">
+            <button class="diffBigBtn" data-d="peaceful"><strong>ピースフル</strong><span>敵出現なし。自然回復高速。</span></button>
+            <button class="diffBigBtn" data-d="easy"><strong>イージー</strong><span>敵少なめ。自然回復早め。</span></button>
+            <button class="diffBigBtn" data-d="normal"><strong>ノーマル</strong><span>通常の敵の多さと自然回復。</span></button>
+            <button class="diffBigBtn" data-d="hard"><strong>ハード</strong><span>敵多め。自然回復遅め。</span></button>
+            <button class="diffBigBtn" data-d="hardcore"><strong>ハードコア</strong><span>ハード相当。死んだらワールドが開けない。コマンド不可。</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyC-T-apiQQYpou3f5BdMFjglW7uhF0QEUs",
-      authDomain: "shogi-of-speed.firebaseapp.com",
-      projectId: "shogi-of-speed",
-      storageBucket: "shogi-of-speed.firebasestorage.app",
-      messagingSenderId: "161090240863",
-      appId: "1:161090240863:web:2f9f54c8fa57fd9fca76ea",
-      measurementId: "G-S9FD32FECD"
+<div id="confirmOverlay">
+  <div id="confirmBox">
+    <div id="confirmText">—</div>
+    <div id="confirmBtns">
+      <button class="yesBtn" id="confirmYes">はい</button>
+      <button class="noBtn" id="confirmNo">いいえ</button>
+    </div>
+  </div>
+</div>
+
+<input id="worldImageInput" type="file" accept="image/*" hidden />
+
+<script>
+window.ONE_D_MINECRAFT_TEXTURES = {
+  stone: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABEElEQVQ4EW2TsQ6DMAxEUylbGNgY+Gi+koGNAea2z/RFLsJSY+dsny8JfS3L8i7J9n0v53kG0lqL+DiOMgxDx1J5qTRgNNmA14jdb9tWJLO22kzCpArcSzZNk2F4SIKAYJ7nAFE0jmPBgxNjKiV2AHFVOgUmxNxDIpEEkAeBU5wY6G+xaF3XQDwSHkN1KIjdd8lTaPJYKuElIJWYoX+XyC1T5CRIbJDE4zm0OgUARlTgsawogNsCWf8OLH5qfsLkqsjmfZWrVHDMc4uD5bj6cXgx+LsamsyT4+dx+yVShFlIgZPEUJUvmnzNjAA2XXTXCgYJas1ztPgOnibZ7GT3+Pxq7Pt/gU02J0GS78SBkn8AQafbCMsFa2IAAAAASUVORK5CYII=",
+  wood: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABVElEQVQ4EW2SsUpDQRBFxwV5RVSCT7FJYiMoNjZiZav/oN/hP/kPsRVsRNBCFKxebIJGgtHiYaGeDXcYF2+xuzM7M3fm7i6cnR58P4ymdrTfs9H4w8DlbWMnx7t/7MO9gfU3luzi+tljX6aflnLG71JVleEQSlt+dhFxzgVe397t6q7B/hdrqyvZD3uJRFtgvdvxOxKemonb9fJiPkMkKC93IAZdxsCtQS23bW/WttPvGpoBSHMBOXFQWQUnsy9Pxh9tXaSbx7HOvtMyglK4bVsfD7tE7gBnbFt6wBoV1ytJE/ISwZqJeWMCAUCJnCUeZ+AaaO65e76WxaQBpOfD+xzkI2hevDASxI8UymLy5wIaQc64M5Y0QSd+KFDHKb4zLJpRO8FRA30wCekaxC5gpBgsPKMgVmx1lWJAfDbOtEwhiUciRLE7F5FLEDuJjNyVH4nRfgAjyKEGoTkHggAAAABJRU5ErkJggg==",
+  plank: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABeUlEQVQ4EXWTwUoDQQyGUzqC26osq6JFEKknYU8ePPgOQu8ePPpCPowvUxFBVlHLorYrFKn9Mv3LKDWX2SR/MvP/ybZub65mzXRi2VrHOlnb/tqk+f43fnf/YIECimnSTM2qx1fL8g3Lu+seJ08T8hhYrKpHjgu6XYnewc6yIaDUaCp8Ly/MX8CNT6PYfb+I3fGfR2Ov3Su6fuLzncb5Dv2jQytP2jasXuy4t+vgcnFtGiOUUqnHX3Z+WphTMOsYT3p7/zASPJWzqT9tOC/Ex6ApqlkedQsAa4tFnowv9iIa0FgmIamRta4H5QxHXNEh1UBA5fFTTIs90PxTjttbm6pdeYJlSr4HcF9yW8xZeqhauugkDsUQb4+CEEz54UtAfSuPNtU8+EuDVXtAIfzFG1+7wHe4vDjzHaCjtOjP+WFw1G7gZ4tdgb+wAa56poQBrBjLpFESk9D8N5iLmO4CYOZNDJHYVEwxdiY110AzFjdxFlB7QVwY5X4ABEH/QgOmtKYAAAAASUVORK5CYII=",
+  crafting_table: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAACI0lEQVQ4EV2TT0iTcRjHvy4DN0tkmjk8aYcpdYooaYSXLkp17FCnEOoQBF0WUVBRGQRRpwq61FWSRKJDSKeKgnSHjLZiLfvDzNwYk70TxOr9PO9+tvmF35/n7/s839/zNsU6t/y9e2FY4c0RRcKbBJLXnirRHVG6vGJyf1uLXi14unnxkMlsXnVNJy5PKIRAcHXVU6G8rLmPOZ0a3WcB2ADB584MmZ1AVr5UNJsl4EYSVqynU7H2aBDg/VHBXyQsVYJq+BDABzSzvZ5Nc6g7GrFzoejpV7Gi75WqybkviyZ/ev/NZLYDQwN2twQHEzuVzf/Wjtg2U+6yXfrxeclu2MHJ2ZxunB3R+dvP1NvX5Ws+BBzQEyVdGntsieCChJRvy5fRAYJBQwsQ0t7aovzqmp04IDvADbh1b9yplE/dt7u18OZdTtujrabI/1zSRg6eTM+Y/crpEWUyGfN7O7H4P8Hxw3tNGJ+eC16hR+po27rOgbObU23bv7tfD6ZqHNBfVyKpyeczGhi+as+JznFgfPjyw+tH1nM0zAE9ZrNZM8bjcRsS9+4oHR+c2EEDiUGPac37c/DCNzoOMoWyOaf892dG0KdGB3Us+UjEACNxcE+vZXT/Qp//rGDjHIRrs0IV8DL18muQwJVYP+Po4ACgB+i4T945ajKbVUC/Ja2YA70x7/Uc4Oh0+NWjORRqErMOmH/ATNDz/LIn7Pwr2NA7H/yw/QPxTBseyzmBKAAAAABJRU5ErkJggg==",
+  furnace: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABqklEQVQ4EY2ST0sCYRDGx/AgaCqYKJueBEO7hgf1C9Rh6VNGHyDsJBGZB+lmJQieNEFMUHTBW+1vcrY1PDSw78z7zDvPzr/Itet+SUg+Fws5yWQChLsJuN3tTRRn3nH0TSqVkjPfWq1Wgo0+q1TUZ1h+55tOJrJer+UIRs83CHB2RMViMSBJJpOKg+E3YqdQUOIoqcSPj4WHm81Gnjsd+ZhO1fn3OPUJLq+ugowwtARYkftWS97e39U+dCyXS4UbzaZmTfZaAuh4PN4LTqfTEv6MkB9YqWBagjlNn1erZgaa9P9mR/mRZqPxRUqw5nI5DYjFYkFg2Nhut3qdzWYy9ftEv7QHoDQQkHExFbpsNk227psmhgy0BNd1ZT6fSzabBf+X0LPbm5ufDLggaNIn1dFotEdUKpUCH288z9Ot1BK4xONxobaXXk863a7YyIyFiTTrdbmo1YJeaQk8oH6+h3ZbHp+eLGZPQ3jn7wnry3qXy2X1H3HSPCQcHN4BbBPeEMwPEV0kRmgkFmgBpsP4cDiURCLx24PBYCCv/b7YAlHbIWF1WSjmz4iRb6x83a5MH0URAAAAAElFTkSuQmCC",
+  coal_ore: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABwUlEQVQ4EV2TMWvCUBDHT8mgRNqUtkRwKQQyuji4ObqKo5/Gj+C3cBUn90ChDi6O0kChWJQikWKIFIr1d+UeoQcv7+Xd/e/+98+lMplMLlKy4/EoeZ7rje/7ej6dTtJoNNxdKVw8ABggA7CnaerioijS836/F5KxuAPjGdgcVAK8XC7lIbyTn++/PM1mU8IwlNlsJrVaTRNQqIp7t9spRcBcrtdrB75/rOv7fD7XTMPhUHq9nlaHQZUH1ZIk0QDe+/2+RE+xnM9ned18SFEU0u12HYhACrEq4/H4EgSBgk1AHHaHY7vdqh+mGExZrVZLPCoSbGCC6Jd7jGTY80si+ddZ/Jtr/1d26AFGRVytVgoCbOIR3G63nViA0reNBLd1vTOGHjQwKhmYINRHTPtc7DDDjB27zgFJ6BOhAAGO49i1YkUUfX3YjJDUYziw/0FWGWYmInHlNhHSQwwMHTBomtqAocluVfEPBgON5aGDZJN3yN51HtBiOp3q14EZfnyIaANlk+uhJlnpn4Asy/TMXZn64bNwPirb1LqfCQALuthisdBJZHTRA7Ods/uMvFivnK3n0WjkGBDc6XR0cCyGHfsF3BomDcgAgF4AAAAASUVORK5CYII=",
+  iron_ore: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAAB4ElEQVQ4EU2Ty0rDUBCGxxq0mkhTFFpawSpovGxc68aFIL6Nb9Incd03cGtXlSDoEYzahbTFRkWEer6JEzqQ5Jy5/v/MZKHb7c7G47HMS57neg3DUDhPp1OJomjeRdrttt4DCzZHtI1GQ41xHAsPPt9vfamvLal+9PHjdUXyChqCN+RJLvZq0one9Y4+TVPJskzv1eYxKklaO2JnEAYoCcZwsL0pbqEpoa9oNIBfSngo/UlR0HQBjnH7RJzXOPerFS0INAjJkfRlIG66rmd6ogh4IdYL0JzuFWjQr9Yb8jkayt3js3x5BJEUdJNWzaONRRHgiNAwiQs04gOgRHDPIxtPqkqLgsv/PhTVHkADA01DdGR+TFBCcMQHakZPDf5VYZ48w+FQJ8AkcLIJ2AhtSrXZa9lgkuoeAB1D0trXxFcXR/pV6L56c/9MOrO3ckpWnW9AZQQn57+XnUAbd32bKQrbQBc3lZLRIQYJbOswID3nG+ky5Z0kSTkdo8I2MnbuIC+bCG+qreQDnTsV2cLFj3tdYV2043MtwkjT/EGyfEsqZLEGYWXWbKMhgpptKTtBMPZlj0IXSaH4S5rd+Go/fk12tQovHLAbf6jJXHJ89GfCiYxUIwhhRDyIobGz6bn/AfP6LK5JqB8BAAAAAElFTkSuQmCC",
+  gold_ore: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAAB4ElEQVQ4EY2TP2hTURTGT9LXICRo0lfIEEqHN8QOvqHRpSAoONgpBApSEYROQQRxcpJgXdwy+OjQoViQdimUSiHu7VaniGiGLJVAAk2barIp9f0+vCEHLnnn33e+e76bRL1ev7IJ63Q6Yy+dTttoNLLhcGiZTEZxYpPmDQYD+RSSvPlnz37eeKpYr9ezfD6vOAF8wDhBEAg8ScJNoeD3/AsVttttu33ts77Juxqa780e29zltoAFUCgUrFgsalqr1dIEisq3zgXCEEfdxd3gJMhcg+MouqJc5S51Asxms1YqlQRKLLW4LlAPZJJuF/X7n8w1TuWexQ2r9uN7xlgu9BtLEf3WbDYN5mMGBLlGYzqyi/0jXDvbWrWDrzMWhqF8lGA3HAYz1CPjFsQVJFcY2fL+c4GlFk0NQvhf+2phU8ColYQG1Nj42zs7okUxk7F+v68rMpFDbXT6UlIzWO+AqeWFc93dP/Q1MYiXRDMGVWhPGtfFEtVq9QrH930FaHILIwB4t9uV9vhI+/rkMZ/Kebw0JqC/M4dOnL04WcnPru1aVNmwD+vf7MvwoY1fIjtwe4ABzbw2GKA5hrx/LzZs5/CRYuQ83gCFUKMA7d/FRe+3H1gqiBtjvbn/weWMle1IyvAGMATQEjveiqWmQ0mXq5iaYcBh8xgsGvEvO6LxyfWaffz1xhK1Wm38d4YNy2QiEmEAEMcAxMg54H80aUDpigRbHQAAAABJRU5ErkJggg==",
+  diamond_ore: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAACJUlEQVQ4EVWTPYhTURCFz8u+KPJINpiIkYDF+kPAQqwEC4XFxkaixWqhxVbRZXELA5YJtiJpLKwUVLARbERBrSySTolVcIk8hEBkiZs1Bn+ixvvd3QnrwA33zZ0zc87MJKjX65PBYCAsk8mI+2g08t9RFPn7cDhUKpWa+ogzCw1soF6vp2KxaO/TpDiI4Z1DQgok7IEqPLy4uuLBJG632/4A5BCTqS3p9dFjHkzgTKlUqqXTaeVyOYVhqFM7dirYWFccxz742fpvzRePaHbyx7/v/rVLx7+sqd/vazweK6hUKhOomFklvpHyd/+cvr5/6xkQh/5utztlkDAnAANfu1v31ZFg4MVbN/XjynkPRgqxJAu5cAqFghZqN/Sgt6ozrdilSyrptC7t3Sc5BviSjaYuORbGmD4FjJFKmFHeM9rQWjTrfR9ePv/vDUZUzmaz3h8CprOPPyd1uLOqxKeP6mztAlSRA6vu7YeKnB+z0dOLMJ/PK92IxfDIzijxYSQ26po76OVQwKp7CeVyeQKAPqDt/rkLWnh0z8/cJJEMoEm1rcQfVKvVCZfttn1V8UPVlujJ06aWf3734TAIudkUrAI+m/fM9ctazB/yfaBPOnFSdxpvfBJwIYEcFiZzcV5UON16N5V04FVLZ781NXbAFddkLOEYUB3J/s9EJsdTbuKb9Lb+TAR1Oh0tU8CBbal8FvfjE/Bhi0GAmckiCUeDzTeLtT79AyHaUdzGo7A0AAAAAElFTkSuQmCC",
+  dirt: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABtklEQVQ4EV2ST0tCURDF5z0NirSsFlohmdEyCt0FQrRq07JNtOhrtGvTJ2rVIihqF0i1CIKyINCkP5apRRDmb+DEy4H37r1zZ87MOXODg72t7m3t1bCH+puvK0t56/fdPzYslxn7uz86rxhxsexEYnc0MWgnF3eWSgx5wE+3a+/TJTs7PXYfgcnhQWu2vzwJ8Mvbmp3f1CygA9AwqmyvFU1nfCRHz8RgigtB+0gXPJAWOStIVLLplCexEkOyKIbcJOtld5AAldLirCeoMj7syvK+kixfHOGoCDoXEkpdsMr3cnFoyV4H5OCj4D8NgB8prFuzvO+VCMDoJLqnGCCsPgWCCAC1U702poLiVGciKM4UGq1P93NHMhZqQxUo6C1wCQBnaRK9QwPOrgEgEoVE7cU9mthPxadAkkQRFUYFMF3g42NPl3xoBXBsc3VhVxXgC8/C/JQLhxbtTNHirar7wyBwPWZ6Wj3dXDpgsLOx3AUZngBJk7nJ8X8vkC6jJipOQckEVJ6/HYg2BSYarBjJouJToLKCBn46vseHmATr3WsaeqGAxflhet+qiki53oOikixKUUV/AYwvPy57d/BiAAAAAElFTkSuQmCC",
+  grass: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAACFUlEQVQ4EV1STWsTURQ985F2ks4ktumXH8VWcSmVFjeCUBTEjYsuuhEX/g1xk42/yJULQerCRSHY0qKCaZVCO9U2E9PpTJImGd+54cLQC2/ee/eee+499421/vZZFjcTOK6Ny24f5RkfvPtTJaTtDmjuuIuCWYwXAw9h4xSVWR99c7cJGA6GKJY92I4Nd8zF9O4Z3Uj+dRBMj4C899JL9Ht9jHkjwl7HELDK7LdIEhVAMLu4eXAuCeyAOL86AW/zEEkrlfvc9wjOw/FSrbr8FN0vdQRRF62ggNKfVBaJQgwxs9fE+aSHylaIxflJ44xRDBM524+XlxCc1MH99fNVaZ9nArlu/Y7JY7psgoVojKu5hyct/AojLMxdQ+O4OapgovSpSVX6tj8iMKTMoW/twR1YH969yj593Vcsyisv0K6/lzsBNMbzZxYjCXdnoerXCCKArMnRD1R8D+2LjnQxyDLsNI4RTHiI4lT8jDGZZuuBVSiBzGqUwbtqzsc+bx9ITGZAEjrU9Kza84lXpciPxEQdikrhi5CYXdDHxTO75OKsSOy8fHK/phWolzpX7t2QwXEWF/OrcOMj8duWJfO4bWb19+eOEFpvNh5lZKZOEulM7l6fEhKVdXVXKSJBkwnaP+0JEdtUMpXBncZklSKvwMoKKgwSOdPHYRLMefCV9DXy/40rlOZDUL4qh7Rofij61PISteh/bNpDd8ETyNUAAAAASUVORK5CYII=",
+  leaf: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABbUlEQVQ4EV3Tvy4EURQG8DuTJQobQiFKlUaj1Er0nsAjSDyJxCN4ANFLtEqNRiXRiIKQFRHEmt/dfJPhJLsze+75zvdnZpvNg/G0dHV7Omn2ztemF/uPzc7xau1dHT01W4dL9f7r5aesbM8XPfNmHy4/SqsJrAls4fP1Z5ncfReLbk5em/HGqMwtt0ZqAb915+u7C6UCdcMEEAWWGIqqIftsVZktADBMpoodLIsd+/3Ze68ywNgdBUymJRQYChh7QOyxrNL/IzfgBBRFAMnJEnkgZKnFGmaHw4ASMEAy0otaszVaTMBh4Vth0I8SdvVyzmYr5TAZFphyCGBpJFOqx39UVAV5PFFgyf93wVKgFBX9b1t9HFLhmh7vvKbnmqoZ+CIN4zCHeO1ZOlQsZAErrffZUHIIsyEDpLomTEuiyLW+BxnSsDCpJ5Mos9xsSN23Q7Dkh0+FChnkj5SwKQ6uBUppqgxGNkV5kYa2KPoFp5hOf9U3tzwAAAAASUVORK5CYII=",
+  water: "data:image/gif;base64,R0lGODdhIAAgAMQAAAAAAER7pkZ7qU18pT9+rEV/s0t/rkGArkyAr0SCsE2Dsj+EuEyFulGFtEqItkyLu0qNwVCNvFePxU2RxFaSwVyUylOWyleZzWWm3P///wAAAAAAAAAAAAAAAAAAAAAAACH5BAkAABoALAAAAAAgACAAAAX/oCEagkAQZSkmyUimFGVZazuWZyrUrh7PNV3pcNARWb2d4fGYnVhCAdF4QN6UTCcBKhRRud4UgwE0cHXhYTWhepXGZW4uKl23dY0G8zSfR49sSnh6D3woKX4pIlOCKQoKERGPZyaHaAaMaQKPkZMJiZpRmiKPDg5EoG50owalpweJj3Rdqp6GOrKzirUKLCdEAwMluSUBAboCwTUswMKbCjrGyMpmLAkQELjQKdLIKSyP2NrRx94l4AplxqGVJ2Ei3TXqAeyG7wbx1RgYhggIs+5UlchjLcG+fv/oBIxC0NoMVATYmfO1JcFDWBEFmhNAkQUTisXKRfF3R8CFCwUKWHh8AFJAt5EJw5xMyWIGJWS5RJyYMOGEP5uBzOU0sLMngZ8Wbio58YgIsUoSJLQBKooogaYHnp6I2mbBgpbGjPnLQ2pbiZQVKqQs4RVs2LENyupAq7ZAiRAAOw==",
+  lava: "data:image/gif;base64,R0lGODdhIAAgAMQAAAAAAMU/CMdDCcpLDM5TD85WENBcEtNlFtVsG9h1Idt+JtyDKt2JLt6NMN+QMuGUNeOaOeWiP+WlQeesRuixSuu4Tuy7UPHLXP///wAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAkAABkALAAAAAAgACAAAAX/4DAIpCCKpGgYCPI8LUGIEFRVy4KW52gOq9YrNhvUbrlAQNQ6HHoyhcLhGCJ2KoNIyUQ4oQQp1YoFak9SCiUS+Z4SCWprl/JxB+l1+/mOO+Y+dSR3Ti8vcD0iMiUChHyOhg+IiYsljlsBMkEIKzsFBU6fjCQybCukBJudPp+hBaMCpRGnAiuio1mTsDJOdbavuGa6o7wHdXQ8ZpuwIp/IyL4rLAjMA86BP7thCp+rdTkNDS3X0LHb3WffC+HjBWWMK27PAy0TE2xSt8jxfPP19xHyAZOSQ5MBJ4BgfZKDQMoOggsMIryCjcTCPw0V9IDDgIEMGS0kSChIgJGikj82gibo+JFAyJERUdappLIMOik11ORI5MMJlWHNCqzACUGnjkQkfDqo4cRNpaQHLFiw563ECjZMm55k5EQq1XRWDbBpEtXCsDpkqzJqQVbq2R9pwa6l2OLChXDzpB08cA3embp3G+SV5mqfgTpwaJ4opreYDBFwECdQfNJJYwJOHg+AEwIAOw=="
+};
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const SAVE_KEY = 'oneDmc_saves_v16';
+  const GLOBAL_KEY = 'oneDmc_global_v16';
+  const DIM = { OVERWORLD:'overworld', NETHER:'nether' };
+  const DIFFICULTIES = {
+    peaceful:{ label:'ピースフル', spawnChance:0, regenChance:1, regenAmount:0.5, nightSpawnFactor:0 },
+    easy:{ label:'イージー', spawnChance:1/32, regenChance:0.5, regenAmount:0.5, nightSpawnFactor:0.5 },
+    normal:{ label:'ノーマル', spawnChance:1/16, regenChance:0.25, regenAmount:0.5, nightSpawnFactor:1 },
+    hard:{ label:'ハード', spawnChance:1/8, regenChance:1/10, regenAmount:0.5, nightSpawnFactor:1.6 },
+    hardcore:{ label:'ハードコア', spawnChance:1/8, regenChance:1/10, regenAmount:0.5, nightSpawnFactor:1.6 }
+  };
+  const PASSABLE = new Set(['empty','water','lava','fire','nether_portal']);
+
+  const appEl = $('app');
+  const line = $('line');
+  const posText = $('posText');
+  const msgText = $('msgText');
+  const mineBtn = document.querySelector('#controls [data-act="mine"]');
+  const placeBtn = document.querySelector('#controls [data-act="place"]');
+
+  const invOverlay = $('invOverlay');
+  const invPanel = $('invPanel');
+  const tabContent = $('tabContent');
+  const invList = $('invList');
+  const heldText = $('heldText');
+  const invSearch = $('invSearch');
+  const searchClearBtn = $('searchClearBtn');
+  const craftGridHolder = $('craftGridHolder');
+  const craftModeText = $('craftModeText');
+  const craftResultText = $('craftResultText');
+  const craftDoBtn = $('craftDo');
+  const craftClearBtn = $('craftClear');
+
+  const furnaceSection = $('furnaceSection');
+  const furnaceInfo = $('furnaceInfo');
+  const fInputCount = $('fInputCount');
+  const fFuelCount = $('fFuelCount');
+  const fOutCount = $('fOutCount');
+  const fInputItem = $('fInputItem');
+  const fFuelItem = $('fFuelItem');
+  const fOutItem = $('fOutItem');
+  const smeltBtn = $('smeltBtn');
+
+  const cmdLockPrompt = $('cmdLockPrompt');
+  const cmdUnlockedBox = $('cmdUnlockedBox');
+  const unlockCmdBtn = $('unlockCmdBtn');
+  const cmdInput = $('cmdInput');
+  const runCmdBtn = $('runCmdBtn');
+  const cmdFavList = $('cmdFavList');
+  const saveWorldBtn = $('saveWorldBtn');
+
+  const confirmOverlay = $('confirmOverlay');
+  const confirmText = $('confirmText');
+  const confirmYes = $('confirmYes');
+  const confirmNo = $('confirmNo');
+
+  const worldOverlay = $('worldOverlay');
+  const worldGrid = $('worldGrid');
+  const closeWorldList = $('closeWorldList');
+  const createWorldBtn = $('createWorldBtn');
+  const worldImageInput = $('worldImageInput');
+
+  const difficultyOverlay = $('difficultyOverlay');
+  const difficultyText = $('difficultyText');
+  const closeDifficultyBtn = $('closeDifficultyBtn');
+
+  function loadJSON(key,fallback){
+    try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch{ return fallback; }
+  }
+  function saveJSON(key,value){ localStorage.setItem(key, JSON.stringify(value)); }
+  function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+  function deep(obj){ return JSON.parse(JSON.stringify(obj)); }
+  function normText(s){ return String(s ?? '').replace(/\u3000/g,' ').trim(); }
+  function compactText(s){
+    return normText(s).toLowerCase().replace(/[\s_\-./、・]/g,'').replace(/[()（）【】\[\]{}]/g,'');
+  }
+  function displayName(id, context='default'){
+    if(!id) return 'なし';
+    if(context === 'fuel' && id === 'wood') return '木材';
+    return BLOCKS[id]?.name || id;
+  }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function fmtHalf(v){ const n = Math.round(v*2)/2; return Number.isInteger(n) ? String(n) : n.toFixed(1); }
+
+  const globalState = Object.assign({ favoriteCmds:[], firstLaunchDone:false }, loadJSON(GLOBAL_KEY, {}));
+  if(!Array.isArray(globalState.favoriteCmds)) globalState.favoriteCmds = [];
+  if(typeof globalState.firstLaunchDone !== 'boolean') globalState.firstLaunchDone = false;
+  function saveGlobal(){ saveJSON(GLOBAL_KEY, { favoriteCmds: globalState.favoriteCmds.slice(0,3), firstLaunchDone: globalState.firstLaunchDone }); }
+
+  const BLOCKS = {
+    empty:{name:'無',icon:'·'},
+    air_item:{name:'空気',icon:'·'},
+    dirt:{name:'土',icon:'■'},
+    grass:{name:'草ブロック',icon:'■'},
+    wood:{name:'木',icon:'■'},
+    leaf:{name:'葉',icon:'■'},
+    stone:{name:'石',icon:'■'},
+    cobblestone:{name:'丸石',icon:'■'},
+    gravel:{name:'砂利',icon:'░'},
+    coal_ore:{name:'石炭鉱石',icon:'■'},
+    iron_ore:{name:'鉄鉱石',icon:'■'},
+    gold_ore:{name:'金鉱石',icon:'■'},
+    diamond_ore:{name:'ダイヤ鉱石',icon:'◆'},
+    sand:{name:'砂',icon:'▒'},
+    coal:{name:'石炭',icon:'●'},
+    obsidian:{name:'黒曜石',icon:'⬛'},
+    netherrack:{name:'ネザーラック',icon:'▤'},
+    soul_sand:{name:'ソウルサンド',icon:'▧'},
+    ancient_debris:{name:'古代の残骸',icon:'◈'},
+    water:{name:'水',icon:'≈'},
+    lava:{name:'溶岩',icon:'≋'},
+    fire:{name:'火',icon:'✦'},
+    plank:{name:'板材',icon:'■'},
+    stick:{name:'棒',icon:'│'},
+    torch:{name:'たいまつ',icon:'✦'},
+    crafting_table:{name:'作業台',icon:'□'},
+    furnace:{name:'かまど',icon:'▣'},
+    raw_iron:{name:'鉄の原石',icon:'◆'},
+    raw_gold:{name:'金の原石',icon:'◆'},
+    iron_ingot:{name:'鉄インゴット',icon:'▣'},
+    gold_ingot:{name:'金インゴット',icon:'▣'},
+    diamond:{name:'ダイヤ',icon:'♦'},
+    flint:{name:'火打石',icon:'◈'},
+    gunpowder:{name:'火薬',icon:'✹'},
+    bucket:{name:'バケツ',icon:'🪣'},
+    water_bucket:{name:'水入りバケツ',icon:'💧'},
+    lava_bucket:{name:'溶岩入りバケツ',icon:'🌋'},
+    flint_and_steel:{name:'火打石と打ち金',icon:'⚒'},
+    tnt:{name:'TNT',icon:'💣'},
+    nether_portal:{name:'ネザーゲートブロック',icon:'🌀'},
+    wooden_pickaxe:{name:'木のツルハシ',icon:'⛏'},
+    stone_pickaxe:{name:'石のツルハシ',icon:'⛏'},
+    iron_pickaxe:{name:'鉄のツルハシ',icon:'⛏'},
+    gold_pickaxe:{name:'金のツルハシ',icon:'⛏'},
+    diamond_pickaxe:{name:'ダイヤのツルハシ',icon:'⛏'},
+    wooden_axe:{name:'木の斧',icon:'🪓'},
+    stone_axe:{name:'石の斧',icon:'🪓'},
+    iron_axe:{name:'鉄の斧',icon:'🪓'},
+    gold_axe:{name:'金の斧',icon:'🪓'},
+    diamond_axe:{name:'ダイヤの斧',icon:'🪓'},
+    wooden_shovel:{name:'木のシャベル',icon:'⛏'},
+    stone_shovel:{name:'石のシャベル',icon:'⛏'},
+    iron_shovel:{name:'鉄のシャベル',icon:'⛏'},
+    gold_shovel:{name:'金のシャベル',icon:'⛏'},
+    diamond_shovel:{name:'ダイヤのシャベル',icon:'⛏'},
+    wooden_sword:{name:'木の剣',icon:'⚔'},
+    stone_sword:{name:'石の剣',icon:'⚔'},
+    iron_sword:{name:'鉄の剣',icon:'⚔'},
+    gold_sword:{name:'金の剣',icon:'⚔'},
+    diamond_sword:{name:'ダイヤの剣',icon:'⚔'},
+    wood_alltools:{name:'wood all tools',icon:'⚒'},
+    stone_alltools:{name:'stone all tools',icon:'⚒'},
+    iron_alltools:{name:'iron all tools',icon:'⚒'},
+    gold_alltools:{name:'gold all tools',icon:'⚒'},
+    diamond_alltools:{name:'diamond all tools',icon:'⚒'}
+  };
+
+  const ITEM_ORDER = [
+    'air_item','wood','plank','stick','sand','gravel','flint','coal','gunpowder',
+    'cobblestone','raw_iron','raw_gold','iron_ingot','gold_ingot','diamond',
+    'obsidian','netherrack','soul_sand','ancient_debris','water','lava',
+    'bucket','water_bucket','lava_bucket','flint_and_steel','tnt','nether_portal',
+    'dirt','grass','leaf','stone','coal_ore','iron_ore','gold_ore','diamond_ore',
+    'crafting_table','furnace','torch',
+    'wooden_pickaxe','stone_pickaxe','iron_pickaxe','gold_pickaxe','diamond_pickaxe',
+    'wooden_axe','stone_axe','iron_axe','gold_axe','diamond_axe',
+    'wooden_shovel','stone_shovel','iron_shovel','gold_shovel','diamond_shovel',
+    'wooden_sword','stone_sword','iron_sword','gold_sword','diamond_sword',
+    'wood_alltools','stone_alltools','iron_alltools','gold_alltools','diamond_alltools'
+  ];
+
+  const PLACEABLE = new Set([
+    'dirt','grass','wood','leaf','stone','sand','gravel','cobblestone',
+    'crafting_table','furnace','torch','plank','water','lava','tnt','nether_portal',
+    'obsidian','netherrack','soul_sand','ancient_debris','fire'
+  ]);
+  const CRAFT_INPUTS = new Set([
+    'wood','plank','stick','sand','flint','gunpowder','cobblestone',
+    'raw_iron','raw_gold','iron_ingot','gold_ingot','diamond','coal',
+    'obsidian','netherrack','soul_sand','ancient_debris','bucket','water_bucket','lava_bucket','flint_and_steel'
+  ]);
+
+  const EMBEDDED_TEXTURES = window.ONE_D_MINECRAFT_TEXTURES || {};
+  const TEXTURE_CACHE = Object.create(null);
+  const TEXTURE_ALIASES = {
+    leaf:['leaf','leaves','葉','葉ブロック'],
+    grass:['grass','grass_block','grassblock','草ブロック','草'],
+    stone:['stone','石'],
+    wood:['wood','木'],
+    plank:['plank','板材'],
+    crafting_table:['crafting_table','作業台'],
+    furnace:['furnace','かまど'],
+    coal_ore:['coal_ore','石炭鉱石'],
+    iron_ore:['iron_ore','鉄鉱石'],
+    gold_ore:['gold_ore','金鉱石'],
+    diamond_ore:['diamond_ore','ダイヤ鉱石'],
+    dirt:['dirt','土','土ブロック'],
+    water:['water','水'],
+    lava:['lava','溶岩']
+  };
+  function textureCandidatesFor(id){
+    const names = [...new Set([id, BLOCKS[id]?.name, ...(TEXTURE_ALIASES[id] || [])].filter(Boolean))];
+    const out = [];
+    for(const key of names) if(EMBEDDED_TEXTURES[key]) out.push(EMBEDDED_TEXTURES[key]);
+    return [...new Set(out)];
+  }
+  function requestTexture(id){
+    if(!id || id === 'empty') return;
+    if(TEXTURE_CACHE[id] || TEXTURE_CACHE[id] === null) return;
+    const candidates = textureCandidatesFor(id);
+    TEXTURE_CACHE[id] = candidates.length ? candidates[0] : null;
+  }
+  function preloadTextures(){ for(const id of Object.keys(BLOCKS)) if(id !== 'empty') requestTexture(id); }
+
+  function toolOutId(prefix,suffix){ return prefix === 'wood' ? `wooden_${suffix}` : `${prefix}_${suffix}`; }
+
+  const RECIPES = [
+    {title:'木材 ×1 → 板材 ×4', type:'shapeless', need:{wood:1}, give:{plank:4}},
+    {title:'板材 ×2 → 棒 ×4', type:'shapeless', need:{plank:2}, give:{stick:4}},
+    {title:'板材 ×4 → 作業台 ×1', type:'shaped', width:2, height:2, pattern:['plank','plank','plank','plank'], give:{crafting_table:1}},
+    {title:'丸石 ×8 → かまど ×1', type:'shaped', width:3, height:3, pattern:['cobblestone','cobblestone','cobblestone','cobblestone',null,'cobblestone','cobblestone','cobblestone','cobblestone'], give:{furnace:1}},
+    {title:'鉄インゴット ×3 → バケツ ×1', type:'shaped', width:3, height:2, pattern:['iron_ingot',null,'iron_ingot',null,'iron_ingot',null], give:{bucket:1}},
+    {title:'火打石 ×1 + 鉄インゴット ×1 → 火打石と打ち金 ×1', type:'shaped', width:2, height:1, pattern:['flint','iron_ingot'], give:{flint_and_steel:1}},
+    {title:'砂 ×4 + 火薬 ×5 → TNT ×1', type:'shaped', width:3, height:3, pattern:['sand','gunpowder','sand','gunpowder','gunpowder','gunpowder','sand','gunpowder','sand'], give:{tnt:1}},
+    {title:'棒 ×1 + 石炭 ×1 → たいまつ ×4', type:'shapeless', need:{stick:1,coal:1}, give:{torch:4}}
+  ];
+  function addToolRecipes(matId,jpPrefix,prefix){
+    RECIPES.push(
+      {title:`${jpPrefix}の剣 ×1`, type:'shaped', width:1, height:3, pattern:[matId,matId,'stick'], give:{[toolOutId(prefix,'sword')]:1}},
+      {title:`${jpPrefix}のシャベル ×1`, type:'shaped', width:1, height:3, pattern:[matId,'stick','stick'], give:{[toolOutId(prefix,'shovel')]:1}},
+      {title:`${jpPrefix}の斧 ×1`, type:'shaped', width:3, height:3, pattern:[matId,matId,null, matId,'stick',null, null,'stick',null], give:{[toolOutId(prefix,'axe')]:1}},
+      {title:`${jpPrefix}のツルハシ ×1`, type:'shaped', width:3, height:3, pattern:[matId,matId,matId, null,'stick',null, null,'stick',null], give:{[toolOutId(prefix,'pickaxe')]:1}},
+      {title:`${jpPrefix}の万能ツール ×1`, type:'shaped', width:3, height:3, pattern:[matId,matId,matId, matId,'stick',null, null,'stick',null], give:{[`${prefix}_alltools`]:1}}
+    );
+  }
+  addToolRecipes('plank','木','wood');
+  addToolRecipes('cobblestone','石','stone');
+  addToolRecipes('iron_ingot','鉄','iron');
+  addToolRecipes('gold_ingot','金','gold');
+  addToolRecipes('diamond','ダイヤ','diamond');
+
+  function makeWorld(dim){
+    return { dim, seed:Math.floor(Math.random()*1e9), mods:new Map(), fire:new Map(), tnt:new Map(), mobs:[], corpses:new Map(), furnace:new Map() };
+  }
+  function serializeMap(map){ return [...map.entries()]; }
+  function deserializeMap(arr){ return new Map(Array.isArray(arr) ? arr : []); }
+  function normalizeTntValue(v){
+    if(v && typeof v === 'object') return { lit:!!v.lit, age:Number(v.age)||0 };
+    if(typeof v === 'number') return { lit:v>0, age:Math.max(0, Number(v)||0) };
+    return { lit:false, age:0 };
+  }
+  function serializeWorld(w){
+    return {
+      dim:w.dim, seed:w.seed, mods:serializeMap(w.mods), fire:serializeMap(w.fire),
+      tnt:[...w.tnt.entries()].map(([k,v]) => [k, normalizeTntValue(v)]),
+      mobs:deep(w.mobs), corpses:serializeMap(w.corpses), furnace:serializeMap(w.furnace)
     };
+  }
+  function deserializeWorld(data, dim){
+    const w = makeWorld(dim);
+    if(!data) return w;
+    w.seed = data.seed ?? w.seed;
+    w.mods = deserializeMap(data.mods);
+    w.fire = deserializeMap(data.fire);
+    w.tnt = new Map((Array.isArray(data.tnt)?data.tnt:[]).map(([k,v]) => [k, normalizeTntValue(v)]));
+    w.mobs = Array.isArray(data.mobs) ? data.mobs.map(m => ({...m})) : [];
+    w.corpses = deserializeMap(data.corpses);
+    w.furnace = deserializeMap(data.furnace);
+    return w;
+  }
 
-    const app = initializeApp(firebaseConfig);
-    try { getAnalytics(app); } catch {}
-    const db = getFirestore(app);
+  const saves = loadJSON(SAVE_KEY, []);
+  let activeSaveId = null;
+  let pendingDifficulty = 'normal';
+  let hasWorld = false;
+  const dummyWorld = makeWorld(DIM.OVERWORLD);
+  const worlds = { [DIM.OVERWORLD]: makeWorld(DIM.OVERWORLD), [DIM.NETHER]: makeWorld(DIM.NETHER) };
 
-    const boardCanvas = document.getElementById("board");
-    const ctx = boardCanvas.getContext("2d");
+  const state = {
+    dim:DIM.OVERWORLD,
+    difficulty:'normal',
+    pos:{
+      [DIM.OVERWORLD]:{x:0,y:0},
+      [DIM.NETHER]:{x:0,y:0}
+    },
+    facing:1,
+    hp:10,maxHp:10, breath:10,maxBreath:10,
+    regenAcc:0,downedAcc:0,attackCd:0,
+    fireAcc:0,lavaAcc:0,burnRemain:0,burnAcc:0,waterDamageAcc:0,
+    soulSlow:0, prevBlock:'empty',
+    gameTime:0, nightSpawnAcc:0,
+    portalAcc:0, portalRecentTravel:false, portalShake:0,
+    now:0,
+    inventory:{}, infiniteItems:new Set(), heldItem:null, favoriteItems:[],
+    keepInventory:false, cmdUnlocked:false,
+    craftGridSize:2, craftGrid:Array(4).fill(null), inventorySearch:''
+  };
 
-    const roomInput = document.getElementById("roomInput");
-    const enterBtn = document.getElementById("enterBtn");
-    const shareBtn = document.getElementById("shareBtn");
-    const modeSelect = document.getElementById("modeSelect");
-    const statusEl = document.getElementById("status");
-    const mePill = document.getElementById("mePill");
-    const myHandsEl = document.getElementById("myHands");
-    const enemyHandsEl = document.getElementById("enemyHands");
+  const lineCache = { [DIM.OVERWORLD]: new Map(), [DIM.NETHER]: new Map() };
+  function clearLineCaches(){ lineCache[DIM.OVERWORLD].clear(); lineCache[DIM.NETHER].clear(); }
 
-    const rematchOverlay = document.getElementById("rematchOverlay");
-    const rematchWinner = document.getElementById("rematchWinner");
-    const rematchYes = document.getElementById("rematchYes");
-    const rematchNo = document.getElementById("rematchNo");
-    const rematchDesc = document.getElementById("rematchDesc");
+  function world(){ return hasWorld ? worlds[state.dim] : dummyWorld; }
+  function currentPos(){ return state.pos[state.dim]; }
+  function activeAxis(){ return state.dim === DIM.OVERWORLD ? 'x' : 'y'; }
+  function fixedAxis(){ return state.dim === DIM.OVERWORLD ? 'y' : 'x'; }
+  function activeCoord(){ return currentPos()[activeAxis()]; }
+  function fixedCoord(){ return currentPos()[fixedAxis()]; }
+  function isTyping(){
+    const a = document.activeElement;
+    return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+  }
+  function setMsg(t){ msgText.textContent = t; }
 
-    const COOLDOWN_MS = 3000;
-    const COUNTDOWN_MS = 3000;
-    const STALE_MS = 30000;
-    const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
-
-    const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
-
-    const TYPE_LABEL = {
-      pawn:"歩", lance:"香", knight:"桂", silver:"銀", gold:"金",
-      bishop:"角", rook:"飛", king:"玉",
-      tokin:"と", proLance:"成香", proKnight:"成桂", proSilver:"成銀",
-      horse:"馬", dragon:"龍"
-    };
-
-    const PROMOTED_LABEL = {
-      pawn:"と",
-      lance:"成香",
-      knight:"成桂",
-      silver:"成銀",
-      bishop:"馬",
-      rook:"龍"
-    };
-
-    const PROMOTED_MOVE = {
-      pawn:"tokin",
-      lance:"proLance",
-      knight:"proKnight",
-      silver:"proSilver",
-      bishop:"horse",
-      rook:"dragon"
-    };
-
-    function cpuValue(type) {
-      return {
-        king: 10000,
-        rook: 500,
-        bishop: 450,
-        gold: 320,
-        silver: 280,
-        knight: 240,
-        lance: 220,
-        pawn: 120,
-        tokin: 200,
-        proLance: 200,
-        proKnight: 200,
-        proSilver: 200,
-        horse: 650,
-        dragon: 700
-      }[type] || 100;
+  function hashMany(seed, ...vals){
+    let h = seed >>> 0;
+    for(const v of vals){
+      h = Math.imul(h ^ (v | 0), 2246822519) >>> 0;
+      h ^= h >>> 13;
+      h = Math.imul(h, 3266489917) >>> 0;
     }
-
-    const theme = {
-      boardDark: "#e0c390",
-      boardLight: "#edd9b3",
-      piece1: "#d9ba90",
-      piece2: "#ba905b"
-    };
-
-    function randomRoyalLabels() {
-      return Math.random() < 0.5
-        ? { black: "王", white: "玉" }
-        : { black: "玉", white: "王" };
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function weightedPick(list, r){
+    const sum = list.reduce((s,[,w]) => s + w, 0);
+    let t = r * sum;
+    for(const [v,w] of list){
+      t -= w;
+      if(t <= 0) return v;
     }
+    return list[list.length - 1][0];
+  }
 
-    function buildRoyalLabels(lastWinnerSide) {
-      if (lastWinnerSide === "black" || lastWinnerSide === "white") {
-        return {
-          black: lastWinnerSide === "black" ? "王" : "玉",
-          white: lastWinnerSide === "white" ? "王" : "玉"
-        };
+  const DIM_POOLS = {
+    [DIM.OVERWORLD]: {
+      soil: [['empty',2], ['grass',1], ['dirt',0.5], ['sand',0.5]],
+      stone: [['stone',8], ['coal_ore',1], ['iron_ore',0.7], ['gold_ore',0.2], ['diamond_ore',0.1]],
+      wood:  [['empty',2], ['wood',2], ['leaf',1]],
+      liquid:[['empty',2], ['water',0.4], ['lava',0.1]]
+    },
+    [DIM.NETHER]: {
+      nether:[['empty',2], ['netherrack',1.25], ['soul_sand',0.45], ['ancient_debris',0.08]],
+      liquid:[['empty',2], ['lava',0.15]]
+    }
+  };
+  const DIM_CAT = {
+    [DIM.OVERWORLD]: [['soil',1.2], ['stone',0.8], ['wood',0.95], ['liquid',0.35]],
+    [DIM.NETHER]: [['nether',1.55], ['liquid',0.22]]
+  };
+
+  class LineGen{
+    constructor(dim, lineCoord){
+      this.dim = dim;
+      this.lineCoord = lineCoord|0;
+      this.posRuns = [];
+      this.negRuns = [];
+      this.posEnd = 0;
+      this.negEnd = 0;
+      this.posPrev = this.dim === DIM.OVERWORLD ? 'soil' : 'nether';
+      this.negPrev = this.posPrev;
+      this.posStreak = 0;
+      this.negStreak = 0;
+    }
+    chooseCat(prev, streak, side, idx){
+      const base = DIM_CAT[this.dim].map(([k,w]) => {
+        let ww = w;
+        if(k === prev) ww *= (streak >= 2 ? 0.6 : 1.4);
+        if(prev === 'soil' && k === 'stone') ww *= 1.15;
+        if(prev === 'stone' && k === 'soil') ww *= 1.05;
+        if(prev === 'wood' && k === 'soil') ww *= 1.05;
+        if(prev === 'liquid' && k === 'liquid') ww *= 1.8;
+        if(prev === 'nether' && k === 'liquid') ww *= 0.9;
+        return [k, ww];
+      });
+      const r = hashMany(worlds[this.dim].seed, this.lineCoord, side === 'pos' ? 1 : -1, idx, 1001);
+      return weightedPick(base, r);
+    }
+    ensure(side, absCoord){
+      const runs = side === 'pos' ? this.posRuns : this.negRuns;
+      let end = side === 'pos' ? this.posEnd : this.negEnd;
+      let prev = side === 'pos' ? this.posPrev : this.negPrev;
+      let streak = side === 'pos' ? this.posStreak : this.negStreak;
+      while(end < absCoord){
+        const idx = runs.length;
+        const len = 5 + Math.floor(hashMany(worlds[this.dim].seed, this.lineCoord, side === 'pos' ? 7 : 9, idx, 2002) * 6);
+        const cat = this.chooseCat(prev, streak, side, idx);
+        const start = end + 1;
+        const run = { start, end:start+len-1, cat, idx };
+        runs.push(run);
+        end = run.end;
+        if(cat === prev) streak += 1;
+        else { prev = cat; streak = 1; }
       }
-      return randomRoyalLabels();
+      if(side === 'pos'){ this.posEnd = end; this.posPrev = prev; this.posStreak = streak; }
+      else{ this.negEnd = end; this.negPrev = prev; this.negStreak = streak; }
     }
-
-    const session = {
-      kind: "online", // online | cpu | local_dual
-      renderTimer: null,
-      cpuTimer: null,
-      cpuLoop: null
-    };
-
-    const state = {
-      roomId: "",
-      roomRef: null,
-      unsub: null,
-      playerId: localStorage.getItem("shogi_of_speed_pid") || crypto.randomUUID(),
-      mySide: "spectator",
-      roomData: null,
-      selected: null,
-      boardReady: false,
-      dragPointerId: null,
-      dragStart: null,
-      dragging: false,
-      dragSource: null,
-      suppressClickUntil: 0,
-      fallbackRoyalLabels: randomRoyalLabels()
-    };
-    localStorage.setItem("shogi_of_speed_pid", state.playerId);
-
-    const ai = {
-      loaded: false,
-      loading: null,
-      stats: {},
-      pending: {},
-      episode: [],
-      lastCpuActionKey: null,
-      games: 0,
-      gameFinalized: false,
-      memoryDoc: null
-    };
-
-    const AI_LOCAL_KEY = "shogi_of_speed_ai_memory_v1";
-
-    const savedMode = localStorage.getItem("shogi_of_speed_mode");
-    if (savedMode === "tap" || savedMode === "slide") modeSelect.value = savedMode;
-
-    function applyThemeFromCSS(){
-      const cs = getComputedStyle(document.documentElement);
-      theme.boardDark = (cs.getPropertyValue("--board-dark") || "#e0c390").trim();
-      theme.boardLight = (cs.getPropertyValue("--board-light") || "#edd9b3").trim();
-      theme.piece1 = (cs.getPropertyValue("--piece-fill-1") || "#d9ba90").trim();
-      theme.piece2 = (cs.getPropertyValue("--piece-fill-2") || "#ba905b").trim();
+    pickFromPool(cat, idx, absCoord, side){
+      const pool = DIM_POOLS[this.dim][cat];
+      const r = hashMany(worlds[this.dim].seed, this.lineCoord, side === 'pos' ? 11 : 13, idx, absCoord, 3033);
+      const b = weightedPick(pool, r);
+      return b === 'air' ? 'empty' : b;
     }
-
-    applyThemeFromCSS();
-
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    if (mq.addEventListener) mq.addEventListener("change", () => { applyThemeFromCSS(); scheduleRender(0); });
-    else if (mq.addListener) mq.addListener(() => { applyThemeFromCSS(); scheduleRender(0); });
-
-    function clearTimers(){
-      if (session.renderTimer) clearTimeout(session.renderTimer);
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
-      session.renderTimer = null;
-      session.cpuTimer = null;
-      session.cpuLoop = null;
-    }
-
-    function normalizeRoomId(v) {
-      return (v || "").trim().toUpperCase();
-    }
-
-    function specialModeFromCode(code) {
-      const c = normalizeRoomId(code).replace(/[\s_]/g, "");
-      if (c === "CPU") return "cpu";
-      if (c === "1SMARTPHONE") return "local_dual";
-      return "online";
-    }
-
-    function isPromotableType(type) {
-      return !!PROMOTED_MOVE[type];
-    }
-
-    function makePiece(side, type, x, y) {
-      return {
-        id: `${side}_${type}_${Math.random().toString(16).slice(2)}_${Date.now()}`,
-        side,
-        type,
-        x,
-        y,
-        promoMode: isPromotableType(type) ? "normal" : "fixed",
-        cooldownUntil: 0
-      };
-    }
-
-    function makeHands() {
-      const obj = {};
-      for (const side of ["black", "white"]) {
-        obj[side] = {};
-        for (const t of pieceOrder) obj[side][t] = 0;
-      }
-      return obj;
-    }
-
-    function initialPieces() {
-      const pieces = [];
-      const add = (side, type, x, y) => pieces.push(makePiece(side, type, x, y));
-
-      ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("white", t, x, 0));
-      add("white", "bishop", 1, 1);
-      add("white", "rook", 7, 1);
-      for (let x = 0; x < 9; x++) add("white", "pawn", x, 2);
-
-      ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("black", t, x, 8));
-      add("black", "rook", 1, 7);
-      add("black", "bishop", 7, 7);
-      for (let x = 0; x < 9; x++) add("black", "pawn", x, 6);
-
-      return pieces;
-    }
-
-    function freshState(royalLabels = buildRoyalLabels(null)) {
-      return {
-        pieces: initialPieces(),
-        hands: makeHands(),
-        winner: null,
-        updatedAt: Date.now(),
-        rev: 0,
-        handCooldownUntil: { black: 0, white: 0 },
-        royalLabels,
-        lastWinnerSide: null
-      };
-    }
-
-    function cloneState(s) {
-      return {
-        pieces: s.pieces.map(p => ({ ...p })),
-        hands: JSON.parse(JSON.stringify(s.hands)),
-        winner: s.winner || null,
-        updatedAt: s.updatedAt || Date.now(),
-        rev: s.rev || 0,
-        handCooldownUntil: JSON.parse(JSON.stringify(s.handCooldownUntil || { black: 0, white: 0 })),
-        royalLabels: JSON.parse(JSON.stringify(s.royalLabels || state.fallbackRoyalLabels || randomRoyalLabels())),
-        lastWinnerSide: s.lastWinnerSide || null
-      };
-    }
-
-    function makeOnlineRoomDoc(playerId) {
-      return {
-        players: { black: playerId, white: null },
-        presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
-        state: freshState(buildRoyalLabels(null)),
-        lastWinnerSide: null,
-        matchStartAt: null,
-        rematchVotes: {},
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-    }
-
-    function makeLocalRoom(kind) {
-      return {
-        mode: kind,
-        players: { black: "local", white: kind === "cpu" ? "cpu" : "local2" },
-        presence: {},
-        state: freshState(buildRoyalLabels(null)),
-        lastWinnerSide: null,
-        matchStartAt: null,
-        rematchVotes: {},
-        updatedAt: Date.now()
-      };
-    }
-
-    function isInside(x, y) {
-      return x >= 0 && x < 9 && y >= 0 && y < 9;
-    }
-
-    function forward(side) {
-      return side === "black" ? -1 : 1;
-    }
-
-    function opposite(side) {
-      return side === "black" ? "white" : "black";
-    }
-
-    function isInPromotionZone(side, y) {
-      return PROMOTION_ZONE[side].includes(y);
-    }
-
-    function forcePromoteNeeded(piece, destY) {
-      if (piece.type === "pawn" || piece.type === "lance") {
-        return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
-      }
-      if (piece.type === "knight") {
-        return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
-      }
-      return false;
-    }
-
-    function boardMap(pieces) {
-      const map = new Map();
-      for (const p of pieces) map.set(`${p.x},${p.y}`, p);
-      return map;
-    }
-
-    function pieceAt(pieces, x, y) {
-      return pieces.find(p => p.x === x && p.y === y);
-    }
-
-    function kingPos(pieces, side) {
-      const k = pieces.find(p => p.side === side && p.type === "king");
-      return k ? { x: k.x, y: k.y } : null;
-    }
-
-    function dedupeMoves(arr) {
-      const seen = new Set();
-      const out = [];
-      for (const m of arr) {
-        const k = `${m.x},${m.y}`;
-        if (!seen.has(k)) {
-          seen.add(k);
-          out.push(m);
+    blockAt(coord){
+      if(coord === 0) return 'empty';
+      const side = coord > 0 ? 'pos' : 'neg';
+      const abs = Math.abs(coord);
+      this.ensure(side, abs);
+      const runs = side === 'pos' ? this.posRuns : this.negRuns;
+      for(const run of runs){
+        if(abs >= run.start && abs <= run.end){
+          return this.pickFromPool(run.cat, run.idx, abs, side);
         }
       }
-      return out;
+      return 'empty';
     }
+  }
+  function getLineGen(dim, lineCoord){
+    const key = lineCoord|0;
+    const cache = lineCache[dim];
+    if(!cache.has(key)) cache.set(key, new LineGen(dim, key));
+    return cache.get(key);
+  }
+  function naturalBlock(dim,x,y){
+    const major = dim === DIM.OVERWORLD ? x : y;
+    if(major === 0) return 'empty';
+    const minor = dim === DIM.OVERWORLD ? y : x;
+    return getLineGen(dim, minor).blockAt(major);
+  }
+  function getBlockAt(dim,x,y){
+    const w = worlds[dim];
+    const k = `${x},${y}`;
+    return w.mods.has(k) ? w.mods.get(k) : naturalBlock(dim,x,y);
+  }
+  function setBlockAt(dim,x,y,block){
+    const w = worlds[dim];
+    const k = `${x},${y}`;
+    if(block === 'empty'){
+      w.mods.set(k,'empty');
+      w.fire.delete(k);
+      w.tnt.delete(k);
+      return;
+    }
+    w.mods.set(k,block);
+    if(block === 'fire'){
+      w.fire.set(k,0);
+      w.tnt.delete(k);
+    }else if(block === 'tnt'){
+      if(!w.tnt.has(k)) w.tnt.set(k,{lit:false,age:0});
+      w.fire.delete(k);
+    }else{
+      w.fire.delete(k);
+      w.tnt.delete(k);
+    }
+  }
 
-    function pseudoMovesForType(side, type, x, y, pieces) {
-      const stepMoves = (steps) => {
-        const out = [];
-        const occ = boardMap(pieces);
-        for (const [dx, dy] of steps) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (!isInside(nx, ny)) continue;
-          const hit = occ.get(`${nx},${ny}`);
-          if (!hit || hit.side !== side) out.push({ x: nx, y: ny });
+  function buildSpawnArea(){
+    for(const dim of [DIM.OVERWORLD, DIM.NETHER]){
+      for(let i=-3;i<=3;i++) setBlockAt(dim,i,0,'empty');
+    }
+  }
+  function ensureSpawnResources(){
+    let woodCount = 0;
+    for(let x=-10;x<=10;x++) if(getBlockAt(DIM.OVERWORLD,x,0) === 'wood') woodCount++;
+    for(const x of [-10,-9,-8,-7,-6,-5,5,6,7,8,9,10]){
+      if(woodCount>=3) break;
+      if(getBlockAt(DIM.OVERWORLD,x,0) !== 'wood'){
+        setBlockAt(DIM.OVERWORLD,x,0,'wood');
+        woodCount++;
+      }
+    }
+    let stoneCount = 0;
+    for(let x=-20;x<=20;x++) if(getBlockAt(DIM.OVERWORLD,x,0) === 'stone') stoneCount++;
+    for(const x of [-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,9,10,11,12,13,14,15,16,17,18,19,20]){
+      if(stoneCount>=6) break;
+      if(getBlockAt(DIM.OVERWORLD,x,0) !== 'stone'){
+        setBlockAt(DIM.OVERWORLD,x,0,'stone');
+        stoneCount++;
+      }
+    }
+  }
+
+  function mobAlias(token){
+    const t = normText(token).toLowerCase();
+    const map = { zombie:'zombie', ゾンビ:'zombie', creeper:'creeper', クリーパー:'creeper', skeleton:'skeleton', スケルトン:'skeleton' };
+    return map[token] || map[t] || null;
+  }
+  function blockAlias(token){
+    const t = normText(token);
+    const map = {
+      air:'empty', empty:'empty', 空気:'empty', 無:'empty',
+      土:'dirt', 草:'grass', 木:'wood', 葉:'leaf', 石:'stone', 丸石:'cobblestone', 砂利:'gravel',
+      砂:'sand', 黒曜石:'obsidian', ネザーラック:'netherrack', ソウルサンド:'soul_sand', 古代の残骸:'ancient_debris',
+      水:'water', 溶岩:'lava', 火:'fire', 石炭鉱石:'coal_ore', 鉄鉱石:'iron_ore', 金鉱石:'gold_ore', ダイヤ鉱石:'diamond_ore',
+      石炭:'coal',
+      板材:'plank', 棒:'stick', たいまつ:'torch', 作業台:'crafting_table', かまど:'furnace',
+      鉄の原石:'raw_iron', 金の原石:'raw_gold', 鉄インゴット:'iron_ingot', 金インゴット:'gold_ingot',
+      火打石:'flint', 火薬:'gunpowder', バケツ:'bucket', 水入りバケツ:'water_bucket', 溶岩入りバケツ:'lava_bucket',
+      火打石と打ち金:'flint_and_steel', TNT:'tnt', ネザーゲートブロック:'nether_portal',
+      stone:'stone', dirt:'dirt', grass:'grass', wood:'wood', leaf:'leaf', plank:'plank', stick:'stick',
+      torch:'torch', crafting_table:'crafting_table', furnace:'furnace', sand:'sand', gravel:'gravel', coal:'coal',
+      obsidian:'obsidian', netherrack:'netherrack', soul_sand:'soul_sand', ancient_debris:'ancient_debris',
+      water:'water', lava:'lava', fire:'fire', raw_iron:'raw_iron', raw_gold:'raw_gold', iron_ingot:'iron_ingot', gold_ingot:'gold_ingot',
+      diamond:'diamond', flint:'flint', gunpowder:'gunpowder', bucket:'bucket',
+      water_bucket:'water_bucket', lava_bucket:'lava_bucket', flint_and_steel:'flint_and_steel', tnt:'tnt', nether_portal:'nether_portal',
+      cobblestone:'cobblestone',
+      coal_ore:'coal_ore', iron_ore:'iron_ore', gold_ore:'gold_ore', diamond_ore:'diamond_ore'
+    };
+    return map[t] || map[token] || token;
+  }
+
+  function buildResolveMaps(){
+    const exact = new Map();
+    const add = (key,id) => { if(key) exact.set(compactText(key), id); };
+    for(const id of Object.keys(BLOCKS)){
+      add(id, id);
+      add(BLOCKS[id].name, id);
+    }
+    add('air', 'air_item');
+    add('空気', 'air_item');
+    add('無', 'air_item');
+    add('stone pickaxe', 'stone_pickaxe');
+    add('iron pickaxe', 'iron_pickaxe');
+    add('gold pickaxe', 'gold_pickaxe');
+    add('diamond pickaxe', 'diamond_pickaxe');
+    add('wood pickaxe', 'wooden_pickaxe');
+    add('wooden pickaxe', 'wooden_pickaxe');
+    add('stone axe', 'stone_axe');
+    add('iron axe', 'iron_axe');
+    add('gold axe', 'gold_axe');
+    add('diamond axe', 'diamond_axe');
+    add('wood axe', 'wooden_axe');
+    add('wooden axe', 'wooden_axe');
+    add('stone shovel', 'stone_shovel');
+    add('iron shovel', 'iron_shovel');
+    add('gold shovel', 'gold_shovel');
+    add('diamond shovel', 'diamond_shovel');
+    add('wood shovel', 'wooden_shovel');
+    add('wooden shovel', 'wooden_shovel');
+    add('stone sword', 'stone_sword');
+    add('iron sword', 'iron_sword');
+    add('gold sword', 'gold_sword');
+    add('diamond sword', 'diamond_sword');
+    add('wood sword', 'wooden_sword');
+    add('wooden sword', 'wooden_sword');
+    add('wood all tools', 'wood_alltools');
+    add('stone all tools', 'stone_alltools');
+    add('iron all tools', 'iron_alltools');
+    add('gold all tools', 'gold_alltools');
+    add('diamond all tools', 'diamond_alltools');
+    add('woodalltools', 'wood_alltools');
+    add('stonealltools', 'stone_alltools');
+    add('ironalltools', 'iron_alltools');
+    add('goldalltools', 'gold_alltools');
+    add('diamondalltools', 'diamond_alltools');
+    return exact;
+  }
+  const RESOLVE_MAP = buildResolveMaps();
+
+  function resolveItemId(token){
+    const raw = normText(token);
+    if(!raw) return null;
+    const c = compactText(raw);
+    if(c === '∀' || c === 'all') return { kind:'all' };
+    if(c.endsWith('alltools')){
+      const prefix = c.slice(0,-8);
+      const gradeMap = { wood:'wood', wooden:'wood', stone:'stone', iron:'iron', gold:'gold', diamond:'diamond' };
+      const grade = gradeMap[prefix];
+      if(grade) return { kind:'item', id:`${grade}_alltools` };
+    }
+    if(RESOLVE_MAP.has(c)) return { kind:'item', id:RESOLVE_MAP.get(c) };
+    for(const id of Object.keys(BLOCKS)){
+      if(compactText(id) === c || compactText(BLOCKS[id].name) === c) return { kind:'item', id };
+    }
+    return { kind:'item', id:tokenAliasFallback(raw) };
+  }
+  function tokenAliasFallback(raw){
+    const t = normText(raw);
+    const key = t.toLowerCase();
+    const map = {
+      石炭鉱石:'coal_ore',鉄鉱石:'iron_ore',金鉱石:'gold_ore',ダイヤ鉱石:'diamond_ore',
+      石炭:'coal',砂利:'gravel',鉄の原石:'raw_iron',金の原石:'raw_gold',鉄インゴット:'iron_ingot',金インゴット:'gold_ingot',
+      木の剣:'wooden_sword',石の剣:'stone_sword',鉄の剣:'iron_sword',金の剣:'gold_sword',ダイヤの剣:'diamond_sword',
+      木の斧:'wooden_axe',石の斧:'stone_axe',鉄の斧:'iron_axe',金の斧:'gold_axe',ダイヤの斧:'diamond_axe',
+      木のシャベル:'wooden_shovel',石のシャベル:'stone_shovel',鉄のシャベル:'iron_shovel',金のシャベル:'gold_shovel',ダイヤのシャベル:'diamond_shovel',
+      木のツルハシ:'wooden_pickaxe',石のツルハシ:'stone_pickaxe',鉄のツルハシ:'iron_pickaxe',金のツルハシ:'gold_pickaxe',ダイヤのツルハシ:'diamond_pickaxe',
+      wood:'wood',plank:'plank',stick:'stick',sand:'sand',gravel:'gravel',flint:'flint',gunpowder:'gunpowder',
+      cobblestone:'cobblestone',coal:'coal',diamond:'diamond',dirt:'dirt',grass:'grass',leaf:'leaf',
+      crafting_table:'crafting_table',furnace:'furnace',torch:'torch',obsidian:'obsidian',netherrack:'netherrack',soul_sand:'soul_sand',ancient_debris:'ancient_debris',
+      water:'water',lava:'lava',fire:'fire',bucket:'bucket',water_bucket:'water_bucket',lava_bucket:'lava_bucket',flint_and_steel:'flint_and_steel',tnt:'tnt',nether_portal:'nether_portal',
+      stone:'stone',coal_ore:'coal_ore',iron_ore:'iron_ore',gold_ore:'gold_ore',diamond_ore:'diamond_ore',
+      wooden_pickaxe:'wooden_pickaxe',stone_pickaxe:'stone_pickaxe',iron_pickaxe:'iron_pickaxe',gold_pickaxe:'gold_pickaxe',diamond_pickaxe:'diamond_pickaxe',
+      wooden_axe:'wooden_axe',stone_axe:'stone_axe',iron_axe:'iron_axe',gold_axe:'gold_axe',diamond_axe:'diamond_axe',
+      wooden_shovel:'wooden_shovel',stone_shovel:'stone_shovel',iron_shovel:'iron_shovel',gold_shovel:'gold_shovel',diamond_shovel:'diamond_shovel',
+      wooden_sword:'wooden_sword',stone_sword:'stone_sword',iron_sword:'iron_sword',gold_sword:'gold_sword',diamond_sword:'diamond_sword',
+      wood_alltools:'wood_alltools',stone_alltools:'stone_alltools',iron_alltools:'iron_alltools',gold_alltools:'gold_alltools',diamond_alltools:'diamond_alltools'
+    };
+    return map[t] || map[key] || t;
+  }
+
+  function toolTypeOf(item){
+    if(!item) return 'none';
+    if(item.endsWith('_alltools')) return 'alltools';
+    if(item.endsWith('_pickaxe')) return 'pickaxe';
+    if(item.endsWith('_axe')) return 'axe';
+    if(item.endsWith('_shovel')) return 'shovel';
+    if(item.endsWith('_sword')) return 'sword';
+    return 'none';
+  }
+  function toolMaterialOf(item){
+    if(!item) return 'none';
+    if(item.endsWith('_alltools')){
+      const base = item.split('_')[0];
+      if(base==='wood') return 'wood';
+      if(base==='stone') return 'stone';
+      if(base==='iron') return 'iron';
+      if(base==='gold') return 'gold';
+      if(base==='diamond') return 'diamond';
+    }
+    if(item.startsWith('wooden_') || item.startsWith('wood_')) return 'wood';
+    if(item.startsWith('stone_')) return 'stone';
+    if(item.startsWith('iron_')) return 'iron';
+    if(item.startsWith('gold_')) return 'gold';
+    if(item.startsWith('diamond_')) return 'diamond';
+    return 'none';
+  }
+  function toolTierOf(item){
+    const mat = toolMaterialOf(item);
+    if(mat==='wood') return 1;
+    if(mat==='stone') return 2;
+    if(mat==='iron') return 3;
+    if(mat==='gold') return 5;
+    if(mat==='diamond') return 5;
+    return 0;
+  }
+  function swordDamage(item){
+    if(item==='wooden_sword') return 2;
+    if(item==='stone_sword') return 3;
+    if(item==='iron_sword') return 4;
+    if(item==='gold_sword') return 16;
+    if(item==='diamond_sword') return 5;
+    if(item==='wood_alltools') return 2;
+    if(item==='stone_alltools') return 3;
+    if(item==='iron_alltools') return 4;
+    if(item==='gold_alltools') return 16;
+    if(item==='diamond_alltools') return 5;
+    return 1;
+  }
+  function breakChanceOnUse(item,kind){
+    const mat = toolMaterialOf(item);
+    if(mat !== 'gold') return 0;
+    if(kind==='attack') return 0.5;
+    if(kind==='mine') return 0.25;
+    return 0;
+  }
+  function breakHeldTool(item){
+    if(!item || count(item)<=0) return;
+    removeItem(item,1);
+    setMsg(`${displayName(item)} が壊れた。`);
+  }
+  function isShovelLike(item){ return toolTypeOf(item)==='shovel' || toolTypeOf(item)==='alltools'; }
+  function isAxeLike(item){ return toolTypeOf(item)==='axe' || toolTypeOf(item)==='alltools'; }
+  function isPickLike(item){ return toolTypeOf(item)==='pickaxe' || toolTypeOf(item)==='alltools'; }
+  function isSwordLike(item){ return toolTypeOf(item)==='sword' || toolTypeOf(item)==='alltools'; }
+  function isSoftMineBlock(block){
+    return ['dirt','grass','sand','wood','leaf','plank','crafting_table','furnace','torch','soul_sand'].includes(block);
+  }
+
+  function mineRule(block){
+    const rules = {
+      dirt:{tool:'shovel',drop:'dirt'}, grass:{tool:'shovel',drop:'dirt'}, sand:{tool:'shovel',drop:'sand'}, soul_sand:{tool:'shovel',drop:'soul_sand'},
+      wood:{tool:'axe',drop:'wood'}, leaf:{tool:'axe',drop:'leaf'}, plank:{tool:'axe',drop:'plank'},
+      stone:{tool:'pickaxe',drop:'cobblestone'}, cobblestone:{tool:'pickaxe',drop:'cobblestone'},
+      coal_ore:{tool:'pickaxe',drop:'coal',minTier:1}, iron_ore:{tool:'pickaxe',drop:'raw_iron',minTier:2}, gold_ore:{tool:'pickaxe',drop:'raw_gold',minTier:2}, diamond_ore:{tool:'pickaxe',drop:'diamond',minTier:3},
+      obsidian:{tool:'pickaxe',drop:'obsidian',minTier:5}, ancient_debris:{tool:'pickaxe',drop:'ancient_debris',minTier:2},
+      netherrack:{tool:'any',drop:'netherrack'}, crafting_table:{tool:'any',drop:'crafting_table'}, furnace:{tool:'any',drop:'furnace'}, torch:{tool:'any',drop:'torch'},
+      raw_iron:{tool:'any',drop:'raw_iron'}, raw_gold:{tool:'any',drop:'raw_gold'}, iron_ingot:{tool:'any',drop:'iron_ingot'}, gold_ingot:{tool:'any',drop:'gold_ingot'}, diamond:{tool:'any',drop:'diamond'},
+      flint:{tool:'any',drop:'flint'}, gunpowder:{tool:'any',drop:'gunpowder'}, bucket:{tool:'any',drop:'bucket'}, water_bucket:{tool:'any',drop:'water_bucket'}, lava_bucket:{tool:'any',drop:'lava_bucket'}, flint_and_steel:{tool:'any',drop:'flint_and_steel'}, tnt:{tool:'any',drop:'tnt'},
+      nether_portal:{tool:'special',drop:'nether_portal'},
+      water:{tool:'none'}, lava:{tool:'none'}, fire:{tool:'none'}
+    };
+    return rules[block] || null;
+  }
+
+  function count(item){ return state.infiniteItems.has(item) ? Infinity : (state.inventory[item] || 0); }
+  function hasItem(item){ return count(item) > 0; }
+  function stackText(item){ const c = count(item); return `${displayName(item)} ×${c===Infinity ? '∞' : c}`; }
+
+  function normalizeHeld(){
+    if(state.heldItem && hasItem(state.heldItem)) return;
+    state.heldItem = null;
+    const ordered = [...state.favoriteItems.filter(i => hasItem(i)), ...ITEM_ORDER.filter(i => hasItem(i) && !state.favoriteItems.includes(i))];
+    for(const item of ordered){ if(hasItem(item)){ state.heldItem = item; break; } }
+  }
+  function addItem(item,n=1){
+    if(n===Infinity){
+      state.infiniteItems.add(item); state.inventory[item] = 1; normalizeHeld(); return;
+    }
+    if(state.infiniteItems.has(item)) return;
+    state.inventory[item] = (state.inventory[item] || 0) + n;
+    if(state.inventory[item] <= 0) delete state.inventory[item];
+    normalizeHeld();
+  }
+  function removeItem(item,n=1){
+    if(state.infiniteItems.has(item)) return;
+    if(!state.inventory[item]) return;
+    state.inventory[item] -= n;
+    if(state.inventory[item] <= 0) delete state.inventory[item];
+    normalizeHeld();
+  }
+  function currentTarget(){
+    const p = currentPos();
+    return activeAxis() === 'x' ? {x:p.x + state.facing, y:p.y} : {x:p.x, y:p.y + state.facing};
+  }
+  function isNight(){ return (Math.floor(state.gameTime) % 1440) >= 720; }
+  function timeText(){
+    const t = Math.floor(state.gameTime) % 1440;
+    const night = t >= 720;
+    const sec = night ? t - 720 : t;
+    const mm = String(Math.floor(sec/60)).padStart(2,'0');
+    const ss = String(sec%60).padStart(2,'0');
+    return `${night ? '夜' : '昼'} ${mm}:${ss}`;
+  }
+  function difficultyLabel(){ return DIFFICULTIES[state.difficulty]?.label || state.difficulty; }
+  function hardcore(){ return state.difficulty === 'hardcore'; }
+  function currentSpawnChance(){ return DIFFICULTIES[state.difficulty]?.spawnChance ?? 1/16; }
+  function currentRegenChance(){ return DIFFICULTIES[state.difficulty]?.regenChance ?? 0.25; }
+  function currentRegenAmount(){ return DIFFICULTIES[state.difficulty]?.regenAmount ?? 0.5; }
+  function currentNightFactor(){ return DIFFICULTIES[state.difficulty]?.nightSpawnFactor ?? 1; }
+
+  function enemyAtTarget(){
+    const t = currentTarget();
+    const w = world();
+    return w.mobs.find(m => !m.dead && Math.round(m.x) === t.x && Math.round(m.y) === t.y) || null;
+  }
+  function mobsInCell(x,y){
+    const w = world();
+    return w.mobs.filter(m => !m.dead && Math.round(m.x) === x && Math.round(m.y) === y);
+  }
+  function spawnMobAt(w,x,y,type){
+    if(getBlockAt(w.dim,x,y) !== 'empty') return false;
+    if(w.mobs.some(m => !m.dead && Math.round(m.x) === x && Math.round(m.y) === y)) return false;
+    w.mobs.push({
+      id:w.mobs.length+1, type, x, y, hp:10, dead:false, speed:type==='zombie' ? 0.22 : type==='creeper' ? 0.34 : 0.16,
+      attackCd:0, contactAcc:0, aimAcc:0, dayBurnAcc:0, ignited:false, fuse:0
+    });
+    return true;
+  }
+  function spawnNightMobNearPlayer(){
+    if(state.difficulty === 'peaceful') return false;
+    const w = world();
+    const p = currentPos();
+    const r = Math.random();
+    const type = r < 0.34 ? 'zombie' : r < 0.67 ? 'creeper' : 'skeleton';
+
+    for(let i=0;i<16;i++){
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const dist = 5 + Math.floor(Math.random() * 6);
+      if(state.dim === DIM.OVERWORLD){
+        if(spawnMobAt(w, p.x + side * dist, p.y, type)) return true;
+      }else{
+        if(spawnMobAt(w, p.x, p.y + side * dist, type)) return true;
+      }
+    }
+    return false;
+  }
+  function spawnCommandMob(type, countNum){
+    const w = world();
+    const t = currentTarget();
+    let spawned = 0;
+    const candidates = [];
+    for(let r=0;r<=3;r++){
+      for(let dx=-r; dx<=r; dx++){
+        for(let dy=-r; dy<=r; dy++){
+          if(Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          candidates.push({x:t.x+dx, y:t.y+dy});
         }
-        return out;
-      };
+      }
+    }
+    for(let i=0;i<countNum;i++){
+      let placed = false;
+      for(const c of candidates){
+        if(spawnMobAt(w, c.x, c.y, type)){ spawned++; placed = true; break; }
+      }
+      if(!placed) break;
+    }
+    return spawned;
+  }
 
-      const rayMoves = (dirs, maxSteps = 99) => {
-        const out = [];
-        const occ = boardMap(pieces);
-        for (const [dx, dy] of dirs) {
-          for (let step = 1; step <= maxSteps; step++) {
-            const nx = x + dx * step;
-            const ny = y + dy * step;
-            if (!isInside(nx, ny)) break;
-            const hit = occ.get(`${nx},${ny}`);
-            if (hit) {
-              if (hit.side !== side) out.push({ x: nx, y: ny });
-              break;
+  function currentSaveSlot(){ if(!activeSaveId) return null; return saves.find(s => s.id === activeSaveId) || null; }
+
+  function snapshotGame(){
+    return {
+      version:1,
+      dim:state.dim,
+      difficulty:state.difficulty,
+      pos:deep(state.pos),
+      facing:state.facing,
+      hp:state.hp, maxHp:state.maxHp,
+      breath:state.breath, maxBreath:state.maxBreath,
+      regenAcc:state.regenAcc, downedAcc:state.downedAcc, attackCd:state.attackCd,
+      fireAcc:state.fireAcc, lavaAcc:state.lavaAcc, burnRemain:state.burnRemain, burnAcc:state.burnAcc, waterDamageAcc:state.waterDamageAcc,
+      soulSlow:state.soulSlow, prevBlock:state.prevBlock,
+      gameTime:state.gameTime, nightSpawnAcc:state.nightSpawnAcc, portalAcc:state.portalAcc, portalRecentTravel:state.portalRecentTravel, portalShake:state.portalShake,
+      inventory:deep(state.inventory), infiniteItems:[...state.infiniteItems], heldItem:state.heldItem,
+      keepInventory:state.keepInventory, cmdUnlocked:state.cmdUnlocked,
+      craftGridSize:state.craftGridSize, craftGrid:deep(state.craftGrid),
+      inventorySearch:state.inventorySearch, favoriteItems:deep(state.favoriteItems),
+      worlds:{ overworld:serializeWorld(worlds[DIM.OVERWORLD]), nether:serializeWorld(worlds[DIM.NETHER]) }
+    };
+  }
+  function syncActiveSave(){
+    if(!activeSaveId) return;
+    const idx = saves.findIndex(s => s.id === activeSaveId);
+    if(idx < 0) return;
+    saves[idx].data = snapshotGame();
+    saves[idx].difficulty = state.difficulty;
+    saves[idx].updatedAt = Date.now();
+    saveJSON(SAVE_KEY, saves);
+  }
+  function applySnapshot(data){
+    if(!data) return;
+    state.dim = data.dim || DIM.OVERWORLD;
+    state.difficulty = data.difficulty || 'normal';
+    state.pos = data.pos || state.pos;
+    state.facing = data.facing ?? 1;
+    state.hp = data.hp ?? 10; state.maxHp = data.maxHp ?? 10;
+    state.breath = data.breath ?? 10; state.maxBreath = data.maxBreath ?? 10;
+    state.regenAcc = data.regenAcc ?? 0; state.downedAcc = data.downedAcc ?? 0; state.attackCd = data.attackCd ?? 0;
+    state.fireAcc = data.fireAcc ?? 0; state.lavaAcc = data.lavaAcc ?? 0; state.burnRemain = data.burnRemain ?? 0; state.burnAcc = data.burnAcc ?? 0; state.waterDamageAcc = data.waterDamageAcc ?? 0;
+    state.soulSlow = data.soulSlow ?? 0; state.prevBlock = data.prevBlock ?? 'empty';
+    state.gameTime = data.gameTime ?? 0; state.nightSpawnAcc = data.nightSpawnAcc ?? 0;
+    state.portalAcc = data.portalAcc ?? 0; state.portalRecentTravel = !!data.portalRecentTravel; state.portalShake = data.portalShake ?? 0;
+    state.inventory = data.inventory || {}; state.infiniteItems = new Set(data.infiniteItems || []); state.heldItem = data.heldItem || null;
+    state.keepInventory = !!data.keepInventory; state.cmdUnlocked = !!data.cmdUnlocked;
+    state.craftGridSize = data.craftGridSize || 2; state.craftGrid = data.craftGrid || Array(state.craftGridSize * state.craftGridSize).fill(null);
+    state.inventorySearch = data.inventorySearch || ''; state.favoriteItems = data.favoriteItems || [];
+    const w = data.worlds || {};
+    worlds[DIM.OVERWORLD] = deserializeWorld(w.overworld, DIM.OVERWORLD);
+    worlds[DIM.NETHER] = deserializeWorld(w.nether, DIM.NETHER);
+    clearLineCaches();
+    updateTheme();
+    normalizeHeld();
+    refreshCommandVisibility();
+    hasWorld = true;
+  }
+
+  function saveSaveSlots(){ saveJSON(SAVE_KEY, saves); }
+
+  function renderWorldList(){
+    worldGrid.innerHTML = '';
+    if(!saves.length){
+      const empty = document.createElement('div');
+      empty.className = 'small';
+      empty.textContent = '保存済みワールドはまだない。';
+      worldGrid.appendChild(empty);
+      createWorldBtn.style.display = 'inline-flex';
+      return;
+    }
+    createWorldBtn.style.display = saves.length < 10 ? 'inline-flex' : 'none';
+    saves.forEach(slot => {
+      const card = document.createElement('div');
+      card.className = 'worldCard';
+
+      const thumb = document.createElement('div');
+      thumb.className = 'worldThumb';
+      if(slot.image){
+        const img = document.createElement('img');
+        img.src = slot.image;
+        thumb.appendChild(img);
+      }
+      const ph = document.createElement('div');
+      ph.className = 'ph';
+      ph.textContent = slot.name || '無題のワールド';
+      thumb.appendChild(ph);
+
+      const row = document.createElement('div');
+      row.className = 'worldHeaderRow';
+      if(activeSaveId === slot.id){
+        const b = document.createElement('span');
+        b.className = 'badge';
+        b.textContent = '現在';
+        row.appendChild(b);
+      }
+      const dimBadge = document.createElement('span');
+      dimBadge.className = 'badge';
+      dimBadge.textContent = (slot.data?.dim === DIM.NETHER) ? 'Nether' : 'Overworld';
+      row.appendChild(dimBadge);
+
+      const diffBadge = document.createElement('span');
+      diffBadge.className = 'badge';
+      diffBadge.textContent = (slot.difficulty && DIFFICULTIES[slot.difficulty]) ? DIFFICULTIES[slot.difficulty].label : 'ノーマル';
+      row.appendChild(diffBadge);
+
+      if(slot.locked){
+        const lb = document.createElement('span');
+        lb.className = 'badge lockBadge';
+        lb.textContent = 'LOCKED';
+        row.appendChild(lb);
+      }
+
+      const name = document.createElement('div');
+      name.className = 'worldName';
+      name.textContent = slot.name || '無題のワールド';
+
+      const meta = document.createElement('div');
+      meta.className = 'worldMeta';
+      const ts = slot.updatedAt ? new Date(slot.updatedAt).toLocaleString() : '—';
+      meta.textContent = `更新: ${ts}`;
+
+      const actions = document.createElement('div');
+      actions.className = 'worldActions';
+
+      const open = document.createElement('button');
+      open.className = 'loadBtn';
+      open.textContent = slot.locked ? '開けない' : '開く';
+      open.disabled = !!slot.locked;
+      open.addEventListener('click', () => loadWorldById(slot.id));
+
+      const rename = document.createElement('button');
+      rename.className = 'miniBtn';
+      rename.textContent = '名前変更';
+      rename.addEventListener('click', () => {
+        const next = prompt('ワールド名', slot.name || '無題のワールド');
+        if(next === null) return;
+        slot.name = next.trim() || slot.name || '無題のワールド';
+        slot.updatedAt = Date.now();
+        saveSaveSlots();
+        renderWorldList();
+      });
+
+      const imgBtn = document.createElement('button');
+      imgBtn.className = 'miniBtn';
+      imgBtn.textContent = '画像';
+      imgBtn.addEventListener('click', () => {
+        worldImageInput.dataset.target = slot.id;
+        worldImageInput.click();
+      });
+
+      const dup = document.createElement('button');
+      dup.className = 'miniBtn';
+      dup.textContent = '複製';
+      dup.addEventListener('click', () => duplicateWorld(slot.id));
+
+      const del = document.createElement('button');
+      del.className = 'dangerBtn';
+      del.textContent = '削除';
+      del.addEventListener('click', () => {
+        openConfirm(
+          `「${slot.name || '無題のワールド'}」を削除する？`,
+          () => {
+            const idx = saves.findIndex(s => s.id === slot.id);
+            if(idx >= 0) saves.splice(idx,1);
+            if(activeSaveId === slot.id) activeSaveId = null;
+            saveSaveSlots();
+            renderWorldList();
+            if(!saves.length){
+              setMsg('ワールドを全部消した。新しいワールドは自分で作ってね。');
             }
-            out.push({ x: nx, y: ny });
-          }
-        }
-        return out;
-      };
-
-      const f = forward(side);
-
-      if (type === "pawn") return stepMoves([[0, f]]);
-      if (type === "lance") return rayMoves([[0, f]]);
-      if (type === "knight") return stepMoves([[-1, 2 * f], [1, 2 * f]]);
-      if (type === "silver") return stepMoves([[0, f], [-1, f], [1, f], [-1, -f], [1, -f]]);
-      if (type === "gold" || type === "tokin" || type === "proLance" || type === "proKnight" || type === "proSilver") {
-        return stepMoves([[0, f], [-1, f], [1, f], [-1, 0], [1, 0], [0, -f]]);
-      }
-      if (type === "bishop") return rayMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]);
-      if (type === "rook") return rayMoves([[0, -1], [0, 1], [-1, 0], [1, 0]]);
-      if (type === "king") {
-        return stepMoves([
-          [0, -1], [0, 1], [-1, 0], [1, 0],
-          [-1, -1], [1, -1], [-1, 1], [1, 1]
-        ]);
-      }
-      if (type === "horse") {
-        const moves = rayMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]);
-        moves.push(...stepMoves([[0, -1], [0, 1], [-1, 0], [1, 0]]));
-        return dedupeMoves(moves);
-      }
-      if (type === "dragon") {
-        const moves = rayMoves([[0, -1], [0, 1], [-1, 0], [1, 0]]);
-        moves.push(...stepMoves([[-1, -1], [1, -1], [-1, 1], [1, 1]]));
-        return dedupeMoves(moves);
-      }
-      return [];
-    }
-
-    function movementForms(piece) {
-      if (piece.promoMode === "promoted") return [PROMOTED_MOVE[piece.type] || piece.type];
-      if (piece.promoMode === "can") return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
-      return [piece.type];
-    }
-
-    function isSquareAttacked(pieces, x, y, bySide) {
-      for (const p of pieces) {
-        if (p.side !== bySide) continue;
-        for (const moveType of movementForms(p)) {
-          for (const m of pseudoMovesForType(p.side, moveType, p.x, p.y, pieces)) {
-            if (m.x === x && m.y === y) return true;
-          }
-        }
-      }
-      return false;
-    }
-
-    function isKingInCheck(pieces, side) {
-      const kp = kingPos(pieces, side);
-      if (!kp) return true;
-      return isSquareAttacked(pieces, kp.x, kp.y, opposite(side));
-    }
-
-    function currentRoyalLabels() {
-      return state.roomData?.state?.royalLabels || state.roomData?.royalLabels || state.fallbackRoyalLabels;
-    }
-
-    function kingLabelForSide(side) {
-      const labels = currentRoyalLabels();
-      return labels?.[side] || "玉";
-    }
-
-    function moveTextLabel(piece, now) {
-      if (!piece) return "?";
-      if (piece.type === "king") return kingLabelForSide(piece.side);
-      if (piece.promoMode === "promoted") return PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?";
-      if (piece.promoMode === "can") {
-        const blink = Math.floor(now / 250) % 2 === 0;
-        return blink ? (TYPE_LABEL[piece.type] || "?") : (PROMOTED_LABEL[piece.type] || TYPE_LABEL[piece.type] || "?");
-      }
-      return TYPE_LABEL[piece.type] || "?";
-    }
-
-    function pieceTextColor(piece) {
-      if (!piece) return "#111";
-      if (piece.promoMode === "promoted") return "#d84b43";
-      if (piece.promoMode === "can") return "#3569d6";
-      return "#111";
-    }
-
-    function canPieceHavePromotion(piece) {
-      return isPromotableType(piece.type);
-    }
-
-    function simulateMoveAndCheck(stateObj, piece, dest, nextPromoMode) {
-      const sim = cloneState(stateObj);
-      const sp = sim.pieces.find(p => p.id === piece.id);
-      if (!sp) return false;
-
-      const occupant = pieceAt(sim.pieces, dest.x, dest.y);
-      if (occupant && occupant.side === sp.side) return false;
-
-      if (occupant) {
-        sim.pieces = sim.pieces.filter(p => p.id !== occupant.id);
-        sim.hands[sp.side][occupant.type] += 1;
-      }
-
-      sp.x = dest.x;
-      sp.y = dest.y;
-      sp.promoMode = nextPromoMode;
-      return !isKingInCheck(sim.pieces, sp.side);
-    }
-
-    function classifyMoveForPiece(stateObj, piece, dest, checkSafety = true) {
-      if (!piece || stateObj.winner) return null;
-      if (piece.cooldownUntil && Date.now() < piece.cooldownUntil) return null;
-
-      const baseType = piece.type;
-      const promoType = PROMOTED_MOVE[baseType];
-      const promotable = canPieceHavePromotion(piece);
-
-      const basePseudo = pseudoMovesForType(piece.side, baseType, piece.x, piece.y, stateObj.pieces);
-      const baseReach = basePseudo.some(m => m.x === dest.x && m.y === dest.y);
-      const forced = promotable && forcePromoteNeeded(piece, dest.y);
-
-      if (piece.type === "king") {
-        if (!baseReach) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "normal" };
-      }
-
-      if (piece.promoMode === "fixed") {
-        if (!baseReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
-      }
-
-      if (piece.promoMode === "promoted") {
-        const pm = promoType || baseType;
-        const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
-        const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        if (!promoReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode: "promoted" };
-      }
-
-      if (piece.promoMode === "normal") {
-        if (!baseReach) return null;
-        const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
-        if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
-        }
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
-        return { x: dest.x, y: dest.y, kind: "normal", nextMode };
-      }
-
-      if (piece.promoMode === "can") {
-        const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
-        const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const baseOK = baseReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
-        const promoOK = promoReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
-
-        if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
-          return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
-        }
-
-        if (baseOK && promoOK) return { x: dest.x, y: dest.y, kind: "both", nextMode: "can" };
-        if (promoOK) return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
-        if (baseOK) return { x: dest.x, y: dest.y, kind: "base", nextMode: "can" };
-        return null;
-      }
-
-      return null;
-    }
-
-    function legalMovesForPiece(stateObj, piece, checkSafety = true) {
-      if (!piece || stateObj.winner) return [];
-      const out = [];
-      const seen = new Set();
-
-      const forms = [];
-      if (piece.promoMode === "can" && canPieceHavePromotion(piece)) {
-        forms.push({ moveType: piece.type });
-        forms.push({ moveType: PROMOTED_MOVE[piece.type] });
-      } else if (piece.promoMode === "promoted") {
-        forms.push({ moveType: PROMOTED_MOVE[piece.type] || piece.type });
-      } else {
-        forms.push({ moveType: piece.type });
-      }
-
-      for (const form of forms) {
-        if (!form.moveType) continue;
-        const pseudo = pseudoMovesForType(piece.side, form.moveType, piece.x, piece.y, stateObj.pieces);
-        for (const mv of pseudo) {
-          const c = classifyMoveForPiece(stateObj, piece, mv, checkSafety);
-          if (!c) continue;
-          const key = `${c.x},${c.y}`;
-          if (seen.has(key)) {
-            const prev = out.find(v => v.x === c.x && v.y === c.y);
-            if (prev && prev.kind !== c.kind) prev.kind = "both";
-            continue;
-          }
-          seen.add(key);
-          out.push(c);
-        }
-      }
-
-      return out;
-    }
-
-    function dropLegalSquares(stateObj) {
-      if (!stateObj || stateObj.winner) return [];
-      const out = [];
-      const occ = boardMap(stateObj.pieces);
-
-      for (let y = 0; y < 9; y++) {
-        for (let x = 0; x < 9; x++) {
-          if (occ.has(`${x},${y}`)) continue;
-          out.push({
-            x,
-            y,
-            kind: "normal",
-            nextMode: "normal"
-          });
-        }
-      }
-      return out;
-    }
-
-    function canControlSide(side){
-      if (session.kind === "local_dual") return true;
-      if (session.kind === "cpu") return side === "black";
-      if (state.mySide === "spectator") return false;
-      return side === state.mySide;
-    }
-
-    function selectedLegalMoves(live) {
-      if (!live || !state.selected || live.winner) return [];
-      if (state.selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === state.selected.id);
-        if (!piece) return [];
-        return legalMovesForPiece(live, piece, false);
-      }
-      if (state.selected.kind === "hand") {
-        return dropLegalSquares(live);
-      }
-      return [];
-    }
-
-    function selectedPieceObj() {
-      const live = state.roomData?.state;
-      if (!live || !state.selected || state.selected.kind !== "piece") return null;
-      return live.pieces.find(p => p.id === state.selected.id) || null;
-    }
-
-    function setStatus(msg) {
-      statusEl.textContent = msg;
-    }
-
-    function updateMePill() {
-      if (session.kind === "cpu") {
-        mePill.textContent = "CPU / あなた: 先手";
-        return;
-      }
-      if (session.kind === "local_dual") {
-        mePill.textContent = "1 SMARTPHONE / 両方操作";
-        return;
-      }
-      if (!state.roomId) {
-        mePill.textContent = "未接続";
-        return;
-      }
-      const label = state.mySide === "black" ? "あなた: 先手"
-                   : state.mySide === "white" ? "あなた: 後手"
-                   : "あなた: 観戦";
-      mePill.textContent = `${state.roomId} / ${label}`;
-    }
-
-    function isBothPlayersReady(roomData) {
-      return !!roomData?.players?.black && !!roomData?.players?.white;
-    }
-
-    function shouldShowRematch(roomData) {
-      if (!roomData) return false;
-      if (!roomData.state?.winner) return false;
-      return session.kind !== "online" ? true : isBothPlayersReady(roomData);
-    }
-
-    function hideRematchOverlay() {
-      rematchOverlay.classList.remove("show");
-    }
-
-    function updateRematchOverlay() {
-      const room = state.roomData;
-      if (!shouldShowRematch(room)) {
-        hideRematchOverlay();
-        return;
-      }
-
-      const winnerRaw = room.state?.winner;
-      let winnerText = "決着";
-      if (session.kind === "online") {
-        winnerText =
-          winnerRaw === "black"
-            ? (state.mySide === "black" ? "あなたの勝ち" : "あなたの負け")
-            : winnerRaw === "white"
-              ? (state.mySide === "white" ? "あなたの勝ち" : "あなたの負け")
-              : "決着";
-      } else if (session.kind === "cpu") {
-        winnerText = winnerRaw === "black" ? "あなたの勝ち" : "あなたの負け";
-      } else if (session.kind === "local_dual") {
-        winnerText = winnerRaw === "black" ? "先手の勝ち" : "後手の勝ち";
-      }
-
-      rematchWinner.textContent = winnerText;
-
-      if (session.kind !== "online") {
-        rematchDesc.textContent = "はいを押したらすぐ次の試合が始まるよ。";
-        rematchOverlay.classList.add("show");
-        return;
-      }
-
-      const votes = room.rematchVotes || {};
-      const me = votes[state.playerId] ? "はいを押してあるよ。" : "まだ返事してないよ。";
-      const otherSide = state.mySide === "black" ? "white" : "black";
-      const otherPid = room.players?.[otherSide];
-      const otherVote = otherPid ? !!votes[otherPid] : false;
-      const other = otherVote ? "相手もはいを押してるよ。" : "相手の返事待ちだよ。";
-      rematchDesc.textContent = `${me}\n${other}`;
-      rematchOverlay.classList.add("show");
-    }
-
-    function getHandCooldownRemaining(side, now) {
-      const live = state.roomData?.state;
-      return Math.max(0, (live?.handCooldownUntil?.[side] || 0) - now);
-    }
-
-    function refreshHands() {
-      const live = state.roomData?.state;
-      const hands = live?.hands || makeHands();
-
-      const renderHandArea = (el, side, interactive, labelText) => {
-        el.innerHTML = "";
-        const label = document.createElement("div");
-        label.className = "handLabel";
-        label.textContent = labelText;
-        el.appendChild(label);
-
-        for (const t of pieceOrder) {
-          const count = hands[side]?.[t] || 0;
-          if (!count && !interactive) continue;
-
-          const btn = document.createElement("button");
-          btn.className = "handBtn";
-          btn.dataset.interactive = interactive ? "1" : "0";
-          btn.dataset.side = side;
-          btn.dataset.type = t;
-
-          if (state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) {
-            btn.classList.add("selected");
-          }
-
-          const now = Date.now();
-          const remaining = interactive ? getHandCooldownRemaining(side, now) : 0;
-
-          btn.disabled = !interactive || count <= 0 || remaining > 0;
-          btn.innerHTML = `${TYPE_LABEL[t]} <span class="count">×${count}</span><span class="handCooldown" aria-hidden="true"></span>`;
-
-          const ring = btn.querySelector(".handCooldown");
-          if (ring) {
-            if (remaining > 0) {
-              ring.style.opacity = "1";
-              ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, remaining / COOLDOWN_MS))));
-            } else {
-              ring.style.opacity = "0";
-            }
-          }
-
-          const selectHand = (e) => {
-            if (!interactive || count <= 0 || remaining > 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            state.selected = { kind: "hand", side, type: t };
-            state.dragSource = "hand";
-            refreshHands();
-            scheduleRender(0);
-          };
-
-          btn.addEventListener("pointerdown", selectHand);
-          btn.addEventListener("click", selectHand);
-
-          el.appendChild(btn);
-        }
-      };
-
-      if (session.kind === "local_dual") {
-        enemyHandsEl.classList.add("rot180");
-        renderHandArea(enemyHandsEl, "white", true, "上の持ち駒");
-        renderHandArea(myHandsEl, "black", true, "下の持ち駒");
-        return;
-      } else {
-        enemyHandsEl.classList.remove("rot180");
-      }
-
-      if (session.kind === "cpu") {
-        renderHandArea(enemyHandsEl, "white", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "black", true, "自分の持ち駒");
-        return;
-      }
-
-      if (state.mySide === "black") {
-        renderHandArea(enemyHandsEl, "white", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "black", true, "自分の持ち駒");
-      } else if (state.mySide === "white") {
-        renderHandArea(enemyHandsEl, "black", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "white", true, "自分の持ち駒");
-      } else {
-        renderHandArea(enemyHandsEl, "black", false, "相手の持ち駒");
-        renderHandArea(myHandsEl, "white", false, "自分の持ち駒");
-      }
-    }
-
-    function resizeCanvas() {
-      const rect = boardCanvas.getBoundingClientRect();
-      if (!rect.width || !rect.height || rect.width < 50 || rect.height < 50) return;
-
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      boardCanvas.width = Math.floor(rect.width * dpr);
-      boardCanvas.height = Math.floor(rect.height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      state.boardReady = true;
-      scheduleRender(0);
-    }
-
-    let resizeTimer = null;
-    function requestResize() {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(resizeCanvas, 120);
-    }
-
-    function getViewSide() {
-      return state.mySide === "white" ? "white" : "black";
-    }
-
-    function boardToScreen(x, y) {
-      if (session.kind === "local_dual") return { x, y };
-      if (getViewSide() === "white") return { x: 8 - x, y: 8 - y };
-      return { x, y };
-    }
-
-    function screenToBoard(x, y) {
-      if (session.kind === "local_dual") return { x, y };
-      if (getViewSide() === "white") return { x: 8 - x, y: 8 - y };
-      return { x, y };
-    }
-
-    function moveColor(kind) {
-      if (kind === "base") return "rgba(216,75,67,.34)";
-      if (kind === "promo") return "rgba(53,105,214,.30)";
-      return "rgba(242,201,76,.34)";
-    }
-
-    function octantFromVector(dx, dy) {
-      if (dx === 0 && dy === 0) return null;
-      const angle = Math.atan2(dy, dx);
-      let idx = Math.round(angle / (Math.PI / 4));
-      idx = ((idx % 8) + 8) % 8;
-      return idx;
-    }
-
-    function pieceScreenCenter(piece) {
-      const s = boardToScreen(piece.x, piece.y);
-      return { x: s.x + 0.5, y: s.y + 0.5 };
-    }
-
-    function drawPiece(piece, cell, now, selected) {
-      const x = cell.x + cell.size / 2;
-      const y = cell.y + cell.size / 2;
-      const s = cell.size;
-      const w = s * 0.62;
-      const h = s * 0.72;
-
-      ctx.save();
-
-      if (selected) {
-        ctx.strokeStyle = "rgba(138,180,255,.95)";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(cell.x + 3, cell.y + 3, s - 6, s - 6);
-      }
-
-      ctx.translate(x, y);
-      ctx.rotate(piece.side === getViewSide() ? 0 : Math.PI);
-
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.48);
-      ctx.lineTo(w * 0.34, -h * 0.16);
-      ctx.lineTo(w * 0.26, h * 0.42);
-      ctx.lineTo(-w * 0.26, h * 0.42);
-      ctx.lineTo(-w * 0.34, -h * 0.16);
-      ctx.closePath();
-
-      const grad = ctx.createLinearGradient(-s/2, -s/2, s/2, s/2);
-      grad.addColorStop(0, theme.piece1);
-      grad.addColorStop(1, theme.piece2);
-      ctx.fillStyle = grad;
-      ctx.strokeStyle = "rgba(65,45,18,.75)";
-      ctx.lineWidth = 2;
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = pieceTextColor(piece);
-      ctx.font = `700 ${Math.max(14, s * 0.21)}px "Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(moveTextLabel(piece, now), 0, 1);
-
-      const remain = Math.max(0, piece.cooldownUntil - now);
-      if (remain > 0) {
-        const ratio = remain / COOLDOWN_MS;
-        ctx.beginPath();
-        ctx.arc(0, 0, s * 0.36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio, false);
-        ctx.strokeStyle = "rgba(255,255,255,.95)";
-        ctx.lineWidth = 5;
-        ctx.lineCap = "round";
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(0, 0, s * 0.36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio, false);
-        ctx.strokeStyle = "rgba(20,20,20,.22)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    }
-
-    function getCountdownText(matchStartAt, now) {
-      if (!matchStartAt) return null;
-      const remain = matchStartAt - now;
-      if (remain <= 0) {
-        if (now - matchStartAt < 700) return "開始";
-        return null;
-      }
-      if (remain > 2000) return "3";
-      if (remain > 1000) return "2";
-      return "1";
-    }
-
-    function hasAnimatingState() {
-      const live = state.roomData?.state;
-      if (!live) return false;
-      const now = Date.now();
-      if (session.kind !== "online" && state.roomData?.matchStartAt && state.roomData.matchStartAt > now) return true;
-      if (live.pieces.some(p => p.cooldownUntil > now || p.promoMode === "can")) return true;
-      if ((live.handCooldownUntil?.black || 0) > now) return true;
-      if ((live.handCooldownUntil?.white || 0) > now) return true;
-      return false;
-    }
-
-    function scheduleRender(delay = null) {
-      if (session.renderTimer) clearTimeout(session.renderTimer);
-
-      if (delay === null) {
-        if (!hasAnimatingState()) {
-          if (session.kind === "cpu" && state.roomData?.state && !state.roomData.state.winner) {
-            scheduleCpuThink(100);
-          }
-          return;
-        }
-        const now = Date.now();
-        let next = 250;
-        const live = state.roomData?.state;
-        if (state.roomData?.matchStartAt && state.roomData.matchStartAt > now) {
-          next = Math.min(next, Math.max(50, state.roomData.matchStartAt - now));
-        }
-        for (const p of live?.pieces || []) {
-          if (p.cooldownUntil > now) next = Math.min(next, Math.max(50, p.cooldownUntil - now));
-        }
-        const hs = live?.handCooldownUntil || {};
-        if ((hs.black || 0) > now) next = Math.min(next, Math.max(50, hs.black - now));
-        if ((hs.white || 0) > now) next = Math.min(next, Math.max(50, hs.white - now));
-        delay = next;
-      }
-
-      session.renderTimer = setTimeout(() => {
-        session.renderTimer = null;
-        renderFrame();
-      }, delay);
-    }
-
-    function scheduleCpuThink(delay = 400) {
-      if (!isCPU()) return;
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.cpuTimer = setTimeout(() => {
-        session.cpuTimer = null;
-        void cpuThink();
-      }, delay);
-    }
-
-    function startCpuLoop() {
-      if (!isCPU()) return;
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
-      session.cpuLoop = setInterval(() => {
-        if (session.kind === "cpu" && state.roomData && !state.roomData.state?.winner) {
-          void cpuThink();
-        }
-      }, 450);
-      scheduleCpuThink(120);
-    }
-
-    function stopCpuLoop() {
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
-      session.cpuLoop = null;
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.cpuTimer = null;
-    }
-
-    function updateHandCooldownIndicators(now) {
-      const live = state.roomData?.state;
-      if (!live) return;
-
-      const buttons = [...myHandsEl.querySelectorAll(".handBtn"), ...enemyHandsEl.querySelectorAll(".handBtn")];
-      for (const btn of buttons) {
-        const side = btn.dataset.side;
-        const ring = btn.querySelector(".handCooldown");
-        if (!ring) continue;
-        const rem = Math.max(0, (live.handCooldownUntil?.[side] || 0) - now);
-        if (rem > 0) {
-          ring.style.opacity = "1";
-          ring.style.setProperty("--cd", String(Math.max(0, Math.min(1, rem / COOLDOWN_MS))));
-          if (btn.dataset.interactive === "1") btn.disabled = true;
-        } else {
-          ring.style.opacity = "0";
-        }
-      }
-    }
-
-    function renderFrame() {
-      try {
-        if (!state.boardReady) return;
-
-        const rect = boardCanvas.getBoundingClientRect();
-        if (!rect.width || !rect.height || rect.width < 50 || rect.height < 50) return;
-
-        const w = rect.width;
-        const h = rect.height;
-        const cell = w / 9;
-        const now = Date.now();
-
-        updateHandCooldownIndicators(now);
-
-        ctx.clearRect(0, 0, w, h);
-
-        for (let sy = 0; sy < 9; sy++) {
-          for (let sx = 0; sx < 9; sx++) {
-            const board = screenToBoard(sx, sy);
-            const light = (board.x + board.y) % 2 === 0;
-            ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
-            ctx.fillRect(sx * cell, sy * cell, cell, cell);
-          }
-        }
-
-        ctx.strokeStyle = "rgba(104,79,42,.55)";
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= 9; i++) {
-          ctx.beginPath();
-          ctx.moveTo(i * cell, 0);
-          ctx.lineTo(i * cell, 9 * cell);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(0, i * cell);
-          ctx.lineTo(9 * cell, i * cell);
-          ctx.stroke();
-        }
-
-        const live = state.roomData?.state;
-        const room = state.roomData;
-
-        if (!live) {
-          ctx.fillStyle = "rgba(0,0,0,.55)";
-          ctx.font = "600 16px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("ルーム接続待ち", w / 2, h / 2);
-          scheduleRender();
-          return;
-        }
-
-        const legal = selectedLegalMoves(live);
-
-        for (const m of legal) {
-          const s = boardToScreen(m.x, m.y);
-          ctx.fillStyle = moveColor(m.kind);
-          ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
-        }
-
-        const selectedPiece = selectedPieceObj();
-        if (selectedPiece) {
-          const s = boardToScreen(selectedPiece.x, selectedPiece.y);
-          ctx.strokeStyle = "rgba(138,180,255,.95)";
-          ctx.lineWidth = 4;
-          ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
-        }
-
-        for (const p of live.pieces) {
-          const sp = boardToScreen(p.x, p.y);
-          const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-          drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
-        }
-
-        const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
-        const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
-
-        if (live.winner) {
-          ctx.fillStyle = "rgba(0,0,0,.35)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 26px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
-          ctx.font = "500 15px system-ui, sans-serif";
-          ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
-        } else if (!bothReady) {
-          ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 22px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("相手待ち", w / 2, h / 2 - 6);
-          ctx.font = "500 14px system-ui, sans-serif";
-          ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
-        } else if (countdownText) {
-          ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "900 54px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(countdownText, w / 2, h / 2 + 10);
-          ctx.font = "600 16px system-ui, sans-serif";
-          ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
-        }
-
-        updateRematchOverlay();
-        scheduleRender();
-      } catch (err) {
-        console.error("renderFrame error:", err);
-        setStatus("描画が一瞬止まったけど、復帰を試してるよ。");
-        scheduleRender(250);
-      }
-    }
-
-    function pointToSquare(ev) {
-      const rect = boardCanvas.getBoundingClientRect();
-      const px = (ev.clientX - rect.left) / rect.width * 9;
-      const py = (ev.clientY - rect.top) / rect.height * 9;
-      const sx = Math.floor(px);
-      const sy = Math.floor(py);
-      if (!isInside(sx, sy)) return null;
-      return { x: sx, y: sy, px, py };
-    }
-
-    function pieceUnderSquare(screenX, screenY) {
-      const live = state.roomData?.state;
-      if (!live) return null;
-      const b = screenToBoard(screenX, screenY);
-      return live.pieces.find(p => p.x === b.x && p.y === b.y) || null;
-    }
-
-    function canAct() {
-      if (session.kind !== "online") return true;
-      const room = state.roomData;
-      const now = Date.now();
-      if (!room || !room.state || room.state.winner) return false;
-      if (state.mySide === "spectator") return false;
-      if (!room.players?.black || !room.players?.white) return false;
-      if (room.matchStartAt && now < room.matchStartAt) return false;
-      return true;
-    }
-
-    function leaveToHome() {
-      if (state.unsub) {
-        state.unsub();
-        state.unsub = null;
-      }
-      clearTimers();
-      state.roomId = "";
-      state.roomRef = null;
-      state.roomData = null;
-      state.mySide = "spectator";
-      state.selected = null;
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-      state.dragSource = null;
-      hideRematchOverlay();
-      roomInput.value = "";
-      updateMePill();
-      refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
-      scheduleRender(0);
-    }
-
-    function clearSelection() {
-      state.selected = null;
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-      state.dragSource = null;
-      refreshHands();
-      scheduleRender(0);
-    }
-
-    function selectedSideOfSelection() {
-      if (!state.selected) return null;
-      if (state.selected.kind === "piece") {
-        const live = state.roomData?.state;
-        const p = live?.pieces.find(x => x.id === state.selected.id);
-        return p?.side || null;
-      }
-      if (state.selected.kind === "hand") return state.selected.side;
-      return null;
-    }
-
-    function applyActionToLive(live, selected, actorSide, destBoard, anySide = false) {
-      const now = Date.now();
-      const next = cloneState(live);
-      next.rev = (next.rev || 0) + 1;
-      next.updatedAt = now;
-      next.handCooldownUntil = next.handCooldownUntil || { black: 0, white: 0 };
-
-      if (selected.kind === "piece") {
-        const piece = next.pieces.find(p => p.id === selected.id);
-        if (!piece) return null;
-        if (!anySide && piece.side !== actorSide) return null;
-        if (piece.cooldownUntil && now < piece.cooldownUntil) return null;
-
-        const legal = legalMovesForPiece(next, piece, true);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        if (!move) return null;
-
-        const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
-        if (occupant && occupant.side === piece.side) return null;
-
-        if (occupant) {
-          next.pieces = next.pieces.filter(p => p.id !== occupant.id);
-          next.hands[piece.side][occupant.type] += 1;
-          if (occupant.type === "king") {
-            next.winner = piece.side;
-            next.lastWinnerSide = piece.side;
-          }
-        }
-
-        piece.x = destBoard.x;
-        piece.y = destBoard.y;
-        piece.cooldownUntil = now + COOLDOWN_MS;
-        piece.promoMode = move.nextMode || "normal";
-        return next;
-      }
-
-      if (selected.kind === "hand") {
-        const side = selected.side;
-        if (!anySide && side !== actorSide) return null;
-        if ((next.hands[side]?.[selected.type] || 0) <= 0) return null;
-        if ((next.handCooldownUntil?.[side] || 0) > now) return null;
-
-        const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
-        if (occupant) return null;
-
-        next.hands[side][selected.type] -= 1;
-        next.pieces.push({
-          id: `drop_${side}_${selected.type}_${now}_${Math.random().toString(16).slice(2)}`,
-          side,
-          type: selected.type,
-          x: destBoard.x,
-          y: destBoard.y,
-          promoMode: "normal",
-          cooldownUntil: now + COOLDOWN_MS
-        });
-        next.handCooldownUntil[side] = now + COOLDOWN_MS;
-        return next;
-      }
-
-      return null;
-    }
-
-    function aiActionKey(meta, actorSide) {
-      if (!meta) return "";
-      if (meta.kind === "hand") {
-        return `hand|${meta.pieceType}|${meta.to.x}|${meta.to.y}|${actorSide}|${meta.nextMode || "normal"}`;
-      }
-      const dx = meta.to.x - meta.from.x;
-      const dy = meta.to.y - meta.from.y;
-      const captured = meta.capturedType || "-";
-      return [
-        "piece",
-        meta.pieceType,
-        meta.promoMode,
-        dx,
-        dy,
-        captured,
-        meta.nextMode || "normal",
-        actorSide
-      ].join("|");
-    }
-
-    function aiAverage(key) {
-      const s = ai.stats[key];
-      if (!s) return 0;
-      return s.sum / Math.max(1, s.count);
-    }
-
-    function aiReward(key, reward) {
-      if (!key || !Number.isFinite(reward)) return;
-      const stat = ai.stats[key] || (ai.stats[key] = { sum: 0, count: 0 });
-      stat.sum += reward;
-      stat.count += 1;
-
-      const pend = ai.pending[key] || (ai.pending[key] = { sum: 0, count: 0 });
-      pend.sum += reward;
-      pend.count += 1;
-    }
-
-    function normalizeStatsBlob(blob) {
-      const src = blob && blob.stats ? blob.stats : blob;
-      const out = {};
-      if (!src || typeof src !== "object") return out;
-      for (const [k, v] of Object.entries(src)) {
-        if (!v || typeof v !== "object") continue;
-        out[k] = {
-          sum: Number(v.sum || 0),
-          count: Number(v.count || 0)
-        };
-      }
-      return out;
-    }
-
-    function pruneStats(stats, maxKeys = 1500) {
-      const entries = Object.entries(stats || {});
-      if (entries.length <= maxKeys) return stats || {};
-      entries.sort((a, b) => {
-        const av = Math.abs(a[1]?.sum || 0) + (a[1]?.count || 0) * 0.25;
-        const bv = Math.abs(b[1]?.sum || 0) + (b[1]?.count || 0) * 0.25;
-        return bv - av;
-      });
-      return Object.fromEntries(entries.slice(0, maxKeys));
-    }
-
-    function saveLocalAIMemory() {
-      try {
-        localStorage.setItem(AI_LOCAL_KEY, JSON.stringify({
-          version: 1,
-          stats: ai.stats,
-          games: ai.games,
-          updatedAt: Date.now()
-        }));
-      } catch {}
-    }
-
-    function loadLocalAIMemory() {
-      try {
-        const raw = localStorage.getItem(AI_LOCAL_KEY);
-        if (!raw) return false;
-        const parsed = JSON.parse(raw);
-        ai.stats = normalizeStatsBlob(parsed);
-        ai.games = Number(parsed.games || 0);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-
-    async function ensureAIMemoryLoaded() {
-      if (ai.loaded) return ai;
-      if (ai.loading) return ai.loading;
-
-      ai.loading = (async () => {
-        const localLoaded = loadLocalAIMemory();
-        ai.loaded = true;
-
-        try {
-          ai.memoryDoc = doc(db, "ai_memory", "cpu_v1");
-          const snap = await getDoc(ai.memoryDoc);
-          if (snap.exists()) {
-            ai.stats = normalizeStatsBlob(snap.data());
-            ai.games = Number(snap.data()?.games || 0);
-            saveLocalAIMemory();
-          } else if (!localLoaded) {
-            ai.stats = {};
-            ai.games = 0;
-          }
-        } catch {
-          if (!localLoaded) {
-            ai.stats = {};
-            ai.games = 0;
-          }
-        }
-
-        return ai;
-      })();
-
-      return ai.loading;
-    }
-
-    async function saveAIMemoryToFirebase() {
-      if (!ai.loaded || !ai.memoryDoc) return;
-      const pendingKeys = Object.keys(ai.pending);
-      if (!pendingKeys.length) return;
-
-      try {
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(ai.memoryDoc);
-          const remote = snap.exists() ? normalizeStatsBlob(snap.data()) : {};
-          const merged = { ...remote };
-
-          for (const [k, delta] of Object.entries(ai.pending)) {
-            const cur = merged[k] || { sum: 0, count: 0 };
-            merged[k] = {
-              sum: (cur.sum || 0) + (delta.sum || 0),
-              count: (cur.count || 0) + (delta.count || 0)
-            };
-          }
-
-          const pruned = pruneStats(merged, 1500);
-          tx.set(ai.memoryDoc, {
-            version: 1,
-            stats: pruned,
-            games: Math.max(Number(snap.exists() ? snap.data()?.games || 0 : 0), ai.games || 0),
-            updatedAt: Date.now()
-          }, { merge: true });
-
-          ai.stats = pruned;
-          ai.pending = {};
-          saveLocalAIMemory();
-        });
-      } catch {
-        saveLocalAIMemory();
-      }
-    }
-
-    function captureReward(type) {
-      return Math.max(1.2, cpuValue(type) * 0.02);
-    }
-
-    function lossPenalty(type) {
-      return -Math.max(1.2, cpuValue(type) * 0.02);
-    }
-
-    function terminalRewardForWinner(winnerSide) {
-      return winnerSide === "white" ? 90 : -90;
-    }
-
-    function aiHeuristic(meta, live, actorSide) {
-      let score = 0;
-      if (meta.capturedType) score += captureReward(meta.capturedType);
-      if (meta.nextMode === "promoted") score += 0.8;
-      if (meta.kind === "hand") score += 0.2;
-
-      if (meta.pieceType === "pawn" || meta.pieceType === "lance") {
-        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.04;
-      } else if (meta.pieceType === "knight") {
-        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.03;
-      } else {
-        score += (4 - Math.abs(meta.to.x - 4)) * 0.03;
-        score += (4 - Math.abs(meta.to.y - 4)) * 0.03;
-      }
-
-      const oppSide = actorSide === "white" ? "black" : "white";
-      const oppKing = kingPos(live.pieces, oppSide);
-      if (oppKing) {
-        const dist = Math.abs(oppKing.x - meta.to.x) + Math.abs(oppKing.y - meta.to.y);
-        score += Math.max(0, (10 - dist)) * 0.02;
-      }
-
-      return score;
-    }
-
-    function aiEvaluateAction(meta, live, actorSide) {
-      const key = aiActionKey(meta, actorSide);
-      const learned = Math.max(-20, Math.min(20, aiAverage(key) * 2));
-      return aiHeuristic(meta, live, actorSide) + learned;
-    }
-
-    function lostPieceTypes(prevPieces, nextPieces, side) {
-      const nextIds = new Set((nextPieces || []).map(p => p.id));
-      return (prevPieces || [])
-        .filter(p => p.side === side && !nextIds.has(p.id))
-        .map(p => p.type);
-    }
-
-    function aiObserveTransition(prevLive, nextLive, actorSide, actionMeta) {
-      if (session.kind !== "cpu") return;
-      if (!prevLive || !nextLive) return;
-
-      if (actorSide === "white" && actionMeta) {
-        const key = aiActionKey(actionMeta, "white");
-        ai.lastCpuActionKey = key;
-        ai.episode.push(key);
-
-        for (const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "black")) {
-          aiReward(key, captureReward(t));
-        }
-      }
-
-      if (actorSide === "black") {
-        for (const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "white")) {
-          if (ai.lastCpuActionKey) aiReward(ai.lastCpuActionKey, lossPenalty(t));
-        }
-      }
-
-      if (nextLive.winner) {
-        aiFinishEpisode(nextLive.winner);
-      }
-    }
-
-    function aiFinishEpisode(winnerSide) {
-      if (ai.gameFinalized) return;
-      ai.gameFinalized = true;
-
-      if (!ai.episode.length) {
-        ai.lastCpuActionKey = null;
-        ai.pending = {};
-        saveLocalAIMemory();
-        void saveAIMemoryToFirebase();
-        return;
-      }
-
-      const base = terminalRewardForWinner(winnerSide);
-      let factor = 1;
-
-      for (let i = ai.episode.length - 1; i >= 0; i--) {
-        aiReward(ai.episode[i], base * factor);
-        factor *= 0.92;
-      }
-
-      ai.episode = [];
-      ai.lastCpuActionKey = null;
-      ai.games += 1;
-      ai.stats = pruneStats(ai.stats, 1500);
-      saveLocalAIMemory();
-      void saveAIMemoryToFirebase();
-    }
-
-    function resetLocalEpisode() {
-      ai.episode = [];
-      ai.lastCpuActionKey = null;
-      ai.gameFinalized = false;
-    }
-
-    function setLocalRoom(kind) {
-      clearTimers();
-      if (state.unsub) {
-        state.unsub();
-        state.unsub = null;
-      }
-
-      state.roomRef = null;
-      state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
-      state.mySide = kind === "cpu" ? "black" : "both";
-      state.roomData = makeLocalRoom(kind);
-      state.selected = null;
-      resetLocalEpisode();
-      updateMePill();
-      refreshHands();
-      scheduleRender(0);
-      setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
-
-      if (kind === "cpu") {
-        void ensureAIMemoryLoaded();
-        startCpuLoop();
-      }
-    }
-
-    function buildActionMeta(live, selected, destBoard) {
-      if (!selected) return null;
-      if (selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === selected.id);
-        if (!piece) return null;
-        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
-        const legal = legalMovesForPiece(live, piece, true);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        return {
-          kind: "piece",
-          pieceType: piece.type,
-          promoMode: piece.promoMode,
-          from: { x: piece.x, y: piece.y },
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: captured?.type || null,
-          nextMode: move?.nextMode || piece.promoMode || "normal",
-          moveKind: move?.kind || "normal"
-        };
-      }
-
-      if (selected.kind === "hand") {
-        return {
-          kind: "hand",
-          pieceType: selected.type,
-          promoMode: "hand",
-          from: null,
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: null,
-          nextMode: "normal",
-          moveKind: "drop"
-        };
-      }
-
-      return null;
-    }
-
-    async function cpuThink() {
-      if (session.kind !== "cpu") return;
-      if (!state.roomData) return;
-
-      void ensureAIMemoryLoaded();
-
-      const live = state.roomData.state;
-      if (!live || live.winner) return;
-
-      const now = Date.now();
-      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-        scheduleCpuThink(Math.max(80, state.roomData.matchStartAt - now + 30));
-        return;
-      }
-
-      const actorSide = "white";
-      const actions = [];
-      const board = live.pieces;
-
-      for (const p of board) {
-        if (p.side !== actorSide) continue;
-        if (p.cooldownUntil && now < p.cooldownUntil) continue;
-        const moves = legalMovesForPiece(live, p, true);
-        for (const mv of moves) {
-          const meta = {
-            kind: "piece",
-            pieceType: p.type,
-            promoMode: p.promoMode,
-            from: { x: p.x, y: p.y },
-            to: { x: mv.x, y: mv.y },
-            capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
-            nextMode: mv.nextMode || p.promoMode || "normal",
-            moveKind: mv.kind || "normal"
-          };
-          const key = aiActionKey(meta, actorSide);
-          const score = scoreAction(live, meta, actorSide);
-          actions.push({
-            selected: { kind: "piece", id: p.id },
-            dest: { x: mv.x, y: mv.y },
-            meta,
-            key,
-            score
-          });
-        }
-      }
-
-      const handCooldown = live.handCooldownUntil?.white || 0;
-      if (handCooldown <= now) {
-        for (const t of pieceOrder) {
-          const count = live.hands.white?.[t] || 0;
-          if (!count) continue;
-          for (let y = 0; y < 9; y++) {
-            for (let x = 0; x < 9; x++) {
-              if (pieceAt(live.pieces, x, y)) continue;
-              const meta = {
-                kind: "hand",
-                pieceType: t,
-                promoMode: "hand",
-                from: null,
-                to: { x, y },
-                capturedType: null,
-                nextMode: "normal",
-                moveKind: "drop"
-              };
-              const key = aiActionKey(meta, actorSide);
-              const score = scoreAction(live, meta, actorSide);
-              actions.push({
-                selected: { kind: "hand", side: "white", type: t },
-                dest: { x, y },
-                meta,
-                key,
-                score
-              });
-            }
-          }
-        }
-      }
-
-      if (!actions.length) {
-        scheduleCpuThink(500);
-        return;
-      }
-
-      actions.sort((a, b) => b.score - a.score);
-      const pool = actions.slice(0, Math.min(6, actions.length));
-      const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
-
-      const prevLive = cloneState(live);
-      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
-      if (!next) {
-        scheduleCpuThink(350);
-        return;
-      }
-
-      state.roomData.state = next;
-      state.roomData.updatedAt = Date.now();
-      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
-      refreshHands();
-      aiObserveTransition(prevLive, next, "white", pick.meta);
-      scheduleRender(0);
-
-      if (!next.winner) scheduleCpuThink(450);
-    }
-
-    async function voteRematch(yes) {
-      if (session.kind !== "online") {
-        if (yes) {
-          refreshLocalRematchImmediate();
-          rematchOverlay.classList.remove("show");
-        } else {
-          leaveToHome();
-        }
-        return;
-      }
-
-      if (!state.roomRef || !state.roomData) return;
-      const room = state.roomData;
-      if (!room.state?.winner || !isBothPlayersReady(room)) return;
-
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(state.roomRef);
-        if (!snap.exists()) return;
-
-        const data = snap.data() || {};
-        const live = data.state || {};
-        const players = data.players || {};
-        const rematchVotes = data.rematchVotes || {};
-        const now = Date.now();
-
-        const mySide = players.black === state.playerId ? "black"
-                     : players.white === state.playerId ? "white"
-                     : "spectator";
-        if (mySide === "spectator") return;
-
-        if (!live.winner || !players.black || !players.white) return;
-
-        if (yes) rematchVotes[state.playerId] = true;
-        else delete rematchVotes[state.playerId];
-
-        const blackPid = players.black;
-        const whitePid = players.white;
-        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
-        const historyWinner = data.lastWinnerSide || live.lastWinnerSide || live.winner || null;
-
-        if (bothYes) {
-          const royalLabels = buildRoyalLabels(historyWinner);
-          tx.update(state.roomRef, {
-            state: freshState(royalLabels),
-            lastWinnerSide: historyWinner,
-            matchStartAt: now + COUNTDOWN_MS,
-            rematchVotes: {},
-            forceHomeAt: null,
-            updatedAt: now
-          });
-          return;
-        }
-
-        if (!yes) {
-          tx.update(state.roomRef, {
-            rematchVotes: {},
-            forceHomeAt: now,
-            updatedAt: now
-          });
-          return;
-        }
-
-        tx.update(state.roomRef, {
-          rematchVotes,
-          updatedAt: now
-        });
-      }).catch(err => {
-        setStatus(`リマッチの処理に失敗した: ${err.message}`);
+          },
+          null,
+          '削除する',
+          'やめる'
+        );
       });
 
-      if (!yes) leaveToHome();
+      actions.append(open,rename,imgBtn,dup,del);
+      card.append(row,thumb,name,meta,actions);
+      worldGrid.appendChild(card);
+    });
+  }
+  function openWorldListPanel(){
+    renderWorldList();
+    worldOverlay.classList.add('open');
+    worldOverlay.setAttribute('aria-hidden','false');
+  }
+  function closeWorldListPanel(){
+    worldOverlay.classList.remove('open');
+    worldOverlay.setAttribute('aria-hidden','true');
+  }
+  function loadWorldById(id){
+    const slot = saves.find(s => s.id === id);
+    if(!slot) return;
+    if(slot.locked){
+      setMsg('ハードコアのワールドは開けない。');
+      return;
+    }
+    applySnapshot(slot.data);
+    activeSaveId = id;
+    hasWorld = true;
+    closeWorldListPanel();
+    refreshAllMenus(); render();
+    setMsg(`「${slot.name || '無題のワールド'}」を開いた。`);
+  }
+  function duplicateWorld(id){
+    if(saves.length >= 10){ setMsg('セーブは10個まで。'); return; }
+    const slot = saves.find(s => s.id === id);
+    if(!slot) return;
+    const copy = deep(slot);
+    copy.id = uid();
+    copy.name = `${copy.name || '無題のワールド'} (copy)`;
+    copy.updatedAt = Date.now();
+    copy.data = deep(slot.data);
+    copy.locked = false;
+    saves.push(copy);
+    saveSaveSlots();
+    renderWorldList();
+  }
+  function startFreshWorld(difficulty='normal'){
+    worlds[DIM.OVERWORLD] = makeWorld(DIM.OVERWORLD);
+    worlds[DIM.NETHER] = makeWorld(DIM.NETHER);
+    clearLineCaches();
+    activeSaveId = null;
+    state.dim = DIM.OVERWORLD;
+    state.difficulty = difficulty;
+    state.pos = { [DIM.OVERWORLD]:{x:0,y:0}, [DIM.NETHER]:{x:0,y:0} };
+    state.facing = 1;
+    state.inventory = {}; state.infiniteItems = new Set(); state.heldItem = null; state.favoriteItems = [];
+    state.hp = 10; state.breath = 10; state.regenAcc = 0; state.downedAcc = 0; state.attackCd = 0;
+    state.fireAcc = 0; state.lavaAcc = 0; state.burnRemain = 0; state.burnAcc = 0; state.waterDamageAcc = 0;
+    state.soulSlow = 0; state.prevBlock = 'empty'; state.gameTime = 0; state.nightSpawnAcc = 0;
+    state.portalAcc = 0; state.portalRecentTravel = false; state.portalShake = 0;
+    state.keepInventory = false;
+    state.cmdUnlocked = false;
+    state.craftGridSize = 2; state.craftGrid = Array(4).fill(null);
+    buildSpawnArea(); ensureSpawnResources(); normalizeHeld(); updateTheme(); refreshAllMenus(); render();
+    hasWorld = true;
+    setMsg(`新しい世界を作った。${DIFFICULTIES[difficulty]?.label || difficulty}`);
+  }
+
+  function openDifficultyPanel(){
+    pendingDifficulty = 'normal';
+    difficultyText.textContent = '新しいワールドの難易度を選んでね。';
+    difficultyOverlay.classList.add('open');
+    difficultyOverlay.setAttribute('aria-hidden','false');
+  }
+  function closeDifficultyPanel(){
+    difficultyOverlay.classList.remove('open');
+    difficultyOverlay.setAttribute('aria-hidden','true');
+  }
+
+  function saveCurrentWorld(){
+    if(!hasWorld){ setMsg('まずワールドを作ってね。'); return false; }
+    const snap = snapshotGame();
+    const existing = saves.find(s => s.id === activeSaveId);
+    const name = existing?.name || `ワールド ${saves.length + 1}`;
+    if(activeSaveId){
+      const idx = saves.findIndex(s => s.id === activeSaveId);
+      if(idx >= 0) saves[idx] = { ...saves[idx], name, difficulty:state.difficulty, data:snap, updatedAt:Date.now(), locked: !!saves[idx].locked };
+    }else{
+      if(saves.length >= 10){ setMsg('セーブは10個まで。'); return false; }
+      const slot = { id:uid(), name, image:'', difficulty:state.difficulty, data:snap, updatedAt:Date.now(), locked:false };
+      saves.push(slot);
+      activeSaveId = slot.id;
+    }
+    saveSaveSlots();
+    setMsg('セーブしました！終了して一覧を開きますか？');
+    openConfirm(
+      'セーブしました！終了して一覧を開きますか？',
+      () => openWorldListPanel(),
+      null,
+      'はい',
+      'いいえ'
+    );
+    return true;
+  }
+  function saveWorldToSlotImageFromInput(file){
+    const id = worldImageInput.dataset.target;
+    if(!id || !file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const slot = saves.find(s => s.id === id);
+      if(!slot) return;
+      slot.image = String(reader.result || '');
+      slot.updatedAt = Date.now();
+      saveSaveSlots();
+      renderWorldList();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function addLongPress(el,onTap,onLong){
+    let timer = null;
+    let longed = false;
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      longed = false;
+      timer = setTimeout(() => { longed = true; onLong(); }, 500);
+    });
+    const clear = () => { if(timer) clearTimeout(timer); timer = null; };
+    el.addEventListener('pointerup', () => { clear(); if(!longed) onTap(); });
+    el.addEventListener('pointercancel', clear);
+    el.addEventListener('pointerleave', clear);
+  }
+
+  function updateTheme(){
+    document.body.style.background = state.dim === DIM.NETHER ? 'linear-gradient(#3b1111,#1a0606)' : 'linear-gradient(#171b25,#0f1218)';
+  }
+
+  function refreshCommandVisibility(){
+    const canUse = state.cmdUnlocked && !hardcore() && hasWorld;
+    cmdLockPrompt.style.display = canUse ? 'none' : 'block';
+    cmdUnlockedBox.style.display = canUse ? 'block' : 'none';
+    cmdInput.disabled = !canUse;
+    unlockCmdBtn.disabled = hardcore() || !hasWorld;
+    unlockCmdBtn.textContent = hardcore() ? 'ハードコアでは使えない' : 'コマンドのロックを解除';
+    refreshCmdFavUI();
+  }
+  function refreshAllMenus(){
+    normalizeHeld();
+    refreshInventoryUI();
+    if(invOverlay.classList.contains('open')){
+      refreshCraftUI();
+      refreshFurnaceUI();
+      refreshCommandVisibility();
+    }
+  }
+  function updateMineButtonLabel(){ mineBtn.textContent = enemyAtTarget() ? '殴る' : '掘る'; }
+  function currentBlockPassable(block){ return PASSABLE.has(block); }
+
+  function killPlayer(){
+    const w = world();
+    const p = currentPos();
+    const deathBlock = getBlockAt(state.dim,p.x,p.y);
+    const corpseItems = {};
+    const loseAll = deathBlock === 'fire' || deathBlock === 'lava';
+    if(loseAll){
+      state.inventory = {};
+      state.infiniteItems = new Set();
+    }else if(!state.keepInventory){
+      for(const item of Object.keys(state.inventory)){
+        if(state.infiniteItems.has(item)) continue;
+        corpseItems[item] = state.inventory[item];
+      }
+      for(const item of Object.keys(corpseItems)) delete state.inventory[item];
+      w.corpses.set(`${p.x},${p.y}`, { x:p.x, y:p.y, items:corpseItems, age:0, claimAcc:0 });
     }
 
-    function refreshLocalRematchImmediate() {
-      if (!state.roomData) return;
-      const historyWinner = state.roomData.lastWinnerSide || state.roomData.state?.lastWinnerSide || state.roomData.state?.winner || null;
-      const royalLabels = buildRoyalLabels(historyWinner);
-      state.roomData.state = freshState(royalLabels);
-      state.roomData.state.royalLabels = royalLabels;
-      state.roomData.lastWinnerSide = historyWinner;
-      state.roomData.matchStartAt = null;
-      state.roomData.rematchVotes = {};
-      state.roomData.updatedAt = Date.now();
-      state.selected = null;
-      resetLocalEpisode();
-      refreshHands();
-      scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(200);
+    if(hardcore()){
+      const slot = currentSaveSlot();
+      if(slot){
+        slot.locked = true;
+        slot.data = snapshotGame();
+        slot.updatedAt = Date.now();
+        saveSaveSlots();
+      }
+      state.cmdUnlocked = false;
+      refreshCommandVisibility();
     }
 
-    async function enterRoom() {
-      const code = normalizeRoomId(roomInput.value);
-      const mode = specialModeFromCode(code);
+    state.pos[DIM.OVERWORLD] = {x:0,y:0};
+    state.dim = DIM.OVERWORLD;
+    state.facing = 1;
+    state.hp = 10; state.breath = 10;
+    state.regenAcc = 0; state.downedAcc = 0; state.attackCd = 0;
+    state.fireAcc = 0; state.lavaAcc = 0; state.burnRemain = 0; state.burnAcc = 0; state.waterDamageAcc = 0;
+    state.soulSlow = 0; state.prevBlock = 'empty'; state.portalAcc = 0; state.portalRecentTravel = false; state.portalShake = 0;
+    updateTheme(); normalizeHeld(); refreshAllMenus(); render();
+    setMsg('死んだ。Overworldの0に戻った。');
+  }
 
-      if (mode === "cpu" || mode === "local_dual") {
-        session.kind = mode;
-        setLocalRoom(mode);
+  function setTimeCommand(arg){
+    const token = normText(arg);
+    if(!token){ setMsg('使い方: /time 〈昼or夜 or 00:00〜23:59〉'); return; }
+    const lower = token.toLowerCase();
+    if(token==='昼' || lower==='day'){ state.gameTime = 0; state.nightSpawnAcc = 0; render(); setMsg('時刻を昼にした。'); return; }
+    if(token==='夜' || lower==='night'){ state.gameTime = 720; state.nightSpawnAcc = 0; render(); setMsg('時刻を夜にした。'); return; }
+    const m = token.match(/^(\d{1,2}):(\d{2})$/);
+    if(!m){ setMsg('使い方: /time 〈昼or夜 or 00:00〜23:59〉'); return; }
+    let hh = parseInt(m[1],10);
+    const mm = parseInt(m[2],10);
+    if(Number.isNaN(hh) || Number.isNaN(mm) || mm < 0 || mm >= 60){
+      setMsg('使い方: /time 〈昼or夜 or 00:00〜23:59〉'); return;
+    }
+    hh = ((hh % 24) + 24) % 24;
+    state.gameTime = hh * 60 + mm;
+    state.nightSpawnAcc = 0;
+    render();
+    setMsg(`時刻を ${timeText()} にした。`);
+  }
+
+  function travelTo(targetDim){
+    if(targetDim !== DIM.OVERWORLD && targetDim !== DIM.NETHER) return;
+    const from = state.dim;
+    const src = currentPos();
+    const dest = { x:src.x, y:src.y };
+    state.dim = targetDim;
+    state.pos[targetDim] = dest;
+    setBlockAt(targetDim, dest.x, dest.y, 'nether_portal');
+    state.prevBlock = 'empty';
+    state.fireAcc = 0; state.lavaAcc = 0; state.burnRemain = 0; state.burnAcc = 0; state.waterDamageAcc = 0;
+    state.portalAcc = 0; state.portalRecentTravel = true; state.portalShake = 0.25;
+    updateTheme(); refreshAllMenus(); render();
+    setMsg(`${from === DIM.OVERWORLD ? 'Overworld' : 'Nether'} → ${targetDim === DIM.OVERWORLD ? 'Overworld' : 'Nether'} に移動した。`);
+  }
+
+  function runCommand(raw){
+    const text = normText(raw);
+    if(!text) return;
+    if(!state.cmdUnlocked || hardcore() || !hasWorld){ setMsg('コマンドは使えない。'); return; }
+    const parts = text.split(/\s+/);
+    const cmdRaw = parts[0].replace(/^\/+/, '');
+    const cmdMap = {
+      give:'give', ゲット:'give', 与える:'give',
+      tp:'tp', teleport:'tp',
+      time:'time', 時間:'time',
+      dim:'dim', dimension:'dim',
+      gamemode:'gamemode', difficulty:'gamemode',
+      keepinventory:'keepinventory', keepinv:'keepinventory',
+      spawn:'spawn', summon:'spawn',
+      setblock:'setblock',
+      fill:'fill'
+    };
+    const cmd = cmdMap[compactText(cmdRaw)] || cmdMap[compactText(parts[0])] || cmdRaw.toLowerCase();
+
+    if(cmd === 'keepinventory'){
+      state.keepInventory = !state.keepInventory;
+      syncActiveSave();
+      setMsg(`keepinventory = ${state.keepInventory ? 'ON' : 'OFF'}`);
+      return;
+    }
+    if(cmd === 'tp'){
+      const a = parseInt(parts[1],10);
+      if(Number.isNaN(a)){ setMsg('使い方: /tp 〈x座標〉 [y座標]'); return; }
+      if(parts.length >= 3){
+        const b = parseInt(parts[2],10);
+        if(Number.isNaN(b)){ setMsg('使い方: /tp 〈x座標〉 [y座標]'); return; }
+        state.pos[state.dim].x = a;
+        state.pos[state.dim].y = b;
+      }else{
+        state.pos[state.dim][activeAxis()] = a;
+      }
+      state.portalAcc = 0; setMsg(`/tp ${parts.slice(1).join(' ')}`); render(); return;
+    }
+    if(cmd === 'time'){ setTimeCommand(parts[1]); return; }
+    if(cmd === 'dim'){
+      if(!parts[1]){ travelTo(state.dim === DIM.OVERWORLD ? DIM.NETHER : DIM.OVERWORLD); return; }
+      const t = (parts[1] || '').toLowerCase();
+      if(t === 'overworld' || t === 'ow') travelTo(DIM.OVERWORLD);
+      else if(t === 'nether' || t === 'n') travelTo(DIM.NETHER);
+      else setMsg('使い方: /dim 〈overworld / nether〉');
+      return;
+    }
+    if(cmd === 'gamemode'){
+      const d = (parts[1] || '').toLowerCase();
+      if(!['peaceful','easy','normal','hard'].includes(d)){
+        setMsg('使い方: /gamemode 〈peaceful / easy / normal / hard〉');
+        return;
+      }
+      state.difficulty = d;
+      syncActiveSave();
+      const slot = currentSaveSlot();
+      if(slot){ slot.difficulty = d; slot.updatedAt = Date.now(); saveSaveSlots(); }
+      setMsg(`難易度を ${DIFFICULTIES[d].label} にした。`);
+      refreshCommandVisibility();
+      return;
+    }
+
+    if(cmd === 'give'){
+      const body = text.replace(/^\/+give\s+/i, '').trim();
+      if(!body){ setMsg('使い方: /give 〈アイテム名〉 〈個数〉'); return; }
+      const toks = body.split(/\s+/);
+      let qtyToken = '1';
+      let itemToken = body;
+      if(toks.length >= 2){
+        const last = toks[toks.length - 1];
+        const qtyLooks = last === '∞' || last.toUpperCase() === 'INFINITY' || /^-?\d+$/.test(last);
+        if(qtyLooks){
+          qtyToken = last;
+          itemToken = toks.slice(0,-1).join(' ');
+        }
+      }
+      const target = resolveItemId(itemToken);
+      if(!target){ setMsg('そのアイテムは使えない。'); return; }
+      const inf = qtyToken === '∞' || qtyToken.toUpperCase() === 'INFINITY';
+      const n = inf ? Infinity : Math.max(1, parseInt(qtyToken,10) || 1);
+
+      if(target.kind === 'all'){
+        for(const item of ITEM_ORDER.filter(i => !i.endsWith('_alltools'))) addItem(item, n);
+        refreshAllMenus(); render();
+        setMsg(`全アイテムを${inf ? '∞個' : `${n}個ずつ`}手に入れた。`);
         return;
       }
 
-      session.kind = "online";
-      clearTimers();
-
-      try {
-        let roomId = code;
-        if (!roomId) {
-          roomId = randRoomId();
-          roomInput.value = roomId;
-        }
-
-        const ref = doc(db, "rooms", roomId);
-        const snap = await getDoc(ref);
-
-        if (!snap.exists()) {
-          await setDoc(ref, makeOnlineRoomDoc(state.playerId));
-        }
-
-        await connectOnlineRoom(roomId);
-      } catch (err) {
-        setStatus(`入室に失敗した: ${err.message}`);
-      }
-    }
-
-    function randRoomId() {
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      let s = "";
-      for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
-      return s;
-    }
-
-    async function connectOnlineRoom(roomId) {
-      roomId = normalizeRoomId(roomId);
-      if (!roomId) return;
-
-      if (state.unsub) state.unsub();
-      stopCpuLoop();
-
-      state.roomId = roomId;
-      state.roomRef = doc(db, "rooms", roomId);
-      state.selected = null;
-      state.mySide = "spectator";
-      updateMePill();
-
-      await runTransaction(db, async (tx) => {
-        const now = Date.now();
-        const snap = await tx.get(state.roomRef);
-
-        if (!snap.exists()) {
-          tx.set(state.roomRef, makeOnlineRoomDoc(state.playerId));
-          return;
-        }
-
-        const data = snap.data() || {};
-        let players = data.players || { black: null, white: null };
-        let presence = data.presence || {};
-        let roomState = data.state || freshState(buildRoyalLabels(data.lastWinnerSide || data.state?.lastWinnerSide || null));
-        let matchStartAt = data.matchStartAt || null;
-        let rematchVotes = data.rematchVotes || {};
-        let forceHomeAt = data.forceHomeAt || null;
-        let lastWinnerSide = data.lastWinnerSide || roomState.lastWinnerSide || null;
-
-        if (!roomState.royalLabels) roomState.royalLabels = buildRoyalLabels(lastWinnerSide);
-
-        const currentAlready = players.black === state.playerId || players.white === state.playerId;
-        const blackActive = !!players.black && !!presence[players.black] && (now - (presence[players.black].lastSeen || 0) < STALE_MS);
-        const whiteActive = !!players.white && !!presence[players.white] && (now - (presence[players.white].lastSeen || 0) < STALE_MS);
-        const bothInactive = !blackActive && !whiteActive;
-
-        if (forceHomeAt) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState(buildRoyalLabels(lastWinnerSide));
-          matchStartAt = null;
-          rematchVotes = {};
-          forceHomeAt = null;
-        } else if (bothInactive && !roomState.winner) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState(buildRoyalLabels(lastWinnerSide));
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (roomState.winner && bothInactive) {
-          players = { black: state.playerId, white: null };
-          presence = { [state.playerId]: { side: "black", lastSeen: now } };
-          roomState = freshState(buildRoyalLabels(lastWinnerSide || roomState.lastWinnerSide));
-          matchStartAt = null;
-          rematchVotes = {};
-        } else if (!currentAlready) {
-          if (!blackActive) {
-            players.black = state.playerId;
-            presence[state.playerId] = { side: "black", lastSeen: now };
-          } else if (!whiteActive) {
-            players.white = state.playerId;
-            presence[state.playerId] = { side: "white", lastSeen: now };
-          } else {
-            presence[state.playerId] = { side: "spectator", lastSeen: now };
-          }
-        } else {
-          const side = players.black === state.playerId ? "black" : "white";
-          presence[state.playerId] = { side, lastSeen: now };
-        }
-
-        const bothReady = !!players.black && !!players.white;
-        if (bothReady && !matchStartAt && !roomState.winner) {
-          matchStartAt = now + COUNTDOWN_MS;
-        }
-
-        tx.update(state.roomRef, {
-          players,
-          presence,
-          state: roomState,
-          lastWinnerSide,
-          matchStartAt,
-          rematchVotes,
-          forceHomeAt,
-          updatedAt: now
-        });
-      });
-
-      state.unsub = onSnapshot(state.roomRef, (snap) => {
-        if (!snap.exists()) {
-          setStatus("ルームが見つからないよ。");
-          return;
-        }
-
-        const data = snap.data();
-        if (data.forceHomeAt) {
-          leaveToHome();
-          return;
-        }
-
-        state.roomData = data;
-
-        const players = state.roomData.players || {};
-        state.mySide =
-          players.black === state.playerId ? "black" :
-          players.white === state.playerId ? "white" :
-          "spectator";
-
-        if (state.selected?.kind === "piece") {
-          const stillThere = state.roomData.state?.pieces?.some(p => p.id === state.selected.id);
-          if (!stillThere) state.selected = null;
-        }
-
-        updateMePill();
-
-        const live = state.roomData.state || {};
-        if (live.winner) {
-          setStatus(`勝敗がついたよ。`);
-        } else if (!players.black || !players.white) {
-          setStatus(`ルーム ${state.roomId} に接続中。相手待ちだよ。`);
-        } else {
-          const now = Date.now();
-          if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-            setStatus(`ルーム ${state.roomId} に接続中。開始カウントダウン中。`);
-          } else {
-            setStatus(`ルーム ${state.roomId} に接続中。`);
-          }
-        }
-
-        refreshHands();
-        scheduleRender(0);
-      });
-
-      setStatus(`ルーム ${roomId} に接続したよ。`);
-      scheduleRender(0);
-    }
-
-    function scoreAction(live, meta, actorSide) {
-      let score = 0;
-      if (meta.capturedType) score += cpuValue(meta.capturedType);
-      if (meta.nextMode === "promoted") score += 30;
-      if (meta.kind === "hand") score += 5;
-
-      const oppSide = actorSide === "white" ? "black" : "white";
-      const oppKing = kingPos(live.pieces, oppSide);
-      if (oppKing) {
-        const dist = Math.abs(oppKing.x - meta.to.x) + Math.abs(oppKing.y - meta.to.y);
-        score += Math.max(0, (10 - dist)) * 2;
-      }
-
-      if (meta.pieceType === "pawn" || meta.pieceType === "lance") {
-        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.8;
-      } else if (meta.pieceType === "knight") {
-        score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.6;
-      } else {
-        score += (4 - Math.abs(meta.to.x - 4)) * 0.5;
-        score += (4 - Math.abs(meta.to.y - 4)) * 0.5;
-      }
-
-      const key = aiActionKey(meta, actorSide);
-      const learned = Math.max(-20, Math.min(20, aiAverage(key) * 2));
-      score += learned;
-      score += Math.random() * 2;
-      return score;
-    }
-
-    async function voteRematch(yes) {
-      if (session.kind !== "online") {
-        if (yes) {
-          refreshLocalRematchImmediate();
-          rematchOverlay.classList.remove("show");
-        } else {
-          leaveToHome();
-        }
-        return;
-      }
-
-      if (!state.roomRef || !state.roomData) return;
-      const room = state.roomData;
-      if (!room.state?.winner || !isBothPlayersReady(room)) return;
-
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(state.roomRef);
-        if (!snap.exists()) return;
-
-        const data = snap.data() || {};
-        const live = data.state || {};
-        const players = data.players || {};
-        const rematchVotes = data.rematchVotes || {};
-        const now = Date.now();
-
-        const mySide = players.black === state.playerId ? "black"
-                     : players.white === state.playerId ? "white"
-                     : "spectator";
-        if (mySide === "spectator") return;
-
-        if (!live.winner || !players.black || !players.white) return;
-
-        if (yes) rematchVotes[state.playerId] = true;
-        else delete rematchVotes[state.playerId];
-
-        const blackPid = players.black;
-        const whitePid = players.white;
-        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
-        const historyWinner = data.lastWinnerSide || live.lastWinnerSide || live.winner || null;
-
-        if (bothYes) {
-          const royalLabels = buildRoyalLabels(historyWinner);
-          tx.update(state.roomRef, {
-            state: freshState(royalLabels),
-            lastWinnerSide: historyWinner,
-            matchStartAt: now + COUNTDOWN_MS,
-            rematchVotes: {},
-            forceHomeAt: null,
-            updatedAt: now
-          });
-          return;
-        }
-
-        if (!yes) {
-          tx.update(state.roomRef, {
-            rematchVotes: {},
-            forceHomeAt: now,
-            updatedAt: now
-          });
-          return;
-        }
-
-        tx.update(state.roomRef, {
-          rematchVotes,
-          updatedAt: now
-        });
-      }).catch(err => {
-        setStatus(`リマッチの処理に失敗した: ${err.message}`);
-      });
-
-      if (!yes) leaveToHome();
-    }
-
-    function commitMove(destBoard) {
-      const live = state.roomData?.state;
-      if (!live || !state.selected) return Promise.resolve();
-
-      if (session.kind === "online") {
-        if (!state.roomRef) return Promise.resolve();
-        if (!canAct()) return Promise.resolve();
-
-        return runTransaction(db, async (tx) => {
-          const snap = await tx.get(state.roomRef);
-          if (!snap.exists()) return;
-
-          const room = snap.data();
-          const currentLive = room.state;
-          if (!currentLive || currentLive.winner) return;
-
-          const now = Date.now();
-          if (room.matchStartAt && now < room.matchStartAt) return;
-
-          const side = room.players?.black === state.playerId ? "black"
-                    : room.players?.white === state.playerId ? "white"
-                    : "spectator";
-          if (side === "spectator") return;
-          if (!canControlSide(selectedSideOfSelection())) return;
-
-          const next = applyActionToLive(currentLive, state.selected, side, destBoard, false);
-          if (!next) return;
-
-          const presence = room.presence || {};
-          presence[state.playerId] = { side, lastSeen: now };
-
-          const update = {
-            state: next,
-            presence,
-            updatedAt: now
-          };
-          if (next.winner) update.lastWinnerSide = next.lastWinnerSide || next.winner;
-
-          tx.update(state.roomRef, update);
-        }).catch(err => {
-          setStatus(`動かせなかった: ${err.message}`);
-        }).finally(() => {
-          scheduleRender(0);
-        });
-      }
-
-      const liveLocal = state.roomData?.state;
-      if (!liveLocal) return Promise.resolve();
-
-      const anySide = session.kind === "local_dual";
-      const actorSide = session.kind === "cpu" ? "black" : null;
-      const selected = state.selected.kind === "piece" || state.selected.kind === "hand" ? state.selected : null;
-      const prevLive = cloneState(liveLocal);
-      const next = applyActionToLive(liveLocal, selected, actorSide, destBoard, anySide);
-      if (!next) return Promise.resolve();
-
-      state.roomData.state = next;
-      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
-      state.roomData.updatedAt = Date.now();
-      refreshHands();
-      scheduleRender(0);
-
-      if (session.kind === "cpu") {
-        const actionMeta = buildActionMeta(prevLive, selected, destBoard);
-        aiObserveTransition(prevLive, next, actorSide, actionMeta);
-        if (!next.winner) scheduleCpuThink(220);
-      }
-      return Promise.resolve();
-    }
-
-    function getSlidePieceTarget(releasePoint) {
-      const live = state.roomData?.state;
-      const piece = selectedPieceObj();
-      if (!live || !piece) return null;
-
-      const start = pieceScreenCenter(piece);
-      const dragOct = octantFromVector(releasePoint.x - start.x, releasePoint.y - start.y);
-      if (dragOct === null) return null;
-
-      const legal = selectedLegalMoves(live);
-      if (!legal.length) return null;
-
-      let best = null;
-      let bestD = Infinity;
-
-      for (const m of legal) {
-        const s = boardToScreen(m.x, m.y);
-        const center = { x: s.x + 0.5, y: s.y + 0.5 };
-        const moveOct = octantFromVector(center.x - start.x, center.y - start.y);
-        if (moveOct !== dragOct) continue;
-
-        const d = (center.x - releasePoint.x) ** 2 + (center.y - releasePoint.y) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          best = m;
-        }
-      }
-
-      return best;
-    }
-
-    function getHandDropTarget(ev) {
-      const sq = pointToSquare(ev);
-      if (!sq) return null;
-      const board = screenToBoard(sq.x, sq.y);
-      const live = state.roomData?.state;
-      if (!live) return null;
-      if (pieceAt(live.pieces, board.x, board.y)) return null;
-      return board;
-    }
-
-    function pointFromEvent(ev) {
-      const rect = boardCanvas.getBoundingClientRect();
-      return {
-        x: (ev.clientX - rect.left) / rect.width * 9,
-        y: (ev.clientY - rect.top) / rect.height * 9
-      };
-    }
-
-    async function enterRoom() {
-      const code = normalizeRoomId(roomInput.value);
-      const mode = specialModeFromCode(code);
-
-      if (mode === "cpu" || mode === "local_dual") {
-        session.kind = mode;
-        setLocalRoom(mode);
-        return;
-      }
-
-      session.kind = "online";
-      clearTimers();
-
-      try {
-        let roomId = code;
-        if (!roomId) {
-          roomId = randRoomId();
-          roomInput.value = roomId;
-        }
-
-        const ref = doc(db, "rooms", roomId);
-        const snap = await getDoc(ref);
-
-        if (!snap.exists()) {
-          await setDoc(ref, makeOnlineRoomDoc(state.playerId));
-        }
-
-        await connectOnlineRoom(roomId);
-      } catch (err) {
-        setStatus(`入室に失敗した: ${err.message}`);
-      }
-    }
-
-    boardCanvas.addEventListener("click", async (ev) => {
-      if (performance.now() < state.suppressClickUntil) return;
-      if (!state.roomData) return;
-
-      const sq = pointToSquare(ev);
-      if (!sq) return;
-
-      const clicked = pieceUnderSquare(sq.x, sq.y);
-      const mode = modeSelect.value;
-      const live = state.roomData.state;
-
-      if (mode === "tap") {
-        if (!state.selected) {
-          if (clicked && canControlSide(clicked.side)) {
-            state.selected = { kind: "piece", id: clicked.id };
-            state.dragSource = "board";
-            refreshHands();
-            scheduleRender(0);
-          }
-          return;
-        }
-
-        if (state.selected.kind === "piece") {
-          const selectedPiece = live.pieces.find(p => p.id === state.selected.id);
-
-          if (selectedPiece && canControlSide(selectedPiece.side)) {
-            const destBoard = screenToBoard(sq.x, sq.y);
-            const legal = legalMovesForPiece(live, selectedPiece, true);
-            const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-            if (move) {
-              await commitMove(destBoard);
-              clearSelection();
-              return;
-            }
-          }
-
-          if (clicked && canControlSide(clicked.side)) {
-            state.selected = { kind: "piece", id: clicked.id };
-            state.dragSource = "board";
-            refreshHands();
-            scheduleRender(0);
-            return;
-          }
-
-          clearSelection();
-          return;
-        }
-
-        if (state.selected.kind === "hand") {
-          const destBoard = screenToBoard(sq.x, sq.y);
-          await commitMove(destBoard);
-          clearSelection();
-          return;
-        }
-      }
-
-      if (mode === "slide") {
-        if (state.selected?.kind === "hand") {
-          const destBoard = screenToBoard(sq.x, sq.y);
-          await commitMove(destBoard);
-          clearSelection();
-          return;
-        }
-
-        if (clicked && canControlSide(clicked.side)) {
-          state.selected = { kind: "piece", id: clicked.id };
-          state.dragSource = "board";
-          refreshHands();
-          scheduleRender(0);
-        }
-      }
-    });
-
-    boardCanvas.addEventListener("pointerdown", (ev) => {
-      if (modeSelect.value !== "slide") return;
-      boardCanvas.setPointerCapture(ev.pointerId);
-      state.dragPointerId = ev.pointerId;
-      state.dragStart = { x: ev.clientX, y: ev.clientY };
-      state.dragging = false;
-      state.dragSource = "board";
-
-      const sq = pointToSquare(ev);
-      if (!sq) return;
-      const clicked = pieceUnderSquare(sq.x, sq.y);
-      const board = screenToBoard(sq.x, sq.y);
-
-      if (state.selected?.kind === "hand") {
-        const live = state.roomData?.state;
-        const empty = live && !pieceAt(live.pieces, board.x, board.y);
-        if (empty) {
-          commitMove(board).then(() => clearSelection());
-          return;
-        }
-      }
-
-      if (clicked && canControlSide(clicked.side)) {
-        state.selected = { kind: "piece", id: clicked.id };
-        state.dragSource = "board";
-        refreshHands();
-        scheduleRender(0);
-      }
-    });
-
-    boardCanvas.addEventListener("pointermove", (ev) => {
-      if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId !== ev.pointerId || !state.dragStart) return;
-      const dx = ev.clientX - state.dragStart.x;
-      const dy = ev.clientY - state.dragStart.y;
-      if (Math.hypot(dx, dy) > 6) state.dragging = true;
-    });
-
-    function finishSlidePointer(ev) {
-      if (modeSelect.value !== "slide") return;
-      if (state.dragPointerId != null && state.dragPointerId !== ev.pointerId) return;
-
-      state.suppressClickUntil = performance.now() + 250;
-
-      if (state.selected && state.selected.kind === "piece" && state.dragging) {
-        const releasePoint = pointFromEvent(ev);
-        const targetMove = getSlidePieceTarget(releasePoint);
-        if (targetMove) {
-          const live = state.roomData?.state;
-          const selectedPiece = live?.pieces.find(p => p.id === state.selected.id);
-          if (selectedPiece && canControlSide(selectedPiece.side)) {
-            commitMove({ x: targetMove.x, y: targetMove.y }).then(() => {
-              clearSelection();
-            });
-          }
-        }
-      }
-
-      if (state.selected && state.selected.kind === "hand" && state.dragSource === "hand") {
-        const targetBoard = getHandDropTarget(ev);
-        if (targetBoard) {
-          commitMove(targetBoard).then(() => {
-            clearSelection();
-          });
-        }
-      }
-
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-    }
-
-    document.addEventListener("pointerup", finishSlidePointer, true);
-
-    boardCanvas.addEventListener("pointercancel", () => {
-      state.dragPointerId = null;
-      state.dragStart = null;
-      state.dragging = false;
-      state.dragSource = null;
-    });
-
-    enterBtn.addEventListener("click", enterRoom);
-
-    shareBtn.addEventListener("click", async () => {
-      const code = normalizeRoomId(roomInput.value || state.roomId || (session.kind === "cpu" ? "CPU" : session.kind === "local_dual" ? "1 SMARTPHONE" : ""));
-      if (!code) {
-        setStatus("共有するコードがないよ。");
-        return;
-      }
-
-      if (!navigator.share) {
-        setStatus("この端末は共有に対応していないよ。");
-        return;
-      }
-
-      try {
-        await navigator.share({ text: code });
-        setStatus(`コードを共有したよ: ${code}`);
-      } catch (err) {
-        if (err && err.name !== "AbortError") {
-          setStatus(`共有できなかった: ${err.message}`);
-        }
-      }
-    });
-
-    roomInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") enterRoom();
-    });
-
-    modeSelect.addEventListener("change", () => {
-      localStorage.setItem("shogi_of_speed_mode", modeSelect.value);
-      state.selected = null;
-      state.dragSource = null;
-      refreshHands();
-      scheduleRender(0);
-    });
-
-    rematchYes.addEventListener("click", () => voteRematch(true));
-    rematchNo.addEventListener("click", () => voteRematch(false));
-
-    window.addEventListener("resize", requestResize);
-    window.addEventListener("orientationchange", requestResize);
-    window.addEventListener("scroll", () => {
-      if (!state.boardReady) return;
-      scheduleRender(0);
-    }, { passive: true });
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", requestResize);
-      window.visualViewport.addEventListener("scroll", () => {
-        scheduleRender(0);
-      }, { passive: true });
-    }
-
-    void ensureAIMemoryLoaded();
-    resizeCanvas();
-    refreshHands();
-    updateMePill();
-    updateRematchOverlay();
-    scheduleRender(0);
-    setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
-  </script>
-</body>
-</html>
+      addItem(target.id, n);
+      refreshAllMenus(); render();
+      setMsg(`/give ${displayName(target.id)} ${inf ? '∞' : n}`);
+     
