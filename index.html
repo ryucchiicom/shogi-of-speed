@@ -499,12 +499,10 @@
     function clearTimers(){
       if (session.renderTimer) clearTimeout(session.renderTimer);
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      if (session.cpuLoop) {
-        clearInterval(session.cpuLoop);
-        session.cpuLoop = null;
-      }
+      if (session.cpuLoop) clearInterval(session.cpuLoop);
       session.renderTimer = null;
       session.cpuTimer = null;
+      session.cpuLoop = null;
     }
 
     function normalizeRoomId(v) {
@@ -1115,12 +1113,20 @@
 
     function resizeCanvas() {
       const rect = boardCanvas.getBoundingClientRect();
+      if (!rect.width || !rect.height || rect.width < 50 || rect.height < 50) return;
+
       const dpr = Math.max(1, window.devicePixelRatio || 1);
       boardCanvas.width = Math.floor(rect.width * dpr);
       boardCanvas.height = Math.floor(rect.height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       state.boardReady = true;
       scheduleRender(0);
+    }
+
+    let resizeTimer = null;
+    function requestResize() {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resizeCanvas, 120);
     }
 
     function getViewSide() {
@@ -1321,108 +1327,116 @@
     }
 
     function renderFrame() {
-      if (!state.boardReady) return;
+      try {
+        if (!state.boardReady) return;
 
-      const rect = boardCanvas.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
-      const cell = w / 9;
-      const now = Date.now();
+        const rect = boardCanvas.getBoundingClientRect();
+        if (!rect.width || !rect.height || rect.width < 50 || rect.height < 50) return;
 
-      updateHandCooldownIndicators(now);
+        const w = rect.width;
+        const h = rect.height;
+        const cell = w / 9;
+        const now = Date.now();
 
-      ctx.clearRect(0, 0, w, h);
+        updateHandCooldownIndicators(now);
 
-      for (let sy = 0; sy < 9; sy++) {
-        for (let sx = 0; sx < 9; sx++) {
-          const board = screenToBoard(sx, sy);
-          const light = (board.x + board.y) % 2 === 0;
-          ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
-          ctx.fillRect(sx * cell, sy * cell, cell, cell);
+        ctx.clearRect(0, 0, w, h);
+
+        for (let sy = 0; sy < 9; sy++) {
+          for (let sx = 0; sx < 9; sx++) {
+            const board = screenToBoard(sx, sy);
+            const light = (board.x + board.y) % 2 === 0;
+            ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
+            ctx.fillRect(sx * cell, sy * cell, cell, cell);
+          }
         }
-      }
 
-      ctx.strokeStyle = "rgba(104,79,42,.55)";
-      ctx.lineWidth = 1;
-      for (let i = 0; i <= 9; i++) {
-        ctx.beginPath();
-        ctx.moveTo(i * cell, 0);
-        ctx.lineTo(i * cell, 9 * cell);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, i * cell);
-        ctx.lineTo(9 * cell, i * cell);
-        ctx.stroke();
-      }
+        ctx.strokeStyle = "rgba(104,79,42,.55)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 9; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * cell, 0);
+          ctx.lineTo(i * cell, 9 * cell);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(0, i * cell);
+          ctx.lineTo(9 * cell, i * cell);
+          ctx.stroke();
+        }
 
-      const live = state.roomData?.state;
-      const room = state.roomData;
+        const live = state.roomData?.state;
+        const room = state.roomData;
 
-      if (!live) {
-        ctx.fillStyle = "rgba(0,0,0,.55)";
-        ctx.font = "600 16px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("ルーム接続待ち", w / 2, h / 2);
+        if (!live) {
+          ctx.fillStyle = "rgba(0,0,0,.55)";
+          ctx.font = "600 16px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("ルーム接続待ち", w / 2, h / 2);
+          scheduleRender();
+          return;
+        }
+
+        const legal = selectedLegalMoves(live);
+
+        for (const m of legal) {
+          const s = boardToScreen(m.x, m.y);
+          ctx.fillStyle = moveColor(m.kind);
+          ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
+        }
+
+        const selectedPiece = selectedPieceObj();
+        if (selectedPiece) {
+          const s = boardToScreen(selectedPiece.x, selectedPiece.y);
+          ctx.strokeStyle = "rgba(138,180,255,.95)";
+          ctx.lineWidth = 4;
+          ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
+        }
+
+        for (const p of live.pieces) {
+          const sp = boardToScreen(p.x, p.y);
+          const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
+          drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
+        }
+
+        const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
+        const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
+
+        if (live.winner) {
+          ctx.fillStyle = "rgba(0,0,0,.35)";
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = "#fff";
+          ctx.font = "800 26px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
+          ctx.font = "500 15px system-ui, sans-serif";
+          ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
+        } else if (!bothReady) {
+          ctx.fillStyle = "rgba(0,0,0,.28)";
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = "#fff";
+          ctx.font = "800 22px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("相手待ち", w / 2, h / 2 - 6);
+          ctx.font = "500 14px system-ui, sans-serif";
+          ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
+        } else if (countdownText) {
+          ctx.fillStyle = "rgba(0,0,0,.28)";
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = "#fff";
+          ctx.font = "900 54px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(countdownText, w / 2, h / 2 + 10);
+          ctx.font = "600 16px system-ui, sans-serif";
+          ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
+        }
+
+        updateRematchOverlay();
         scheduleRender();
-        return;
+      } catch (err) {
+        console.error("renderFrame error:", err);
+        setStatus("描画が一瞬止まったけど、復帰を試してるよ。");
+        scheduleRender(250);
       }
-
-      const legal = selectedLegalMoves(live);
-
-      for (const m of legal) {
-        const s = boardToScreen(m.x, m.y);
-        ctx.fillStyle = moveColor(m.kind);
-        ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
-      }
-
-      const selectedPiece = selectedPieceObj();
-      if (selectedPiece) {
-        const s = boardToScreen(selectedPiece.x, selectedPiece.y);
-        ctx.strokeStyle = "rgba(138,180,255,.95)";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
-      }
-
-      for (const p of live.pieces) {
-        const sp = boardToScreen(p.x, p.y);
-        const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-        drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
-      }
-
-      const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
-      const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
-
-      if (live.winner) {
-        ctx.fillStyle = "rgba(0,0,0,.35)";
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = "#fff";
-        ctx.font = "800 26px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
-        ctx.font = "500 15px system-ui, sans-serif";
-        ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
-      } else if (!bothReady) {
-        ctx.fillStyle = "rgba(0,0,0,.28)";
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = "#fff";
-        ctx.font = "800 22px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("相手待ち", w / 2, h / 2 - 6);
-        ctx.font = "500 14px system-ui, sans-serif";
-        ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
-      } else if (countdownText) {
-        ctx.fillStyle = "rgba(0,0,0,.28)";
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = "#fff";
-        ctx.font = "900 54px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(countdownText, w / 2, h / 2 + 10);
-        ctx.font = "600 16px system-ui, sans-serif";
-        ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
-      }
-
-      updateRematchOverlay();
-      scheduleRender();
     }
 
     function pointToSquare(ev) {
@@ -1846,9 +1860,217 @@
       }
     }
 
-    function freshStateWithRoyalHistory(historyWinnerSide) {
-      const royalLabels = buildRoyalLabels(historyWinnerSide);
-      return freshState(royalLabels);
+    function buildActionMeta(live, selected, destBoard) {
+      if (!selected) return null;
+      if (selected.kind === "piece") {
+        const piece = live.pieces.find(p => p.id === selected.id);
+        if (!piece) return null;
+        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
+        const legal = legalMovesForPiece(live, piece, true);
+        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
+        return {
+          kind: "piece",
+          pieceType: piece.type,
+          promoMode: piece.promoMode,
+          from: { x: piece.x, y: piece.y },
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: captured?.type || null,
+          nextMode: move?.nextMode || piece.promoMode || "normal",
+          moveKind: move?.kind || "normal"
+        };
+      }
+
+      if (selected.kind === "hand") {
+        return {
+          kind: "hand",
+          pieceType: selected.type,
+          promoMode: "hand",
+          from: null,
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: null,
+          nextMode: "normal",
+          moveKind: "drop"
+        };
+      }
+
+      return null;
+    }
+
+    async function cpuThink() {
+      if (session.kind !== "cpu") return;
+      if (!state.roomData) return;
+
+      void ensureAIMemoryLoaded();
+
+      const live = state.roomData.state;
+      if (!live || live.winner) return;
+
+      const now = Date.now();
+      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
+        scheduleCpuThink(Math.max(80, state.roomData.matchStartAt - now + 30));
+        return;
+      }
+
+      const actorSide = "white";
+      const actions = [];
+      const board = live.pieces;
+
+      for (const p of board) {
+        if (p.side !== actorSide) continue;
+        if (p.cooldownUntil && now < p.cooldownUntil) continue;
+        const moves = legalMovesForPiece(live, p, true);
+        for (const mv of moves) {
+          const meta = {
+            kind: "piece",
+            pieceType: p.type,
+            promoMode: p.promoMode,
+            from: { x: p.x, y: p.y },
+            to: { x: mv.x, y: mv.y },
+            capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
+            nextMode: mv.nextMode || p.promoMode || "normal",
+            moveKind: mv.kind || "normal"
+          };
+          const key = aiActionKey(meta, actorSide);
+          const score = scoreAction(live, meta, actorSide);
+          actions.push({
+            selected: { kind: "piece", id: p.id },
+            dest: { x: mv.x, y: mv.y },
+            meta,
+            key,
+            score
+          });
+        }
+      }
+
+      const handCooldown = live.handCooldownUntil?.white || 0;
+      if (handCooldown <= now) {
+        for (const t of pieceOrder) {
+          const count = live.hands.white?.[t] || 0;
+          if (!count) continue;
+          for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+              if (pieceAt(live.pieces, x, y)) continue;
+              const meta = {
+                kind: "hand",
+                pieceType: t,
+                promoMode: "hand",
+                from: null,
+                to: { x, y },
+                capturedType: null,
+                nextMode: "normal",
+                moveKind: "drop"
+              };
+              const key = aiActionKey(meta, actorSide);
+              const score = scoreAction(live, meta, actorSide);
+              actions.push({
+                selected: { kind: "hand", side: "white", type: t },
+                dest: { x, y },
+                meta,
+                key,
+                score
+              });
+            }
+          }
+        }
+      }
+
+      if (!actions.length) {
+        scheduleCpuThink(500);
+        return;
+      }
+
+      actions.sort((a, b) => b.score - a.score);
+      const pool = actions.slice(0, Math.min(6, actions.length));
+      const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
+
+      const prevLive = cloneState(live);
+      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
+      if (!next) {
+        scheduleCpuThink(350);
+        return;
+      }
+
+      state.roomData.state = next;
+      state.roomData.updatedAt = Date.now();
+      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
+      refreshHands();
+      aiObserveTransition(prevLive, next, "white", pick.meta);
+      scheduleRender(0);
+
+      if (!next.winner) scheduleCpuThink(450);
+    }
+
+    async function voteRematch(yes) {
+      if (session.kind !== "online") {
+        if (yes) {
+          refreshLocalRematchImmediate();
+          rematchOverlay.classList.remove("show");
+        } else {
+          leaveToHome();
+        }
+        return;
+      }
+
+      if (!state.roomRef || !state.roomData) return;
+      const room = state.roomData;
+      if (!room.state?.winner || !isBothPlayersReady(room)) return;
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(state.roomRef);
+        if (!snap.exists()) return;
+
+        const data = snap.data() || {};
+        const live = data.state || {};
+        const players = data.players || {};
+        const rematchVotes = data.rematchVotes || {};
+        const now = Date.now();
+
+        const mySide = players.black === state.playerId ? "black"
+                     : players.white === state.playerId ? "white"
+                     : "spectator";
+        if (mySide === "spectator") return;
+
+        if (!live.winner || !players.black || !players.white) return;
+
+        if (yes) rematchVotes[state.playerId] = true;
+        else delete rematchVotes[state.playerId];
+
+        const blackPid = players.black;
+        const whitePid = players.white;
+        const bothYes = !!rematchVotes[blackPid] && !!rematchVotes[whitePid];
+        const historyWinner = data.lastWinnerSide || live.lastWinnerSide || live.winner || null;
+
+        if (bothYes) {
+          const royalLabels = buildRoyalLabels(historyWinner);
+          tx.update(state.roomRef, {
+            state: freshState(royalLabels),
+            lastWinnerSide: historyWinner,
+            matchStartAt: now + COUNTDOWN_MS,
+            rematchVotes: {},
+            forceHomeAt: null,
+            updatedAt: now
+          });
+          return;
+        }
+
+        if (!yes) {
+          tx.update(state.roomRef, {
+            rematchVotes: {},
+            forceHomeAt: now,
+            updatedAt: now
+          });
+          return;
+        }
+
+        tx.update(state.roomRef, {
+          rematchVotes,
+          updatedAt: now
+        });
+      }).catch(err => {
+        setStatus(`リマッチの処理に失敗した: ${err.message}`);
+      });
+
+      if (!yes) leaveToHome();
     }
 
     function refreshLocalRematchImmediate() {
@@ -2075,110 +2297,6 @@
       return score;
     }
 
-    async function cpuThink() {
-      if (session.kind !== "cpu") return;
-      if (!state.roomData) return;
-
-      void ensureAIMemoryLoaded();
-
-      const live = state.roomData.state;
-      if (!live || live.winner) return;
-
-      const now = Date.now();
-      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-        scheduleCpuThink(Math.max(80, state.roomData.matchStartAt - now + 30));
-        return;
-      }
-
-      const actorSide = "white";
-      const actions = [];
-      const board = live.pieces;
-
-      for (const p of board) {
-        if (p.side !== actorSide) continue;
-        if (p.cooldownUntil && now < p.cooldownUntil) continue;
-        const moves = legalMovesForPiece(live, p, true);
-        for (const mv of moves) {
-          const meta = {
-            kind: "piece",
-            pieceType: p.type,
-            promoMode: p.promoMode,
-            from: { x: p.x, y: p.y },
-            to: { x: mv.x, y: mv.y },
-            capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
-            nextMode: mv.nextMode || p.promoMode || "normal",
-            moveKind: mv.kind || "normal"
-          };
-          const key = aiActionKey(meta, actorSide);
-          const score = scoreAction(live, meta, actorSide);
-          actions.push({
-            selected: { kind: "piece", id: p.id },
-            dest: { x: mv.x, y: mv.y },
-            meta,
-            key,
-            score
-          });
-        }
-      }
-
-      const handCooldown = live.handCooldownUntil?.white || 0;
-      if (handCooldown <= now) {
-        for (const t of pieceOrder) {
-          const count = live.hands.white?.[t] || 0;
-          if (!count) continue;
-          for (let y = 0; y < 9; y++) {
-            for (let x = 0; x < 9; x++) {
-              if (pieceAt(live.pieces, x, y)) continue;
-              const meta = {
-                kind: "hand",
-                pieceType: t,
-                promoMode: "hand",
-                from: null,
-                to: { x, y },
-                capturedType: null,
-                nextMode: "normal",
-                moveKind: "drop"
-              };
-              const key = aiActionKey(meta, actorSide);
-              const score = scoreAction(live, meta, actorSide);
-              actions.push({
-                selected: { kind: "hand", side: "white", type: t },
-                dest: { x, y },
-                meta,
-                key,
-                score
-              });
-            }
-          }
-        }
-      }
-
-      if (!actions.length) {
-        scheduleCpuThink(500);
-        return;
-      }
-
-      actions.sort((a, b) => b.score - a.score);
-      const pool = actions.slice(0, Math.min(6, actions.length));
-      const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
-
-      const prevLive = cloneState(live);
-      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
-      if (!next) {
-        scheduleCpuThink(350);
-        return;
-      }
-
-      state.roomData.state = next;
-      state.roomData.updatedAt = Date.now();
-      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
-      refreshHands();
-      aiObserveTransition(prevLive, next, "white", pick.meta);
-      scheduleRender(0);
-
-      if (!next.winner) scheduleCpuThink(450);
-    }
-
     async function voteRematch(yes) {
       if (session.kind !== "online") {
         if (yes) {
@@ -2252,51 +2370,15 @@
       if (!yes) leaveToHome();
     }
 
-    function buildActionMeta(live, selected, destBoard) {
-      if (!selected) return null;
-      if (selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === selected.id);
-        if (!piece) return null;
-        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
-        const legal = legalMovesForPiece(live, piece, true);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        return {
-          kind: "piece",
-          pieceType: piece.type,
-          promoMode: piece.promoMode,
-          from: { x: piece.x, y: piece.y },
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: captured?.type || null,
-          nextMode: move?.nextMode || piece.promoMode || "normal",
-          moveKind: move?.kind || "normal"
-        };
-      }
-
-      if (selected.kind === "hand") {
-        return {
-          kind: "hand",
-          pieceType: selected.type,
-          promoMode: "hand",
-          from: null,
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: null,
-          nextMode: "normal",
-          moveKind: "drop"
-        };
-      }
-
-      return null;
-    }
-
-    async function commitMove(destBoard) {
+    function commitMove(destBoard) {
       const live = state.roomData?.state;
-      if (!live || !state.selected) return;
+      if (!live || !state.selected) return Promise.resolve();
 
       if (session.kind === "online") {
-        if (!state.roomRef) return;
-        if (!canAct()) return;
+        if (!state.roomRef) return Promise.resolve();
+        if (!canAct()) return Promise.resolve();
 
-        await runTransaction(db, async (tx) => {
+        return runTransaction(db, async (tx) => {
           const snap = await tx.get(state.roomRef);
           if (!snap.exists()) return;
 
@@ -2329,21 +2411,20 @@
           tx.update(state.roomRef, update);
         }).catch(err => {
           setStatus(`動かせなかった: ${err.message}`);
+        }).finally(() => {
+          scheduleRender(0);
         });
-
-        scheduleRender(0);
-        return;
       }
 
       const liveLocal = state.roomData?.state;
-      if (!liveLocal) return;
+      if (!liveLocal) return Promise.resolve();
 
       const anySide = session.kind === "local_dual";
       const actorSide = session.kind === "cpu" ? "black" : null;
       const selected = state.selected.kind === "piece" || state.selected.kind === "hand" ? state.selected : null;
       const prevLive = cloneState(liveLocal);
       const next = applyActionToLive(liveLocal, selected, actorSide, destBoard, anySide);
-      if (!next) return;
+      if (!next) return Promise.resolve();
 
       state.roomData.state = next;
       if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
@@ -2356,6 +2437,7 @@
         aiObserveTransition(prevLive, next, actorSide, actionMeta);
         if (!next.winner) scheduleCpuThink(220);
       }
+      return Promise.resolve();
     }
 
     function getSlidePieceTarget(releasePoint) {
@@ -2405,18 +2487,6 @@
         x: (ev.clientX - rect.left) / rect.width * 9,
         y: (ev.clientY - rect.top) / rect.height * 9
       };
-    }
-
-    function refreshLocalStateAfterReset() {
-      if (!state.roomData) return;
-      state.roomData.state = freshState();
-      state.roomData.rematchVotes = {};
-      state.roomData.matchStartAt = null;
-      state.roomData.updatedAt = Date.now();
-      state.selected = null;
-      refreshHands();
-      scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(200);
     }
 
     async function enterRoom() {
@@ -2645,7 +2715,19 @@
     rematchYes.addEventListener("click", () => voteRematch(true));
     rematchNo.addEventListener("click", () => voteRematch(false));
 
-    window.addEventListener("resize", resizeCanvas);
+    window.addEventListener("resize", requestResize);
+    window.addEventListener("orientationchange", requestResize);
+    window.addEventListener("scroll", () => {
+      if (!state.boardReady) return;
+      scheduleRender(0);
+    }, { passive: true });
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", requestResize);
+      window.visualViewport.addEventListener("scroll", () => {
+        scheduleRender(0);
+      }, { passive: true });
+    }
 
     void ensureAIMemoryLoaded();
     resizeCanvas();
