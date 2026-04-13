@@ -448,10 +448,9 @@
     }
 
     const session = {
-      kind: "online", // online | cpu | local_dual
+      kind: "online", // online | cpu | serious_cpu | local_dual
       renderTimer: null,
-      cpuTimer: null,
-      cpuLoop: null
+      cpuTimer: null
     };
 
     const state = {
@@ -503,24 +502,28 @@
     if (mq.addEventListener) mq.addEventListener("change", () => { applyThemeFromCSS(); scheduleRender(0); });
     else if (mq.addListener) mq.addListener(() => { applyThemeFromCSS(); scheduleRender(0); });
 
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", () => {
+    let resizeRaf = 0;
+    function queueResize() {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
         resizeCanvas();
-      }, { passive: true });
-      window.visualViewport.addEventListener("scroll", () => {
-        scheduleRender(0);
-      }, { passive: true });
+      });
+    }
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", queueResize, { passive: true });
     }
 
     if (window.ResizeObserver) {
-      const ro = new ResizeObserver(() => resizeCanvas());
+      const ro = new ResizeObserver(() => queueResize());
       ro.observe(boardWrap);
     }
 
+    window.addEventListener("resize", queueResize);
     window.addEventListener("error", () => {
       scheduleRender(80);
     });
-
     window.addEventListener("unhandledrejection", () => {
       scheduleRender(80);
     });
@@ -528,10 +531,6 @@
     function clearTimers(){
       if (session.renderTimer) clearTimeout(session.renderTimer);
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      if (session.cpuLoop) {
-        clearInterval(session.cpuLoop);
-        session.cpuLoop = null;
-      }
       session.renderTimer = null;
       session.cpuTimer = null;
     }
@@ -543,6 +542,7 @@
     function specialModeFromCode(code) {
       const c = normalizeRoomId(code).replace(/[\s_]/g, "");
       if (c === "CPU") return "cpu";
+      if (c === "SERIOUSCPU") return "serious_cpu";
       if (c === "1SMARTPHONE") return "local_dual";
       return "online";
     }
@@ -631,7 +631,7 @@
     function makeLocalRoom(kind) {
       return {
         mode: kind,
-        players: { black: "local", white: kind === "cpu" ? "cpu" : "local2" },
+        players: { black: "local", white: kind === "cpu" || kind === "serious_cpu" ? "cpu" : "local2" },
         presence: {},
         state: freshState(buildRoyalLabels(null)),
         lastWinnerSide: null,
@@ -951,7 +951,7 @@
 
     function canControlSide(side){
       if (session.kind === "local_dual") return true;
-      if (session.kind === "cpu") return side === "black";
+      if (session.kind === "cpu" || session.kind === "serious_cpu") return side === "black";
       if (state.mySide === "spectator") return false;
       return side === state.mySide;
     }
@@ -982,6 +982,10 @@
     function updateMePill() {
       if (session.kind === "cpu") {
         mePill.textContent = "CPU / あなた: 先手";
+        return;
+      }
+      if (session.kind === "serious_cpu") {
+        mePill.textContent = "SERIOUS CPU / あなた: 先手";
         return;
       }
       if (session.kind === "local_dual") {
@@ -1028,7 +1032,7 @@
             : winnerRaw === "white"
               ? (state.mySide === "white" ? "あなたの勝ち" : "あなたの負け")
               : "決着";
-      } else if (session.kind === "cpu") {
+      } else if (session.kind === "cpu" || session.kind === "serious_cpu") {
         winnerText = winnerRaw === "black" ? "あなたの勝ち" : "あなたの負け";
       } else if (session.kind === "local_dual") {
         winnerText = winnerRaw === "black" ? "先手の勝ち" : "後手の勝ち";
@@ -1124,7 +1128,7 @@
         enemyHandsEl.classList.remove("rot180");
       }
 
-      if (session.kind === "cpu") {
+      if (session.kind === "cpu" || session.kind === "serious_cpu") {
         renderHandArea(enemyHandsEl, "white", false, "相手の持ち駒");
         renderHandArea(myHandsEl, "black", true, "自分の持ち駒");
         return;
@@ -1153,10 +1157,7 @@
         const rect = boardCanvas.getBoundingClientRect();
         const cssW = Math.max(1, Math.round(rect.width));
         const cssH = Math.max(1, Math.round(rect.height));
-        if (cssW < 20 || cssH < 20) {
-          scheduleRender(120);
-          return;
-        }
+        if (cssW < 20 || cssH < 20) return;
 
         const dpr = Math.max(1, window.devicePixelRatio || 1);
         const pxW = Math.max(1, Math.floor(cssW * dpr));
@@ -1310,9 +1311,7 @@
       if (session.renderTimer) clearTimeout(session.renderTimer);
 
       if (delay === null) {
-        if (!hasAnimatingState()) {
-          return;
-        }
+        if (!hasAnimatingState()) return;
         const now = Date.now();
         let next = 250;
         const live = state.roomData?.state;
@@ -1334,8 +1333,12 @@
       }, delay);
     }
 
+    function cpuDelayForMode() {
+      return session.kind === "cpu" ? randomCpuDelay() : 0;
+    }
+
     function scheduleCpuThink(delay = 400) {
-      if (session.kind !== "cpu") return;
+      if (session.kind !== "cpu" && session.kind !== "serious_cpu") return;
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
       session.cpuTimer = setTimeout(() => {
         session.cpuTimer = null;
@@ -1344,15 +1347,11 @@
     }
 
     function startCpuLoop() {
-      if (session.kind !== "cpu") return;
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
-      session.cpuLoop = null;
-      scheduleCpuThink(randomCpuDelay());
+      if (session.kind !== "cpu" && session.kind !== "serious_cpu") return;
+      scheduleCpuThink(cpuDelayForMode());
     }
 
     function stopCpuLoop() {
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
-      session.cpuLoop = null;
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
       session.cpuTimer = null;
     }
@@ -1559,7 +1558,7 @@
       roomInput.value = "";
       updateMePill();
       refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね.");
       scheduleRender(0);
     }
 
@@ -1851,10 +1850,10 @@
     }
 
     function aiObserveTransition(prevLive, nextLive, actorSide, actionMeta) {
-      if (session.kind !== "cpu") return;
+      if (session.kind !== "cpu" && session.kind !== "serious_cpu") return;
       if (!prevLive || !nextLive) return;
 
-      if (actorSide === "white" && actionMeta) {
+      if ((actorSide === "white") && actionMeta) {
         const key = aiActionKey(actionMeta, "white");
         ai.lastCpuActionKey = key;
         ai.episode.push(key);
@@ -1917,25 +1916,22 @@
       }
 
       state.roomRef = null;
-      state.roomId = kind === "cpu" ? "CPU" : "1 SMARTPHONE";
-      state.mySide = kind === "cpu" ? "black" : "both";
+      state.roomId = kind === "cpu" ? "CPU" : kind === "serious_cpu" ? "SERIOUS CPU" : "1 SMARTPHONE";
+      state.mySide = (kind === "cpu" || kind === "serious_cpu") ? "black" : "both";
       state.roomData = makeLocalRoom(kind);
       state.selected = null;
       resetLocalEpisode();
       updateMePill();
       refreshHands();
       scheduleRender(0);
-      setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
+      setStatus(kind === "cpu" ? "CPUモードで始めたよ。" :
+                kind === "serious_cpu" ? "SERIOUS CPUモードで始めたよ。" :
+                "1 SMARTPHONEモードで始めたよ。");
 
-      if (kind === "cpu") {
+      if (kind === "cpu" || kind === "serious_cpu") {
         void ensureAIMemoryLoaded();
         startCpuLoop();
       }
-    }
-
-    function freshStateWithRoyalHistory(historyWinnerSide) {
-      const royalLabels = buildRoyalLabels(historyWinnerSide);
-      return freshState(royalLabels);
     }
 
     async function refreshLocalRematchImmediate() {
@@ -1952,14 +1948,14 @@
       resetLocalEpisode();
       refreshHands();
       scheduleRender(0);
-      if (session.kind === "cpu") scheduleCpuThink(randomCpuDelay());
+      if (session.kind === "cpu" || session.kind === "serious_cpu") scheduleCpuThink(cpuDelayForMode());
     }
 
     async function enterRoom() {
       const code = normalizeRoomId(roomInput.value);
       const mode = specialModeFromCode(code);
 
-      if (mode === "cpu" || mode === "local_dual") {
+      if (mode === "cpu" || mode === "serious_cpu" || mode === "local_dual") {
         session.kind = mode;
         setLocalRoom(mode);
         return;
@@ -2127,6 +2123,11 @@
 
         refreshHands();
         scheduleRender(0);
+
+        if ((session.kind === "cpu" || session.kind === "serious_cpu") && !live.winner) {
+          if (state.mySide === "black" && state.roomData.matchStartAt && Date.now() < state.roomData.matchStartAt) return;
+          scheduleCpuThink(cpuDelayForMode());
+        }
       });
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
@@ -2163,7 +2164,8 @@
     }
 
     async function cpuThink() {
-      if (session.kind !== "cpu" || !state.roomData) return;
+      if (session.kind !== "cpu" && session.kind !== "serious_cpu") return;
+      if (!state.roomData) return;
       void ensureAIMemoryLoaded();
 
       const live = state.roomData.state;
@@ -2239,7 +2241,7 @@
       }
 
       if (!actions.length) {
-        scheduleCpuThink(randomCpuDelay());
+        scheduleCpuThink(cpuDelayForMode());
         return;
       }
 
@@ -2250,7 +2252,7 @@
       const prevLive = cloneState(live);
       const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
       if (!next) {
-        scheduleCpuThink(randomCpuDelay());
+        scheduleCpuThink(cpuDelayForMode());
         return;
       }
 
@@ -2261,7 +2263,7 @@
       aiObserveTransition(prevLive, next, "white", pick.meta);
       scheduleRender(0);
 
-      if (!next.winner) scheduleCpuThink(randomCpuDelay());
+      if (!next.winner) scheduleCpuThink(cpuDelayForMode());
     }
 
     async function voteRematch(yes) {
@@ -2424,7 +2426,7 @@
       if (!liveLocal) return;
 
       const anySide = session.kind === "local_dual";
-      const actorSide = session.kind === "cpu" ? "black" : null;
+      const actorSide = (session.kind === "cpu" || session.kind === "serious_cpu") ? "black" : null;
       const selected = state.selected.kind === "piece" || state.selected.kind === "hand" ? state.selected : null;
       const prevLive = cloneState(liveLocal);
       const next = applyActionToLive(liveLocal, selected, actorSide, destBoard, anySide);
@@ -2436,10 +2438,10 @@
       refreshHands();
       scheduleRender(0);
 
-      if (session.kind === "cpu") {
+      if (session.kind === "cpu" || session.kind === "serious_cpu") {
         const actionMeta = buildActionMeta(prevLive, selected, destBoard);
         aiObserveTransition(prevLive, next, actorSide, actionMeta);
-        if (!next.winner) scheduleCpuThink(randomCpuDelay());
+        if (!next.winner) scheduleCpuThink(cpuDelayForMode());
       }
     }
 
@@ -2496,7 +2498,7 @@
       const code = normalizeRoomId(roomInput.value);
       const mode = specialModeFromCode(code);
 
-      if (mode === "cpu" || mode === "local_dual") {
+      if (mode === "cpu" || mode === "serious_cpu" || mode === "local_dual") {
         session.kind = mode;
         setLocalRoom(mode);
         return;
@@ -2682,7 +2684,7 @@
     enterBtn.addEventListener("click", enterRoom);
 
     shareBtn.addEventListener("click", async () => {
-      const code = normalizeRoomId(roomInput.value || state.roomId || (session.kind === "cpu" ? "CPU" : session.kind === "local_dual" ? "1 SMARTPHONE" : ""));
+      const code = normalizeRoomId(roomInput.value || state.roomId || (session.kind === "cpu" ? "CPU" : session.kind === "serious_cpu" ? "SERIOUS CPU" : session.kind === "local_dual" ? "1 SMARTPHONE" : ""));
       if (!code) {
         setStatus("共有するコードがないよ。");
         return;
@@ -2717,8 +2719,6 @@
 
     rematchYes.addEventListener("click", () => voteRematch(true));
     rematchNo.addEventListener("click", () => voteRematch(false));
-
-    window.addEventListener("resize", resizeCanvas);
 
     void ensureAIMemoryLoaded();
     resizeCanvas();
