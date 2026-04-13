@@ -42,6 +42,9 @@
     html,body{
       margin:0;
       padding:0;
+      width:100%;
+      height:100%;
+      overflow:hidden;
       background:var(--bg);
       color:var(--ink);
       font-family:system-ui,-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;
@@ -55,10 +58,15 @@
     }
 
     #app{
+      height:100dvh;
       max-width:860px;
       margin:0 auto;
       padding:10px;
       box-sizing:border-box;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      overflow:hidden;
     }
 
     .panel{
@@ -66,6 +74,7 @@
       border:1px solid var(--line);
       border-radius:14px;
       box-shadow:0 3px 14px rgba(0,0,0,.05);
+      min-height:0;
     }
 
     #topbar{
@@ -74,7 +83,7 @@
       gap:7px;
       align-items:center;
       padding:8px;
-      margin-bottom:8px;
+      flex:none;
     }
 
     #roomInput{
@@ -120,19 +129,22 @@
 
     #status{
       padding:8px 10px;
-      margin-bottom:8px;
       line-height:1.45;
       font-size:13px;
+      flex:none;
     }
 
     #layout{
+      flex:1;
+      min-height:0;
       display:grid;
-      grid-template-columns:1fr;
+      grid-template-rows:auto minmax(0,1fr) auto;
       gap:8px;
     }
 
     #handsTop,#handsBottom{
       padding:8px;
+      overflow:hidden;
     }
 
     .handRow{
@@ -188,19 +200,20 @@
       display:flex;
       justify-content:center;
       align-items:center;
+      overflow:hidden;
+      min-height:0;
     }
 
     canvas{
-      width:min(88vw,560px);
-      height:min(88vw,560px);
-      max-width:560px;
-      max-height:560px;
-      aspect-ratio:1/1;
       display:block;
       border-radius:16px;
       background:#ead7b4;
       box-shadow:0 7px 20px rgba(0,0,0,.08);
       touch-action:none;
+      width:100%;
+      height:100%;
+      max-width:100%;
+      max-height:100%;
     }
 
     .pill{
@@ -349,6 +362,7 @@
     const db = getFirestore(app);
 
     const boardCanvas = document.getElementById("board");
+    const boardWrap = document.getElementById("boardWrap");
     const ctx = boardCanvas.getContext("2d");
 
     const roomInput = document.getElementById("roomInput");
@@ -441,7 +455,7 @@
     }
 
     const session = {
-      kind: "online", // online | cpu | local_dual
+      kind: "online",
       renderTimer: null,
       cpuTimer: null,
       cpuLoop: null
@@ -907,12 +921,7 @@
       for (let y = 0; y < 9; y++) {
         for (let x = 0; x < 9; x++) {
           if (occ.has(`${x},${y}`)) continue;
-          out.push({
-            x,
-            y,
-            kind: "normal",
-            nextMode: "normal"
-          });
+          out.push({ x, y, kind: "normal", nextMode: "normal" });
         }
       }
       return out;
@@ -1112,21 +1121,23 @@
     }
 
     function resizeCanvas() {
-      const rect = boardCanvas.getBoundingClientRect();
-      if (!rect.width || !rect.height || rect.width < 50 || rect.height < 50) return;
+      const wrap = boardWrap.getBoundingClientRect();
+      const pad = 16;
+      const fit = Math.floor(Math.min(
+        Math.max(240, wrap.width - pad),
+        Math.max(240, wrap.height - pad)
+      ));
 
+      const size = Math.max(240, fit);
       const dpr = Math.max(1, window.devicePixelRatio || 1);
-      boardCanvas.width = Math.floor(rect.width * dpr);
-      boardCanvas.height = Math.floor(rect.height * dpr);
+
+      boardCanvas.style.width = `${size}px`;
+      boardCanvas.style.height = `${size}px`;
+      boardCanvas.width = Math.floor(size * dpr);
+      boardCanvas.height = Math.floor(size * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       state.boardReady = true;
       scheduleRender(0);
-    }
-
-    let resizeTimer = null;
-    function requestResize() {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(resizeCanvas, 120);
     }
 
     function getViewSide() {
@@ -1258,6 +1269,7 @@
           }
           return;
         }
+
         const now = Date.now();
         let next = 250;
         const live = state.roomData?.state;
@@ -1280,7 +1292,7 @@
     }
 
     function scheduleCpuThink(delay = 400) {
-      if (!isCPU()) return;
+      if (session.kind !== "cpu") return;
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
       session.cpuTimer = setTimeout(() => {
         session.cpuTimer = null;
@@ -1289,14 +1301,14 @@
     }
 
     function startCpuLoop() {
-      if (!isCPU()) return;
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
+      stopCpuLoop();
+      if (session.kind !== "cpu") return;
       session.cpuLoop = setInterval(() => {
         if (session.kind === "cpu" && state.roomData && !state.roomData.state?.winner) {
           void cpuThink();
         }
       }, 450);
-      scheduleCpuThink(120);
+      scheduleCpuThink(80);
     }
 
     function stopCpuLoop() {
@@ -1327,116 +1339,108 @@
     }
 
     function renderFrame() {
-      try {
-        if (!state.boardReady) return;
+      if (!state.boardReady) return;
 
-        const rect = boardCanvas.getBoundingClientRect();
-        if (!rect.width || !rect.height || rect.width < 50 || rect.height < 50) return;
+      const rect = boardCanvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      const cell = w / 9;
+      const now = Date.now();
 
-        const w = rect.width;
-        const h = rect.height;
-        const cell = w / 9;
-        const now = Date.now();
+      updateHandCooldownIndicators(now);
 
-        updateHandCooldownIndicators(now);
+      ctx.clearRect(0, 0, w, h);
 
-        ctx.clearRect(0, 0, w, h);
-
-        for (let sy = 0; sy < 9; sy++) {
-          for (let sx = 0; sx < 9; sx++) {
-            const board = screenToBoard(sx, sy);
-            const light = (board.x + board.y) % 2 === 0;
-            ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
-            ctx.fillRect(sx * cell, sy * cell, cell, cell);
-          }
+      for (let sy = 0; sy < 9; sy++) {
+        for (let sx = 0; sx < 9; sx++) {
+          const board = screenToBoard(sx, sy);
+          const light = (board.x + board.y) % 2 === 0;
+          ctx.fillStyle = light ? theme.boardLight : theme.boardDark;
+          ctx.fillRect(sx * cell, sy * cell, cell, cell);
         }
-
-        ctx.strokeStyle = "rgba(104,79,42,.55)";
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= 9; i++) {
-          ctx.beginPath();
-          ctx.moveTo(i * cell, 0);
-          ctx.lineTo(i * cell, 9 * cell);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(0, i * cell);
-          ctx.lineTo(9 * cell, i * cell);
-          ctx.stroke();
-        }
-
-        const live = state.roomData?.state;
-        const room = state.roomData;
-
-        if (!live) {
-          ctx.fillStyle = "rgba(0,0,0,.55)";
-          ctx.font = "600 16px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("ルーム接続待ち", w / 2, h / 2);
-          scheduleRender();
-          return;
-        }
-
-        const legal = selectedLegalMoves(live);
-
-        for (const m of legal) {
-          const s = boardToScreen(m.x, m.y);
-          ctx.fillStyle = moveColor(m.kind);
-          ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
-        }
-
-        const selectedPiece = selectedPieceObj();
-        if (selectedPiece) {
-          const s = boardToScreen(selectedPiece.x, selectedPiece.y);
-          ctx.strokeStyle = "rgba(138,180,255,.95)";
-          ctx.lineWidth = 4;
-          ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
-        }
-
-        for (const p of live.pieces) {
-          const sp = boardToScreen(p.x, p.y);
-          const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-          drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
-        }
-
-        const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
-        const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
-
-        if (live.winner) {
-          ctx.fillStyle = "rgba(0,0,0,.35)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 26px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
-          ctx.font = "500 15px system-ui, sans-serif";
-          ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
-        } else if (!bothReady) {
-          ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "800 22px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("相手待ち", w / 2, h / 2 - 6);
-          ctx.font = "500 14px system-ui, sans-serif";
-          ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
-        } else if (countdownText) {
-          ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = "#fff";
-          ctx.font = "900 54px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(countdownText, w / 2, h / 2 + 10);
-          ctx.font = "600 16px system-ui, sans-serif";
-          ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
-        }
-
-        updateRematchOverlay();
-        scheduleRender();
-      } catch (err) {
-        console.error("renderFrame error:", err);
-        setStatus("描画が一瞬止まったけど、復帰を試してるよ。");
-        scheduleRender(250);
       }
+
+      ctx.strokeStyle = "rgba(104,79,42,.55)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 9; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cell, 0);
+        ctx.lineTo(i * cell, 9 * cell);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * cell);
+        ctx.lineTo(9 * cell, i * cell);
+        ctx.stroke();
+      }
+
+      const live = state.roomData?.state;
+      const room = state.roomData;
+
+      if (!live) {
+        ctx.fillStyle = "rgba(0,0,0,.55)";
+        ctx.font = "600 16px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("ルーム接続待ち", w / 2, h / 2);
+        scheduleRender();
+        return;
+      }
+
+      const legal = selectedLegalMoves(live);
+
+      for (const m of legal) {
+        const s = boardToScreen(m.x, m.y);
+        ctx.fillStyle = moveColor(m.kind);
+        ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
+      }
+
+      const selectedPiece = selectedPieceObj();
+      if (selectedPiece) {
+        const s = boardToScreen(selectedPiece.x, selectedPiece.y);
+        ctx.strokeStyle = "rgba(138,180,255,.95)";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(s.x * cell + 3, s.y * cell + 3, cell - 6, cell - 6);
+      }
+
+      for (const p of live.pieces) {
+        const sp = boardToScreen(p.x, p.y);
+        const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
+        drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
+      }
+
+      const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
+      const countdownText = bothReady ? getCountdownText(room?.matchStartAt, now) : null;
+
+      if (live.winner) {
+        ctx.fillStyle = "rgba(0,0,0,.35)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 26px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`勝者: ${live.winner === "black" ? "黒" : "白"}`, w / 2, h / 2 - 4);
+        ctx.font = "500 15px system-ui, sans-serif";
+        ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
+      } else if (!bothReady) {
+        ctx.fillStyle = "rgba(0,0,0,.28)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 22px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("相手待ち", w / 2, h / 2 - 6);
+        ctx.font = "500 14px system-ui, sans-serif";
+        ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
+      } else if (countdownText) {
+        ctx.fillStyle = "rgba(0,0,0,.28)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.font = "900 54px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(countdownText, w / 2, h / 2 + 10);
+        ctx.font = "600 16px system-ui, sans-serif";
+        ctx.fillText(countdownText === "開始" ? "スタート" : "開始まで", w / 2, h / 2 + 44);
+      }
+
+      updateRematchOverlay();
+      scheduleRender();
     }
 
     function pointToSquare(ev) {
@@ -1851,6 +1855,7 @@
       resetLocalEpisode();
       updateMePill();
       refreshHands();
+      resizeCanvas();
       scheduleRender(0);
       setStatus(kind === "cpu" ? "CPUモードで始めたよ。" : "1 SMARTPHONEモードで始めたよ。");
 
@@ -2086,6 +2091,7 @@
       state.selected = null;
       resetLocalEpisode();
       refreshHands();
+      resizeCanvas();
       scheduleRender(0);
       if (session.kind === "cpu") scheduleCpuThink(200);
     }
@@ -2261,10 +2267,12 @@
         }
 
         refreshHands();
+        resizeCanvas();
         scheduleRender(0);
       });
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
+      resizeCanvas();
       scheduleRender(0);
     }
 
@@ -2295,6 +2303,110 @@
       score += learned;
       score += Math.random() * 2;
       return score;
+    }
+
+    async function cpuThink() {
+      if (session.kind !== "cpu") return;
+      if (!state.roomData) return;
+
+      void ensureAIMemoryLoaded();
+
+      const live = state.roomData.state;
+      if (!live || live.winner) return;
+
+      const now = Date.now();
+      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
+        scheduleCpuThink(Math.max(80, state.roomData.matchStartAt - now + 30));
+        return;
+      }
+
+      const actorSide = "white";
+      const actions = [];
+      const board = live.pieces;
+
+      for (const p of board) {
+        if (p.side !== actorSide) continue;
+        if (p.cooldownUntil && now < p.cooldownUntil) continue;
+        const moves = legalMovesForPiece(live, p, true);
+        for (const mv of moves) {
+          const meta = {
+            kind: "piece",
+            pieceType: p.type,
+            promoMode: p.promoMode,
+            from: { x: p.x, y: p.y },
+            to: { x: mv.x, y: mv.y },
+            capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
+            nextMode: mv.nextMode || p.promoMode || "normal",
+            moveKind: mv.kind || "normal"
+          };
+          const key = aiActionKey(meta, actorSide);
+          const score = scoreAction(live, meta, actorSide);
+          actions.push({
+            selected: { kind: "piece", id: p.id },
+            dest: { x: mv.x, y: mv.y },
+            meta,
+            key,
+            score
+          });
+        }
+      }
+
+      const handCooldown = live.handCooldownUntil?.white || 0;
+      if (handCooldown <= now) {
+        for (const t of pieceOrder) {
+          const count = live.hands.white?.[t] || 0;
+          if (!count) continue;
+          for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+              if (pieceAt(live.pieces, x, y)) continue;
+              const meta = {
+                kind: "hand",
+                pieceType: t,
+                promoMode: "hand",
+                from: null,
+                to: { x, y },
+                capturedType: null,
+                nextMode: "normal",
+                moveKind: "drop"
+              };
+              const key = aiActionKey(meta, actorSide);
+              const score = scoreAction(live, meta, actorSide);
+              actions.push({
+                selected: { kind: "hand", side: "white", type: t },
+                dest: { x, y },
+                meta,
+                key,
+                score
+              });
+            }
+          }
+        }
+      }
+
+      if (!actions.length) {
+        scheduleCpuThink(500);
+        return;
+      }
+
+      actions.sort((a, b) => b.score - a.score);
+      const pool = actions.slice(0, Math.min(6, actions.length));
+      const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
+
+      const prevLive = cloneState(live);
+      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
+      if (!next) {
+        scheduleCpuThink(350);
+        return;
+      }
+
+      state.roomData.state = next;
+      state.roomData.updatedAt = Date.now();
+      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
+      refreshHands();
+      aiObserveTransition(prevLive, next, "white", pick.meta);
+      scheduleRender(0);
+
+      if (!next.winner) scheduleCpuThink(450);
     }
 
     async function voteRematch(yes) {
@@ -2370,15 +2482,51 @@
       if (!yes) leaveToHome();
     }
 
-    function commitMove(destBoard) {
+    function buildActionMeta(live, selected, destBoard) {
+      if (!selected) return null;
+      if (selected.kind === "piece") {
+        const piece = live.pieces.find(p => p.id === selected.id);
+        if (!piece) return null;
+        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
+        const legal = legalMovesForPiece(live, piece, true);
+        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
+        return {
+          kind: "piece",
+          pieceType: piece.type,
+          promoMode: piece.promoMode,
+          from: { x: piece.x, y: piece.y },
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: captured?.type || null,
+          nextMode: move?.nextMode || piece.promoMode || "normal",
+          moveKind: move?.kind || "normal"
+        };
+      }
+
+      if (selected.kind === "hand") {
+        return {
+          kind: "hand",
+          pieceType: selected.type,
+          promoMode: "hand",
+          from: null,
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: null,
+          nextMode: "normal",
+          moveKind: "drop"
+        };
+      }
+
+      return null;
+    }
+
+    async function commitMove(destBoard) {
       const live = state.roomData?.state;
-      if (!live || !state.selected) return Promise.resolve();
+      if (!live || !state.selected) return;
 
       if (session.kind === "online") {
-        if (!state.roomRef) return Promise.resolve();
-        if (!canAct()) return Promise.resolve();
+        if (!state.roomRef) return;
+        if (!canAct()) return;
 
-        return runTransaction(db, async (tx) => {
+        await runTransaction(db, async (tx) => {
           const snap = await tx.get(state.roomRef);
           if (!snap.exists()) return;
 
@@ -2411,25 +2559,27 @@
           tx.update(state.roomRef, update);
         }).catch(err => {
           setStatus(`動かせなかった: ${err.message}`);
-        }).finally(() => {
-          scheduleRender(0);
         });
+
+        scheduleRender(0);
+        return;
       }
 
       const liveLocal = state.roomData?.state;
-      if (!liveLocal) return Promise.resolve();
+      if (!liveLocal) return;
 
       const anySide = session.kind === "local_dual";
       const actorSide = session.kind === "cpu" ? "black" : null;
       const selected = state.selected.kind === "piece" || state.selected.kind === "hand" ? state.selected : null;
       const prevLive = cloneState(liveLocal);
       const next = applyActionToLive(liveLocal, selected, actorSide, destBoard, anySide);
-      if (!next) return Promise.resolve();
+      if (!next) return;
 
       state.roomData.state = next;
       if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
       state.roomData.updatedAt = Date.now();
       refreshHands();
+      resizeCanvas();
       scheduleRender(0);
 
       if (session.kind === "cpu") {
@@ -2437,7 +2587,6 @@
         aiObserveTransition(prevLive, next, actorSide, actionMeta);
         if (!next.winner) scheduleCpuThink(220);
       }
-      return Promise.resolve();
     }
 
     function getSlidePieceTarget(releasePoint) {
@@ -2715,19 +2864,10 @@
     rematchYes.addEventListener("click", () => voteRematch(true));
     rematchNo.addEventListener("click", () => voteRematch(false));
 
-    window.addEventListener("resize", requestResize);
-    window.addEventListener("orientationchange", requestResize);
-    window.addEventListener("scroll", () => {
-      if (!state.boardReady) return;
-      scheduleRender(0);
-    }, { passive: true });
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", requestResize);
-      window.visualViewport.addEventListener("scroll", () => {
-        scheduleRender(0);
-      }, { passive: true });
-    }
+    const boardObserver = new ResizeObserver(() => resizeCanvas());
+    boardObserver.observe(boardWrap);
+    window.addEventListener("resize", resizeCanvas);
+    window.addEventListener("orientationchange", resizeCanvas);
 
     void ensureAIMemoryLoaded();
     resizeCanvas();
