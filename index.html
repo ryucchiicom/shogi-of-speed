@@ -198,7 +198,7 @@
       aspect-ratio:1/1;
       display:block;
       border-radius:16px;
-      background:var(--panel);
+      background:var(--bg);
       box-shadow:0 7px 20px rgba(0,0,0,.08);
       touch-action:none;
     }
@@ -444,8 +444,9 @@
     const session = {
       kind: "online", // online | cpu | cpu_serious | local_dual
       renderTimer: null,
-      cpuTimer: null,
-      cpuThinking: false
+      cpuLoop: null,
+      cpuThinking: false,
+      cpuNextActAt: 0
     };
 
     const state = {
@@ -512,9 +513,9 @@
 
     function clearTimers(){
       if (session.renderTimer) clearTimeout(session.renderTimer);
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
+      if (session.cpuLoop) clearInterval(session.cpuLoop);
       session.renderTimer = null;
-      session.cpuTimer = null;
+      session.cpuLoop = null;
       session.cpuThinking = false;
     }
 
@@ -1156,7 +1157,7 @@
         else ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#fffaf2";
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f2e8";
         ctx.fillRect(0, 0, w, h);
       } catch {}
     }
@@ -1329,10 +1330,36 @@
       return false;
     }
 
-    function cpuThinkDelay() {
+    function cpuMoveDelayMs() {
       if (session.kind === "cpu") return 1000 + Math.random() * 500;
-      if (session.kind === "cpu_serious") return 420;
+      if (session.kind === "cpu_serious") return 100;
       return 0;
+    }
+
+    function queueCpuNextMove(delay = null) {
+      if (!isCpuMode()) return;
+      session.cpuNextActAt = Date.now() + (delay ?? cpuMoveDelayMs());
+    }
+
+    function startCpuLoop() {
+      if (!isCpuMode()) return;
+      if (session.cpuLoop) clearInterval(session.cpuLoop);
+      queueCpuNextMove(session.kind === "cpu" ? cpuMoveDelayMs() : 100);
+
+      session.cpuLoop = setInterval(() => {
+        if (!isCpuMode() || !state.roomData) return;
+        if (state.roomData.state?.winner) return;
+        if (Date.now() < session.cpuNextActAt) return;
+        if (session.cpuThinking) return;
+        void cpuThink();
+      }, 100);
+    }
+
+    function stopCpuLoop() {
+      if (session.cpuLoop) clearInterval(session.cpuLoop);
+      session.cpuLoop = null;
+      session.cpuNextActAt = 0;
+      session.cpuThinking = false;
     }
 
     function scheduleRender(delay = null) {
@@ -1359,16 +1386,6 @@
         session.renderTimer = null;
         safeRenderFrame();
       }, delay);
-    }
-
-    function scheduleCpuThink(delay = null) {
-      if (!isCpuMode()) return;
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      const actualDelay = delay ?? cpuThinkDelay();
-      session.cpuTimer = setTimeout(() => {
-        session.cpuTimer = null;
-        void cpuThink();
-      }, actualDelay);
     }
 
     function updateHandCooldownIndicators(now) {
@@ -1404,7 +1421,7 @@
         else ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#fffaf2";
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f2e8";
         ctx.fillRect(0, 0, w, h);
       } catch {}
     }
@@ -1946,7 +1963,7 @@
 
       if (kind === "cpu" || kind === "cpu_serious") {
         void ensureAIMemoryLoaded();
-        scheduleCpuThink(cpuThinkDelay());
+        startCpuLoop();
       }
     }
 
@@ -2120,10 +2137,6 @@
 
         refreshHands();
         scheduleRender(0);
-
-        if (isCpuMode() && live && !live.winner) {
-          scheduleCpuThink(cpuThinkDelay());
-        }
       });
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
@@ -2166,11 +2179,14 @@
         void ensureAIMemoryLoaded();
 
         const live = state.roomData.state;
-        if (!live || live.winner) return;
+        if (!live || live.winner) {
+          queueCpuNextMove(cpuMoveDelayMs());
+          return;
+        }
 
         const now = Date.now();
         if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-          scheduleCpuThink(cpuThinkDelay());
+          queueCpuNextMove(Math.max(50, state.roomData.matchStartAt - now));
           return;
         }
 
@@ -2238,7 +2254,7 @@
         }
 
         if (!actions.length) {
-          scheduleCpuThink(cpuThinkDelay());
+          queueCpuNextMove(cpuMoveDelayMs());
           return;
         }
 
@@ -2249,7 +2265,7 @@
         const prevLive = cloneState(live);
         const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
         if (!next) {
-          scheduleCpuThink(cpuThinkDelay());
+          queueCpuNextMove(cpuMoveDelayMs());
           return;
         }
 
@@ -2260,7 +2276,7 @@
         aiObserveTransition(prevLive, next, "white", pick.meta);
         scheduleRender(0);
 
-        if (!next.winner) scheduleCpuThink(cpuThinkDelay());
+        queueCpuNextMove(cpuMoveDelayMs());
       } finally {
         session.cpuThinking = false;
       }
@@ -2280,7 +2296,7 @@
       resetLocalEpisode();
       refreshHands();
       scheduleRender(0);
-      if (isCpuMode()) scheduleCpuThink(cpuThinkDelay());
+      if (isCpuMode()) queueCpuNextMove(cpuMoveDelayMs());
     }
 
     async function voteRematch(yes) {
@@ -2422,7 +2438,6 @@
       if (isCpuMode()) {
         const actionMeta = buildActionMeta(prevLive, selected, destBoard);
         aiObserveTransition(prevLive, next, actorSide, actionMeta);
-        if (!next.winner) scheduleCpuThink(cpuThinkDelay());
       }
     }
 
