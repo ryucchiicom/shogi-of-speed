@@ -198,7 +198,7 @@
       aspect-ratio:1/1;
       display:block;
       border-radius:16px;
-      background:#ead7b4;
+      background:var(--panel);
       box-shadow:0 7px 20px rgba(0,0,0,.08);
       touch-action:none;
     }
@@ -444,7 +444,8 @@
     const session = {
       kind: "online", // online | cpu | cpu_serious | local_dual
       renderTimer: null,
-      cpuTimer: null
+      cpuTimer: null,
+      cpuThinking: false
     };
 
     const state = {
@@ -514,6 +515,7 @@
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
       session.renderTimer = null;
       session.cpuTimer = null;
+      session.cpuThinking = false;
     }
 
     function isCpuMode() {
@@ -1154,6 +1156,8 @@
         else ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#fffaf2";
+        ctx.fillRect(0, 0, w, h);
       } catch {}
     }
 
@@ -1367,18 +1371,6 @@
       }, actualDelay);
     }
 
-    function startCpuLoop() {
-      if (!isCpuMode()) return;
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.cpuTimer = null;
-      scheduleCpuThink(cpuThinkDelay());
-    }
-
-    function stopCpuLoop() {
-      if (session.cpuTimer) clearTimeout(session.cpuTimer);
-      session.cpuTimer = null;
-    }
-
     function updateHandCooldownIndicators(now) {
       const live = state.roomData?.state;
       if (!live) return;
@@ -1396,32 +1388,6 @@
         } else {
           ring.style.opacity = "0";
         }
-      }
-    }
-
-    function recoverCanvas() {
-      try {
-        const rect = boardCanvas.getBoundingClientRect();
-        const dpr = Math.max(1, window.devicePixelRatio || 1);
-        const w = Math.max(1, Math.round(rect.width));
-        const h = Math.max(1, Math.round(rect.height));
-        if (w < 20 || h < 20) return;
-        boardCanvas.width = Math.floor(w * dpr);
-        boardCanvas.height = Math.floor(h * dpr);
-        if (typeof ctx.resetTransform === "function") ctx.resetTransform();
-        else ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, w, h);
-      } catch {}
-    }
-
-    function safeRenderFrame() {
-      try {
-        renderFrame();
-      } catch (err) {
-        console.error("renderFrame failed", err);
-        recoverCanvas();
-        scheduleRender(150);
       }
     }
 
@@ -1492,7 +1458,11 @@
       for (const p of live.pieces) {
         const sp = boardToScreen(p.x, p.y);
         const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-        drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
+        try {
+          drawPiece(p, { x: sp.x * cell, y: sp.y * cell, size: cell }, now, isSel);
+        } catch (err) {
+          console.error("drawPiece failed", err);
+        }
       }
 
       const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
@@ -1948,7 +1918,7 @@
 
       if (kind === "cpu" || kind === "cpu_serious") {
         void ensureAIMemoryLoaded();
-        startCpuLoop();
+        scheduleCpuThink(kind === "cpu" ? cpuThinkDelay() : 0);
       }
     }
 
@@ -2122,6 +2092,10 @@
 
         refreshHands();
         scheduleRender(0);
+
+        if (isCpuMode() && live && !live.winner) {
+          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+        }
       });
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
@@ -2157,104 +2131,111 @@
 
     async function cpuThink() {
       if (!isCpuMode() || !state.roomData) return;
-      void ensureAIMemoryLoaded();
+      if (session.cpuThinking) return;
 
-      const live = state.roomData.state;
-      if (!live || live.winner) return;
+      session.cpuThinking = true;
+      try {
+        void ensureAIMemoryLoaded();
 
-      const now = Date.now();
-      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-        scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
-        return;
-      }
+        const live = state.roomData.state;
+        if (!live || live.winner) return;
 
-      const actorSide = "white";
-      const actions = [];
-      const board = live.pieces;
-
-      for (const p of board) {
-        if (p.side !== actorSide) continue;
-        if (p.cooldownUntil && now < p.cooldownUntil) continue;
-        const moves = legalMovesForPiece(live, p, true);
-        for (const mv of moves) {
-          const meta = {
-            kind: "piece",
-            pieceType: p.type,
-            promoMode: p.promoMode,
-            from: { x: p.x, y: p.y },
-            to: { x: mv.x, y: mv.y },
-            capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
-            nextMode: mv.nextMode || p.promoMode || "normal",
-            moveKind: mv.kind || "normal"
-          };
-          const key = aiActionKey(meta, actorSide);
-          const score = scoreAction(live, meta, actorSide);
-          actions.push({
-            selected: { kind: "piece", id: p.id },
-            dest: { x: mv.x, y: mv.y },
-            meta,
-            key,
-            score
-          });
+        const now = Date.now();
+        if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
+          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+          return;
         }
-      }
 
-      const handCooldown = live.handCooldownUntil?.white || 0;
-      if (handCooldown <= now) {
-        for (const t of pieceOrder) {
-          const count = live.hands.white?.[t] || 0;
-          if (!count) continue;
-          for (let y = 0; y < 9; y++) {
-            for (let x = 0; x < 9; x++) {
-              if (pieceAt(live.pieces, x, y)) continue;
-              const meta = {
-                kind: "hand",
-                pieceType: t,
-                promoMode: "hand",
-                from: null,
-                to: { x, y },
-                capturedType: null,
-                nextMode: "normal",
-                moveKind: "drop"
-              };
-              const key = aiActionKey(meta, actorSide);
-              const score = scoreAction(live, meta, actorSide);
-              actions.push({
-                selected: { kind: "hand", side: "white", type: t },
-                dest: { x, y },
-                meta,
-                key,
-                score
-              });
+        const actorSide = "white";
+        const actions = [];
+        const board = live.pieces;
+
+        for (const p of board) {
+          if (p.side !== actorSide) continue;
+          if (p.cooldownUntil && now < p.cooldownUntil) continue;
+          const moves = legalMovesForPiece(live, p, true);
+          for (const mv of moves) {
+            const meta = {
+              kind: "piece",
+              pieceType: p.type,
+              promoMode: p.promoMode,
+              from: { x: p.x, y: p.y },
+              to: { x: mv.x, y: mv.y },
+              capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
+              nextMode: mv.nextMode || p.promoMode || "normal",
+              moveKind: mv.kind || "normal"
+            };
+            const key = aiActionKey(meta, actorSide);
+            const score = scoreAction(live, meta, actorSide);
+            actions.push({
+              selected: { kind: "piece", id: p.id },
+              dest: { x: mv.x, y: mv.y },
+              meta,
+              key,
+              score
+            });
+          }
+        }
+
+        const handCooldown = live.handCooldownUntil?.white || 0;
+        if (handCooldown <= now) {
+          for (const t of pieceOrder) {
+            const count = live.hands.white?.[t] || 0;
+            if (!count) continue;
+            for (let y = 0; y < 9; y++) {
+              for (let x = 0; x < 9; x++) {
+                if (pieceAt(live.pieces, x, y)) continue;
+                const meta = {
+                  kind: "hand",
+                  pieceType: t,
+                  promoMode: "hand",
+                  from: null,
+                  to: { x, y },
+                  capturedType: null,
+                  nextMode: "normal",
+                  moveKind: "drop"
+                };
+                const key = aiActionKey(meta, actorSide);
+                const score = scoreAction(live, meta, actorSide);
+                actions.push({
+                  selected: { kind: "hand", side: "white", type: t },
+                  dest: { x, y },
+                  meta,
+                  key,
+                  score
+                });
+              }
             }
           }
         }
+
+        if (!actions.length) {
+          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+          return;
+        }
+
+        actions.sort((a, b) => b.score - a.score);
+        const pool = actions.slice(0, Math.min(6, actions.length));
+        const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
+
+        const prevLive = cloneState(live);
+        const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
+        if (!next) {
+          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+          return;
+        }
+
+        state.roomData.state = next;
+        state.roomData.updatedAt = Date.now();
+        if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
+        refreshHands();
+        aiObserveTransition(prevLive, next, "white", pick.meta);
+        scheduleRender(0);
+
+        if (!next.winner) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+      } finally {
+        session.cpuThinking = false;
       }
-
-      if (!actions.length) {
-        scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
-        return;
-      }
-
-      actions.sort((a, b) => b.score - a.score);
-      const pool = actions.slice(0, Math.min(6, actions.length));
-      const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
-
-      const prevLive = cloneState(live);
-      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
-      if (!next) {
-        scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
-        return;
-      }
-
-      state.roomData.state = next;
-      state.roomData.updatedAt = Date.now();
-      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
-      refreshHands();
-      aiObserveTransition(prevLive, next, "white", pick.meta);
-      scheduleRender(0);
-
-      if (!next.winner) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
     }
 
     async function refreshLocalRematchImmediate() {
@@ -2271,7 +2252,7 @@
       resetLocalEpisode();
       refreshHands();
       scheduleRender(0);
-      if (isCpuMode()) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
+      if (isCpuMode()) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
     }
 
     async function voteRematch(yes) {
@@ -2413,7 +2394,7 @@
       if (isCpuMode()) {
         const actionMeta = buildActionMeta(prevLive, selected, destBoard);
         aiObserveTransition(prevLive, next, actorSide, actionMeta);
-        if (!next.winner) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
+        if (!next.winner) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
       }
     }
 
