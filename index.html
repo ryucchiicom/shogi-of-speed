@@ -371,6 +371,7 @@
     const COUNTDOWN_MS = 3000;
     const STALE_MS = 30000;
     const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
+    const ENFORCE_SELF_CHECK = false;
 
     const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
 
@@ -444,7 +445,8 @@
     const session = {
       kind: "online", // online | cpu | cpu_serious | local_dual
       renderTimer: null,
-      cpuTimer: null
+      cpuTimer: null,
+      cpuThinking: false
     };
 
     const state = {
@@ -840,7 +842,7 @@
 
       if (piece.promoMode === "fixed") {
         if (!baseReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
+        if (ENFORCE_SELF_CHECK && checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "fixed" };
       }
 
@@ -849,7 +851,7 @@
         const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
         if (!promoReach) return null;
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+        if (ENFORCE_SELF_CHECK && checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode: "promoted" };
       }
 
@@ -857,21 +859,21 @@
         if (!baseReach) return null;
         const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
         if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+          if (ENFORCE_SELF_CHECK && checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         }
-        if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
+        if (ENFORCE_SELF_CHECK && checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
         return { x: dest.x, y: dest.y, kind: "normal", nextMode };
       }
 
       if (piece.promoMode === "can") {
         const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
         const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
-        const baseOK = baseReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
-        const promoOK = promoReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
+        const baseOK = baseReach && (!ENFORCE_SELF_CHECK || !checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
+        const promoOK = promoReach && (!ENFORCE_SELF_CHECK || !checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
 
         if (forced) {
-          if (checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
+          if (ENFORCE_SELF_CHECK && checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x: dest.x, y: dest.y, kind: "promo", nextMode: "promoted" };
         }
 
@@ -950,7 +952,7 @@
       if (state.selected.kind === "piece") {
         const piece = live.pieces.find(p => p.id === state.selected.id);
         if (!piece) return [];
-        return legalMovesForPiece(live, piece, false);
+        return legalMovesForPiece(live, piece, true);
       }
       if (state.selected.kind === "hand") {
         return dropLegalSquares(live);
@@ -1326,8 +1328,8 @@
     }
 
     function cpuThinkDelay() {
-      if (session.kind === "cpu") return 500 + Math.random() * 500;
-      if (session.kind === "cpu_serious") return 0;
+      if (session.kind === "cpu") return 1000 + Math.random() * 500;
+      if (session.kind === "cpu_serious") return 100;
       return 0;
     }
 
@@ -1359,6 +1361,7 @@
 
     function scheduleCpuThink(delay = null) {
       if (!isCpuMode()) return;
+      if (session.cpuThinking) return;
       if (session.cpuTimer) clearTimeout(session.cpuTimer);
       const actualDelay = delay ?? cpuThinkDelay();
       session.cpuTimer = setTimeout(() => {
@@ -1384,6 +1387,32 @@
         } else {
           ring.style.opacity = "0";
         }
+      }
+    }
+
+    function recoverCanvas() {
+      try {
+        const rect = boardCanvas.getBoundingClientRect();
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const w = Math.max(1, Math.round(rect.width));
+        const h = Math.max(1, Math.round(rect.height));
+        if (w < 20 || h < 20) return;
+        boardCanvas.width = Math.floor(w * dpr);
+        boardCanvas.height = Math.floor(h * dpr);
+        if (typeof ctx.resetTransform === "function") ctx.resetTransform();
+        else ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+      } catch {}
+    }
+
+    function safeRenderFrame() {
+      try {
+        renderFrame();
+      } catch (err) {
+        console.error("renderFrame failed", err);
+        recoverCanvas();
+        scheduleRender(150);
       }
     }
 
@@ -1540,7 +1569,7 @@
       roomInput.value = "";
       updateMePill();
       refreshHands();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね.");
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
       scheduleRender(0);
     }
 
@@ -1910,7 +1939,7 @@
 
       if (kind === "cpu" || kind === "cpu_serious") {
         void ensureAIMemoryLoaded();
-        scheduleCpuThink(kind === "cpu" ? cpuThinkDelay() : 0);
+        scheduleCpuThink(cpuThinkDelay());
       }
     }
 
@@ -2086,7 +2115,7 @@
         scheduleRender(0);
 
         if (isCpuMode() && live && !live.winner) {
-          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+          scheduleCpuThink(cpuThinkDelay());
         }
       });
 
@@ -2123,104 +2152,113 @@
 
     async function cpuThink() {
       if (!isCpuMode() || !state.roomData) return;
-      void ensureAIMemoryLoaded();
+      if (session.cpuThinking) return;
+      session.cpuThinking = true;
 
-      const live = state.roomData.state;
-      if (!live || live.winner) return;
+      try {
+        void ensureAIMemoryLoaded();
 
-      const now = Date.now();
-      if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-        scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
-        return;
-      }
+        const live = state.roomData.state;
+        if (!live || live.winner) return;
 
-      const actorSide = "white";
-      const actions = [];
-      const board = live.pieces;
-
-      for (const p of board) {
-        if (p.side !== actorSide) continue;
-        if (p.cooldownUntil && now < p.cooldownUntil) continue;
-        const moves = legalMovesForPiece(live, p, true);
-        for (const mv of moves) {
-          const meta = {
-            kind: "piece",
-            pieceType: p.type,
-            promoMode: p.promoMode,
-            from: { x: p.x, y: p.y },
-            to: { x: mv.x, y: mv.y },
-            capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
-            nextMode: mv.nextMode || p.promoMode || "normal",
-            moveKind: mv.kind || "normal"
-          };
-          const key = aiActionKey(meta, actorSide);
-          const score = scoreAction(live, meta, actorSide);
-          actions.push({
-            selected: { kind: "piece", id: p.id },
-            dest: { x: mv.x, y: mv.y },
-            meta,
-            key,
-            score
-          });
+        const now = Date.now();
+        if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
+          scheduleCpuThink(Math.max(80, state.roomData.matchStartAt - now + 30));
+          return;
         }
-      }
 
-      const handCooldown = live.handCooldownUntil?.white || 0;
-      if (handCooldown <= now) {
-        for (const t of pieceOrder) {
-          const count = live.hands.white?.[t] || 0;
-          if (!count) continue;
-          for (let y = 0; y < 9; y++) {
-            for (let x = 0; x < 9; x++) {
-              if (pieceAt(live.pieces, x, y)) continue;
-              const meta = {
-                kind: "hand",
-                pieceType: t,
-                promoMode: "hand",
-                from: null,
-                to: { x, y },
-                capturedType: null,
-                nextMode: "normal",
-                moveKind: "drop"
-              };
-              const key = aiActionKey(meta, actorSide);
-              const score = scoreAction(live, meta, actorSide);
-              actions.push({
-                selected: { kind: "hand", side: "white", type: t },
-                dest: { x, y },
-                meta,
-                key,
-                score
-              });
+        const actorSide = "white";
+        const actions = [];
+        const board = live.pieces;
+
+        for (const p of board) {
+          if (p.side !== actorSide) continue;
+          if (p.cooldownUntil && now < p.cooldownUntil) continue;
+          const moves = legalMovesForPiece(live, p, true);
+          for (const mv of moves) {
+            const meta = {
+              kind: "piece",
+              pieceType: p.type,
+              promoMode: p.promoMode,
+              from: { x: p.x, y: p.y },
+              to: { x: mv.x, y: mv.y },
+              capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
+              nextMode: mv.nextMode || p.promoMode || "normal",
+              moveKind: mv.kind || "normal"
+            };
+            const key = aiActionKey(meta, actorSide);
+            const score = scoreAction(live, meta, actorSide);
+            actions.push({
+              selected: { kind: "piece", id: p.id },
+              dest: { x: mv.x, y: mv.y },
+              meta,
+              key,
+              score
+            });
+          }
+        }
+
+        const handCooldown = live.handCooldownUntil?.white || 0;
+        if (handCooldown <= now) {
+          for (const t of pieceOrder) {
+            const count = live.hands.white?.[t] || 0;
+            if (!count) continue;
+            for (let y = 0; y < 9; y++) {
+              for (let x = 0; x < 9; x++) {
+                if (pieceAt(live.pieces, x, y)) continue;
+                const meta = {
+                  kind: "hand",
+                  pieceType: t,
+                  promoMode: "hand",
+                  from: null,
+                  to: { x, y },
+                  capturedType: null,
+                  nextMode: "normal",
+                  moveKind: "drop"
+                };
+                const key = aiActionKey(meta, actorSide);
+                const score = scoreAction(live, meta, actorSide);
+                actions.push({
+                  selected: { kind: "hand", side: "white", type: t },
+                  dest: { x, y },
+                  meta,
+                  key,
+                  score
+                });
+              }
             }
           }
         }
+
+        if (!actions.length) {
+          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
+          return;
+        }
+
+        actions.sort((a, b) => b.score - a.score);
+        const pool = actions.slice(0, Math.min(6, actions.length));
+        const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
+
+        const prevLive = cloneState(live);
+        const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
+        if (!next) {
+          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
+          return;
+        }
+
+        state.roomData.state = next;
+        state.roomData.updatedAt = Date.now();
+        if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
+        refreshHands();
+        aiObserveTransition(prevLive, next, "white", pick.meta);
+        scheduleRender(0);
+
+        if (!next.winner) {
+          scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
+        }
+      } finally {
+        session.cpuThinking = false;
       }
-
-      if (!actions.length) {
-        scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
-        return;
-      }
-
-      actions.sort((a, b) => b.score - a.score);
-      const pool = actions.slice(0, Math.min(6, actions.length));
-      const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
-
-      const prevLive = cloneState(live);
-      const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
-      if (!next) {
-        scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
-        return;
-      }
-
-      state.roomData.state = next;
-      state.roomData.updatedAt = Date.now();
-      if (next.winner) state.roomData.lastWinnerSide = next.lastWinnerSide || next.winner || null;
-      refreshHands();
-      aiObserveTransition(prevLive, next, "white", pick.meta);
-      scheduleRender(0);
-
-      if (!next.winner) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
     }
 
     async function refreshLocalRematchImmediate() {
@@ -2237,7 +2275,7 @@
       resetLocalEpisode();
       refreshHands();
       scheduleRender(0);
-      if (isCpuMode()) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+      if (isCpuMode()) scheduleCpuThink(cpuThinkDelay());
     }
 
     async function voteRematch(yes) {
@@ -2313,6 +2351,42 @@
       if (!yes) leaveToHome();
     }
 
+    function buildActionMeta(live, selected, destBoard) {
+      if (!selected) return null;
+      if (selected.kind === "piece") {
+        const piece = live.pieces.find(p => p.id === selected.id);
+        if (!piece) return null;
+        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
+        const legal = legalMovesForPiece(live, piece, true);
+        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
+        return {
+          kind: "piece",
+          pieceType: piece.type,
+          promoMode: piece.promoMode,
+          from: { x: piece.x, y: piece.y },
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: captured?.type || null,
+          nextMode: move?.nextMode || piece.promoMode || "normal",
+          moveKind: move?.kind || "normal"
+        };
+      }
+
+      if (selected.kind === "hand") {
+        return {
+          kind: "hand",
+          pieceType: selected.type,
+          promoMode: "hand",
+          from: null,
+          to: { x: destBoard.x, y: destBoard.y },
+          capturedType: null,
+          nextMode: "normal",
+          moveKind: "drop"
+        };
+      }
+
+      return null;
+    }
+
     async function commitMove(destBoard) {
       const live = state.roomData?.state;
       if (!live || !state.selected) return;
@@ -2379,44 +2453,8 @@
       if (isCpuMode()) {
         const actionMeta = buildActionMeta(prevLive, selected, destBoard);
         aiObserveTransition(prevLive, next, actorSide, actionMeta);
-        if (!next.winner) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 0);
+        if (!next.winner) scheduleCpuThink(session.kind === "cpu" ? cpuThinkDelay() : 100);
       }
-    }
-
-    function buildActionMeta(live, selected, destBoard) {
-      if (!selected) return null;
-      if (selected.kind === "piece") {
-        const piece = live.pieces.find(p => p.id === selected.id);
-        if (!piece) return null;
-        const captured = pieceAt(live.pieces, destBoard.x, destBoard.y);
-        const legal = legalMovesForPiece(live, piece, true);
-        const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
-        return {
-          kind: "piece",
-          pieceType: piece.type,
-          promoMode: piece.promoMode,
-          from: { x: piece.x, y: piece.y },
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: captured?.type || null,
-          nextMode: move?.nextMode || piece.promoMode || "normal",
-          moveKind: move?.kind || "normal"
-        };
-      }
-
-      if (selected.kind === "hand") {
-        return {
-          kind: "hand",
-          pieceType: selected.type,
-          promoMode: "hand",
-          from: null,
-          to: { x: destBoard.x, y: destBoard.y },
-          capturedType: null,
-          nextMode: "normal",
-          moveKind: "drop"
-        };
-      }
-
-      return null;
     }
 
     function getSlidePieceTarget(releasePoint) {
