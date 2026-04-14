@@ -198,7 +198,7 @@
       aspect-ratio:1/1;
       display:block;
       border-radius:16px;
-      background:var(--bg);
+      background:var(--panel);
       box-shadow:0 7px 20px rgba(0,0,0,.08);
       touch-action:none;
     }
@@ -444,9 +444,8 @@
     const session = {
       kind: "online", // online | cpu | cpu_serious | local_dual
       renderTimer: null,
-      cpuLoop: null,
-      cpuThinking: false,
-      cpuNextActAt: 0
+      cpuTimer: null,
+      cpuThinking: false
     };
 
     const state = {
@@ -513,9 +512,9 @@
 
     function clearTimers(){
       if (session.renderTimer) clearTimeout(session.renderTimer);
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
+      if (session.cpuTimer) clearTimeout(session.cpuTimer);
       session.renderTimer = null;
-      session.cpuLoop = null;
+      session.cpuTimer = null;
       session.cpuThinking = false;
     }
 
@@ -1157,7 +1156,7 @@
         else ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f2e8";
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#fffaf2";
         ctx.fillRect(0, 0, w, h);
       } catch {}
     }
@@ -1330,36 +1329,10 @@
       return false;
     }
 
-    function cpuMoveDelayMs() {
+    function cpuThinkDelay() {
       if (session.kind === "cpu") return 1000 + Math.random() * 500;
       if (session.kind === "cpu_serious") return 100;
       return 0;
-    }
-
-    function queueCpuNextMove(delay = null) {
-      if (!isCpuMode()) return;
-      session.cpuNextActAt = Date.now() + (delay ?? cpuMoveDelayMs());
-    }
-
-    function startCpuLoop() {
-      if (!isCpuMode()) return;
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
-      queueCpuNextMove(session.kind === "cpu" ? cpuMoveDelayMs() : 100);
-
-      session.cpuLoop = setInterval(() => {
-        if (!isCpuMode() || !state.roomData) return;
-        if (state.roomData.state?.winner) return;
-        if (Date.now() < session.cpuNextActAt) return;
-        if (session.cpuThinking) return;
-        void cpuThink();
-      }, 100);
-    }
-
-    function stopCpuLoop() {
-      if (session.cpuLoop) clearInterval(session.cpuLoop);
-      session.cpuLoop = null;
-      session.cpuNextActAt = 0;
-      session.cpuThinking = false;
     }
 
     function scheduleRender(delay = null) {
@@ -1388,6 +1361,16 @@
       }, delay);
     }
 
+    function scheduleCpuThink(delay = null) {
+      if (!isCpuMode()) return;
+      if (session.cpuTimer) return;
+      const actualDelay = delay ?? cpuThinkDelay();
+      session.cpuTimer = setTimeout(() => {
+        session.cpuTimer = null;
+        void cpuThink();
+      }, actualDelay);
+    }
+
     function updateHandCooldownIndicators(now) {
       const live = state.roomData?.state;
       if (!live) return;
@@ -1405,34 +1388,6 @@
         } else {
           ring.style.opacity = "0";
         }
-      }
-    }
-
-    function recoverCanvas() {
-      try {
-        const rect = boardCanvas.getBoundingClientRect();
-        const dpr = Math.max(1, window.devicePixelRatio || 1);
-        const w = Math.max(1, Math.round(rect.width));
-        const h = Math.max(1, Math.round(rect.height));
-        if (w < 20 || h < 20) return;
-        boardCanvas.width = Math.floor(w * dpr);
-        boardCanvas.height = Math.floor(h * dpr);
-        if (typeof ctx.resetTransform === "function") ctx.resetTransform();
-        else ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f2e8";
-        ctx.fillRect(0, 0, w, h);
-      } catch {}
-    }
-
-    function safeRenderFrame() {
-      try {
-        renderFrame();
-      } catch (err) {
-        console.error("renderFrame failed", err);
-        recoverCanvas();
-        scheduleRender(150);
       }
     }
 
@@ -1963,7 +1918,7 @@
 
       if (kind === "cpu" || kind === "cpu_serious") {
         void ensureAIMemoryLoaded();
-        startCpuLoop();
+        scheduleCpuThink(cpuThinkDelay());
       }
     }
 
@@ -2137,6 +2092,10 @@
 
         refreshHands();
         scheduleRender(0);
+
+        if (isCpuMode() && live && !live.winner) {
+          scheduleCpuThink(cpuThinkDelay());
+        }
       });
 
       setStatus(`ルーム ${roomId} に接続したよ。`);
@@ -2179,14 +2138,11 @@
         void ensureAIMemoryLoaded();
 
         const live = state.roomData.state;
-        if (!live || live.winner) {
-          queueCpuNextMove(cpuMoveDelayMs());
-          return;
-        }
+        if (!live || live.winner) return;
 
         const now = Date.now();
         if (state.roomData.matchStartAt && now < state.roomData.matchStartAt) {
-          queueCpuNextMove(Math.max(50, state.roomData.matchStartAt - now));
+          scheduleCpuThink(cpuThinkDelay());
           return;
         }
 
@@ -2254,7 +2210,7 @@
         }
 
         if (!actions.length) {
-          queueCpuNextMove(cpuMoveDelayMs());
+          scheduleCpuThink(cpuThinkDelay());
           return;
         }
 
@@ -2265,7 +2221,7 @@
         const prevLive = cloneState(live);
         const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
         if (!next) {
-          queueCpuNextMove(cpuMoveDelayMs());
+          scheduleCpuThink(cpuThinkDelay());
           return;
         }
 
@@ -2276,7 +2232,7 @@
         aiObserveTransition(prevLive, next, "white", pick.meta);
         scheduleRender(0);
 
-        queueCpuNextMove(cpuMoveDelayMs());
+        if (!next.winner) scheduleCpuThink(cpuThinkDelay());
       } finally {
         session.cpuThinking = false;
       }
@@ -2296,7 +2252,7 @@
       resetLocalEpisode();
       refreshHands();
       scheduleRender(0);
-      if (isCpuMode()) queueCpuNextMove(cpuMoveDelayMs());
+      if (isCpuMode()) scheduleCpuThink(cpuThinkDelay());
     }
 
     async function voteRematch(yes) {
@@ -2438,6 +2394,7 @@
       if (isCpuMode()) {
         const actionMeta = buildActionMeta(prevLive, selected, destBoard);
         aiObserveTransition(prevLive, next, actorSide, actionMeta);
+        if (!next.winner) scheduleCpuThink(cpuThinkDelay());
       }
     }
 
