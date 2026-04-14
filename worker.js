@@ -1,5 +1,5 @@
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const corsHeaders = {
       "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -14,10 +14,7 @@ export default {
 
     if (request.method !== "POST") {
       return json(
-        {
-          error: "Method not allowed",
-          message: "Use POST.",
-        },
+        { error: "Method not allowed", message: "Use POST." },
         405,
         corsHeaders
       );
@@ -39,26 +36,23 @@ export default {
       body = await request.json();
     } catch {
       return json(
-        {
-          error: "Invalid JSON",
-          message: "Request body must be JSON.",
-        },
+        { error: "Invalid JSON", message: "Request body must be JSON." },
         400,
         corsHeaders
       );
     }
 
-    const normalized = normalizeRequest(body);
+    const input = normalizeRequest(body);
 
     try {
-      const aiResult = await generateModWithOpenAI(env, normalized);
-      return json(aiResult, 200, corsHeaders);
+      const result = await generateModWithOpenAI(env, input);
+      return json(result, 200, corsHeaders);
     } catch (err) {
       return json(
         {
           error: "OpenAI request failed",
           message: err?.message || String(err),
-          fallback: buildFallbackResult(normalized),
+          fallback: buildFallbackResult(input),
         },
         500,
         corsHeaders
@@ -72,6 +66,14 @@ function json(data, status = 200, headers = {}) {
     status,
     headers,
   });
+}
+
+function safeString(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function isObject(v) {
+  return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
 function normalizeRequest(body) {
@@ -97,19 +99,17 @@ function normalizeRequest(body) {
   };
 }
 
-function safeString(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-
-function isObject(v) {
-  return !!v && typeof v === "object" && !Array.isArray(v);
-}
-
 function buildSystemPrompt() {
   return [
-    "You generate a compact JSON object for a Shogi mod editor.",
+    "あなたは将棋MODの編集AIです。",
+    "返答は必ずJSONのみ。",
     "",
-    "Return ONLY JSON with this schema:",
+    "文章は必ず簡潔な日本語にする。",
+    "説明は短く、自然で、暗号っぽくしない。",
+    "summary は 1〜2文の短い日本語。",
+    "prompt は必要なら短い日本語の補足。",
+    "",
+    "schema:",
     "{",
     '  "summary": string,',
     '  "prompt": string,',
@@ -122,12 +122,11 @@ function buildSystemPrompt() {
     "  }",
     "}",
     "",
-    "Important rules:",
-    "1. Keep patches conservative and game-safe.",
-    "2. Never remove the core multiplayer game logic.",
-    "3. If the request is vague, make a reasonable small mod.",
-    "4. Use Japanese in summary and prompt when natural.",
-    "5. JSON only. No markdown. No code fences. No extra text.",
+    "ルール:",
+    "1. 既存の対戦機能は壊さない。",
+    "2. 変更は小さく安全にする。",
+    "3. 迷ったら控えめな改善にする。",
+    "4. JSON以外を出さない。",
   ].join("\n");
 }
 
@@ -138,12 +137,12 @@ async function generateModWithOpenAI(env, input) {
     `MOD名: ${input.currentModName || "(未設定)"}`,
     `現在のバージョン数: ${input.currentVersion || 0}`,
     "",
-    "既存バージョンの要約:",
+    "既存バージョン:",
     ...(input.existingVersions.length
-      ? input.existingVersions.map((v) => `- v${v.version}: ${v.summary || "(なし)"}`)
+      ? input.existingVersions.map((v) => `- v${v.version}: ${v.summary || "説明なし"}`)
       : ["- なし"]),
     "",
-    "ベースの設定:",
+    "ベース設定:",
     JSON.stringify(input.basePatch || {}, null, 2),
     "",
     "依頼内容:",
@@ -160,7 +159,7 @@ async function generateModWithOpenAI(env, input) {
       model,
       instructions: buildSystemPrompt(),
       input: userPrompt,
-      temperature: 0.4,
+      temperature: 0.3,
       max_output_tokens: 1200,
       text: {
         format: {
@@ -186,7 +185,6 @@ async function generateModWithOpenAI(env, input) {
                       piece1: { type: "string" },
                       piece2: { type: "string" },
                     },
-                    required: [],
                   },
                   game: {
                     type: "object",
@@ -198,7 +196,6 @@ async function generateModWithOpenAI(env, input) {
                       cpuDelayMax: { type: "number" },
                       seriousCpuInterval: { type: "number" },
                     },
-                    required: [],
                   },
                   labels: {
                     type: "object",
@@ -207,7 +204,6 @@ async function generateModWithOpenAI(env, input) {
                       kingBlack: { type: "string" },
                       kingWhite: { type: "string" },
                     },
-                    required: [],
                   },
                   rules: {
                     type: "object",
@@ -236,9 +232,7 @@ async function generateModWithOpenAI(env, input) {
   const data = await response.json();
   const text = extractOutputText(data);
 
-  if (!text) {
-    return buildFallbackResult(input);
-  }
+  if (!text) return buildFallbackResult(input);
 
   let parsed;
   try {
@@ -274,21 +268,16 @@ function extractOutputText(data) {
 
 function sanitizeResult(parsed, input) {
   const fallback = buildFallbackResult(input);
-  const out = {
+  return {
     summary: safeString(parsed?.summary || fallback.summary),
-    prompt: safeString(parsed?.prompt || input.request || fallback.prompt),
+    prompt: safeString(parsed?.prompt || fallback.prompt),
     patch: mergePatch(fallback.patch, isObject(parsed?.patch) ? parsed.patch : {}),
   };
-
-  if (!out.summary.trim()) out.summary = fallback.summary;
-  if (!out.prompt.trim()) out.prompt = fallback.prompt;
-
-  return out;
 }
 
 function buildFallbackResult(input) {
   return {
-    summary: `「${input.currentModName || "MOD"}」の説明から生成した試作版。`,
+    summary: `${input.currentModName || "MOD"}の試作版。`,
     prompt: input.request || "",
     patch: {
       theme: {},
@@ -308,11 +297,13 @@ function buildFallbackResult(input) {
 
 function mergePatch(base, extra) {
   const out = deepClone(base);
+
   if (extra.theme) out.theme = { ...(out.theme || {}), ...pickStringFields(extra.theme, ["boardLight", "boardDark", "piece1", "piece2"]) };
   if (extra.game) out.game = { ...(out.game || {}), ...pickNumberFields(extra.game, ["cooldownMs", "handCooldownMs", "cpuDelayMin", "cpuDelayMax", "seriousCpuInterval"]) };
   if (extra.labels) out.labels = { ...(out.labels || {}), ...pickStringFields(extra.labels, ["kingBlack", "kingWhite"]) };
   if (extra.rules && isObject(extra.rules)) out.rules = deepMergeObjects(out.rules || {}, extra.rules);
   if (extra.ui && isObject(extra.ui)) out.ui = deepMergeObjects(out.ui || {}, extra.ui);
+
   return out;
 }
 
