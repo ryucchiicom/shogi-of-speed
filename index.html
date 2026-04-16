@@ -23,7 +23,6 @@
       --mod-blue:#6a8dff;
       --mod-danger:#e46a6a;
     }
-
     @media (prefers-color-scheme: dark){
       :root{
         --bg:#15110d;
@@ -44,483 +43,144 @@
         --mod-danger:#ff8f8f;
       }
     }
-
     html,body{
-      margin:0;
-      padding:0;
-      background:var(--bg);
-      color:var(--ink);
+      margin:0;padding:0;background:var(--bg);color:var(--ink);
       font-family:system-ui,-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;
-      user-select:none;
-      -webkit-user-select:none;
-      overscroll-behavior:none;
+      user-select:none;-webkit-user-select:none;overscroll-behavior:none;
     }
-
     body{ touch-action:manipulation; }
-
-    #app{
-      max-width:980px;
-      margin:0 auto;
-      padding:10px;
-      box-sizing:border-box;
-    }
-
+    #app{ max-width:980px;margin:0 auto;padding:10px;box-sizing:border-box; }
     .panel{
-      background:var(--panel);
-      border:1px solid var(--line);
-      border-radius:14px;
+      background:var(--panel);border:1px solid var(--line);border-radius:14px;
       box-shadow:0 3px 14px rgba(0,0,0,.05);
     }
-
     #topbar{
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      align-items:center;
-      padding:8px;
-      margin-bottom:8px;
+      display:flex;flex-wrap:wrap;gap:7px;align-items:center;padding:8px;margin-bottom:8px;
     }
-
     #roomInput{
-      width:min(100%, 320px);
-      padding:9px 10px;
-      border-radius:11px;
-      border:1px solid var(--line);
-      font-size:15px;
-      background:var(--ui-btn);
-      color:var(--ink);
-      outline:none;
-      box-sizing:border-box;
+      width:min(100%, 340px);padding:9px 10px;border-radius:11px;border:1px solid var(--line);
+      font-size:15px;background:var(--ui-btn);color:var(--ink);outline:none;box-sizing:border-box;
+      text-transform:uppercase;
     }
-
-    button, select, textarea, input{
-      font:inherit;
+    button,select,input,textarea{ font:inherit; }
+    button,select{
+      padding:9px 11px;border-radius:11px;border:1px solid var(--line);
+      background:var(--ui-btn);color:var(--ink);font-size:14px;outline:none;touch-action:manipulation;
     }
-
-    button, select{
-      padding:9px 11px;
-      border-radius:11px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      color:var(--ink);
-      font-size:14px;
-      outline:none;
-      touch-action:manipulation;
-    }
-
     button{ cursor:pointer; }
-
     button.primary{
-      background:linear-gradient(180deg,#fff3bf,#ffe08c);
-      border-color:#d8b84a;
-      color:var(--primary-text);
-      font-weight:800;
+      background:linear-gradient(180deg,#fff3bf,#ffe08c);border-color:#d8b84a;color:var(--primary-text);font-weight:800;
     }
-
-    button.green{
-      background:var(--mod-green-soft);
-      border-color:var(--mod-green);
-      color:var(--mod-green);
-      font-weight:900;
-    }
-
-    button.blue{
-      background:rgba(125,152,255,.12);
-      border-color:var(--mod-blue);
-      color:var(--mod-blue);
-      font-weight:800;
-    }
-
-    button.danger{
-      background:rgba(228,106,106,.12);
-      border-color:var(--mod-danger);
-      color:var(--mod-danger);
-      font-weight:800;
-    }
-
-    button:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
-
-    #status{
-      padding:8px 10px;
-      margin-bottom:8px;
-      line-height:1.45;
-      font-size:13px;
-    }
-
-    #layout{
-      display:grid;
-      grid-template-columns:1fr;
-      gap:8px;
-    }
-
-    #handsTop,#handsBottom{
-      padding:8px;
-    }
-
-    .handRow{
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      align-items:center;
-    }
-
-    .rot180{
-      transform:rotate(180deg);
-      transform-origin:center center;
-    }
-
-    .handLabel{
-      font-weight:700;
-      min-width:96px;
-      font-size:13px;
-    }
-
+    button.green{ background:var(--mod-green-soft);border-color:var(--mod-green);color:var(--mod-green);font-weight:900; }
+    button.blue{ background:rgba(125,152,255,.12);border-color:var(--mod-blue);color:var(--mod-blue);font-weight:800; }
+    button.danger{ background:rgba(228,106,106,.12);border-color:var(--mod-danger);color:var(--mod-danger);font-weight:800; }
+    button:disabled{ opacity:.55;cursor:not-allowed; }
+    #status{ padding:8px 10px;margin-bottom:8px;line-height:1.45;font-size:13px; }
+    #layout{ display:grid;grid-template-columns:1fr;gap:8px; }
+    #handsTop,#handsBottom{ padding:8px; }
+    .handRow{ display:flex;flex-wrap:wrap;gap:7px;align-items:center; }
+    .rot180{ transform:rotate(180deg);transform-origin:center center; }
+    .handLabel{ font-weight:700;min-width:96px;font-size:13px; }
     .handBtn{
-      min-width:64px;
-      text-align:center;
-      padding:8px 9px;
-      padding-right:34px;
-      font-size:13px;
-      position:relative;
-      overflow:hidden;
+      min-width:64px;text-align:center;padding:8px 9px;padding-right:34px;font-size:13px;
+      position:relative;overflow:hidden;
     }
-
-    .handBtn.selected{
-      outline:3px solid rgba(138,180,255,.9);
-      border-color:#7aa4f5;
-    }
-
+    .handBtn.selected{ outline:3px solid rgba(138,180,255,.9);border-color:#7aa4f5; }
     .handCooldown{
-      position:absolute;
-      right:8px;
-      top:50%;
-      transform:translateY(-50%);
-      width:18px;
-      height:18px;
-      border-radius:50%;
-      opacity:0;
-      pointer-events:none;
+      position:absolute;right:8px;top:50%;transform:translateY(-50%);width:18px;height:18px;border-radius:50%;
+      opacity:0;pointer-events:none;
       background:conic-gradient(from -90deg, rgba(255,255,255,.95) 0 calc(var(--cd, 0) * 1turn), rgba(0,0,0,.14) 0 1turn);
       -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
       mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
     }
-
-    #boardWrap{
-      padding:8px;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-    }
-
+    #boardWrap{ padding:8px;display:flex;justify-content:center;align-items:center; }
     canvas{
-      width:min(88vw,560px);
-      height:min(88vw,560px);
-      max-width:560px;
-      max-height:560px;
-      aspect-ratio:1/1;
-      display:block;
-      border-radius:16px;
-      background:var(--panel);
-      box-shadow:0 7px 20px rgba(0,0,0,.08);
-      touch-action:none;
+      width:min(88vw,560px);height:min(88vw,560px);max-width:560px;max-height:560px;aspect-ratio:1/1;
+      display:block;border-radius:16px;background:var(--panel);box-shadow:0 7px 20px rgba(0,0,0,.08);touch-action:none;
     }
-
     .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:6px 9px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      font-size:12px;
-      white-space:nowrap;
+      display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;border:1px solid var(--line);
+      background:var(--ui-btn);font-size:12px;white-space:nowrap;
     }
-
-    #selectedMods{
-      display:flex;
-      gap:6px;
-      flex-wrap:wrap;
-      width:100%;
-      margin-top:4px;
-    }
-
+    #selectedMods{ display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:4px; }
     .modChip{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:6px 9px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--panel);
-      font-size:12px;
-      cursor:pointer;
-      white-space:nowrap;
+      display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;border:1px solid var(--line);
+      background:var(--panel);font-size:12px;cursor:pointer;white-space:nowrap;
     }
-
     .modChip strong{ font-weight:900; }
-
     #modSuggest{
-      display:none;
-      gap:6px;
-      flex-wrap:wrap;
-      margin-top:6px;
-      padding:6px 0 0;
+      display:none;gap:6px;flex-wrap:wrap;margin-top:6px;padding:6px 0 0;
     }
-
     #modSuggest.show{ display:flex; }
-
     .suggestChip{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:5px 8px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      font-size:12px;
-      cursor:pointer;
+      display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;border:1px solid var(--line);
+      background:var(--ui-btn);font-size:12px;cursor:pointer;
     }
-
     #modScreen{
-      position:fixed;
-      inset:0;
-      z-index:80;
-      background:var(--bg);
-      display:none;
-      overflow:auto;
+      position:fixed;inset:0;z-index:80;background:var(--bg);display:none;overflow:auto;
     }
     #modScreen.show{ display:block; }
-
-    #modScreenInner{
-      max-width:1100px;
-      margin:0 auto;
-      padding:10px;
-      box-sizing:border-box;
-    }
-
-    #modHeader{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      align-items:center;
-      margin-bottom:8px;
-    }
-
-    #modLayout{
-      display:grid;
-      grid-template-columns: 1.05fr 1.15fr;
-      gap:8px;
-      min-height:70vh;
-    }
-
-    @media (max-width: 860px){
-      #modLayout{ grid-template-columns:1fr; }
-    }
-
-    #modListPanel,#modEditorPanel{
-      padding:10px;
-      box-sizing:border-box;
-    }
-
-    .modList{
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      margin-top:8px;
-    }
-
+    #modScreenInner{ max-width:1100px;margin:0 auto;padding:10px;box-sizing:border-box; }
+    #modHeader{ display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px; }
+    #modLayout{ display:grid;grid-template-columns:1.05fr 1.15fr;gap:8px;min-height:70vh; }
+    @media (max-width: 860px){ #modLayout{ grid-template-columns:1fr; } }
+    #modListPanel,#modEditorPanel{ padding:10px;box-sizing:border-box; }
+    .modList{ display:flex;flex-direction:column;gap:8px;margin-top:8px; }
     .modCard{
-      padding:10px;
-      border:1px solid var(--line);
-      border-radius:14px;
-      background:var(--panel);
-      cursor:pointer;
+      padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);cursor:pointer;
     }
-    .modCard.selected{
-      outline:3px solid rgba(106,141,255,.25);
-      border-color:var(--mod-blue);
-    }
-
+    .modCard.selected{ outline:3px solid rgba(106,141,255,.25);border-color:var(--mod-blue); }
     .modTitle{
-      display:flex;
-      justify-content:space-between;
-      gap:8px;
-      align-items:center;
-      font-weight:900;
-      margin-bottom:4px;
+      display:flex;justify-content:space-between;gap:8px;align-items:center;font-weight:900;margin-bottom:4px;
     }
-
-    .modMeta{
-      font-size:12px;
-      opacity:.85;
-      line-height:1.45;
-      white-space:pre-wrap;
-    }
-
+    .modMeta{ font-size:12px;opacity:.85;line-height:1.45;white-space:pre-wrap; }
     .badge{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:4px 8px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      font-size:12px;
+      display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--line);
+      background:var(--ui-btn);font-size:12px;
     }
-
-    .editorField{
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-      margin-top:8px;
-    }
-
-    .editorField label{
-      font-size:12px;
-      opacity:.85;
-      font-weight:800;
-    }
-
+    .editorField{ display:flex;flex-direction:column;gap:6px;margin-top:8px; }
+    .editorField label{ font-size:12px;opacity:.85;font-weight:800; }
     .editorField input,.editorField textarea{
-      width:100%;
-      box-sizing:border-box;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      color:var(--ink);
-      padding:10px 11px;
-      outline:none;
-      font-size:14px;
+      width:100%;box-sizing:border-box;border-radius:12px;border:1px solid var(--line);background:var(--ui-btn);
+      color:var(--ink);padding:10px 11px;outline:none;font-size:14px;
     }
-
-    .editorField textarea{
-      min-height:150px;
-      resize:vertical;
-      line-height:1.5;
-    }
-
-    #versionRow{
-      display:flex;
-      gap:6px;
-      flex-wrap:wrap;
-      margin-top:8px;
-    }
-
+    .editorField textarea{ min-height:150px;resize:vertical;line-height:1.5; }
+    #versionRow{ display:flex;gap:6px;flex-wrap:wrap;margin-top:8px; }
     .verBtn{
-      padding:7px 10px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      cursor:pointer;
-      font-size:13px;
+      padding:7px 10px;border-radius:999px;border:1px solid var(--line);background:var(--ui-btn);cursor:pointer;font-size:13px;
     }
-    .verBtn.selected{
-      border-color:var(--mod-blue);
-      outline:3px solid rgba(125,152,255,.18);
-    }
-
+    .verBtn.selected{ border-color:var(--mod-blue);outline:3px solid rgba(125,152,255,.18); }
     #versionPreview{
-      margin-top:8px;
-      padding:10px;
-      border:1px solid var(--line);
-      border-radius:14px;
-      background:var(--panel);
-      white-space:pre-wrap;
-      line-height:1.5;
-      min-height:120px;
+      margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);
+      white-space:pre-wrap;line-height:1.5;min-height:120px;
     }
-
-    #modTools{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin-top:8px;
-    }
-
+    #modTools{ display:flex;flex-wrap:wrap;gap:8px;margin-top:8px; }
     #rematchOverlay{
-      position:fixed;
-      inset:0;
-      background:var(--overlay);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      z-index:60;
-      padding:18px;
-      box-sizing:border-box;
+      position:fixed;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;z-index:60;
+      padding:18px;box-sizing:border-box;
     }
-
-    #rematchOverlay.show{
-      display:flex;
-    }
-
+    #rematchOverlay.show{ display:flex; }
     #rematchCard{
-      width:min(92vw,380px);
-      background:var(--overlay-card);
-      color:var(--ink);
-      border:1px solid var(--line);
-      border-radius:18px;
-      box-shadow:0 16px 40px rgba(0,0,0,.25);
-      padding:16px;
-      box-sizing:border-box;
+      width:min(92vw,380px);background:var(--overlay-card);color:var(--ink);border:1px solid var(--line);border-radius:18px;
+      box-shadow:0 16px 40px rgba(0,0,0,.25);padding:16px;box-sizing:border-box;
     }
-
-    #rematchWinner{
-      font-size:28px;
-      font-weight:900;
-      line-height:1.1;
-      margin-bottom:8px;
-      text-align:center;
-    }
-
-    #rematchTitle{
-      font-weight:800;
-      font-size:18px;
-      margin-bottom:8px;
-      text-align:center;
-    }
-
+    #rematchWinner{ font-size:28px;font-weight:900;line-height:1.1;margin-bottom:8px;text-align:center; }
+    #rematchTitle{ font-weight:800;font-size:18px;margin-bottom:8px;text-align:center; }
     #rematchDesc{
-      font-size:13px;
-      line-height:1.55;
-      margin-bottom:14px;
-      opacity:.95;
-      white-space:pre-line;
-      text-align:center;
+      font-size:13px;line-height:1.55;margin-bottom:14px;opacity:.95;white-space:pre-line;text-align:center;
     }
-
-    #rematchButtons{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-
-    #rematchButtons button{
-      flex:1 1 100px;
-      min-width:100px;
-      font-weight:700;
-    }
-
+    #rematchButtons{ display:flex;gap:8px;flex-wrap:wrap; }
+    #rematchButtons button{ flex:1 1 100px;min-width:100px;font-weight:700; }
     .thinPill{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:6px 12px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--ui-btn);
-      font-size:12px;
-      white-space:nowrap;
+      display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:999px;border:1px solid var(--line);
+      background:var(--ui-btn);font-size:12px;white-space:nowrap;
     }
   </style>
 </head>
 <body>
   <div id="app">
     <div class="panel" id="topbar">
-      <input id="roomInput" maxlength="120" placeholder="GAME ROOM" />
+      <input id="roomInput" maxlength="120" placeholder="ROOM CODE / MOD=..." />
       <button class="primary" id="enterBtn">入室 / 作成</button>
       <button id="shareBtn">コードを共有</button>
       <label class="pill">操作
@@ -537,17 +197,9 @@
     <div class="panel" id="status">ルームコードを入れて「入室 / 作成」を押してね。</div>
 
     <div id="layout">
-      <div class="panel" id="handsTop">
-        <div class="handRow" id="enemyHands"></div>
-      </div>
-
-      <div class="panel" id="boardWrap">
-        <canvas id="board"></canvas>
-      </div>
-
-      <div class="panel" id="handsBottom">
-        <div class="handRow" id="myHands"></div>
-      </div>
+      <div class="panel" id="handsTop"><div class="handRow" id="enemyHands"></div></div>
+      <div class="panel" id="boardWrap"><canvas id="board"></canvas></div>
+      <div class="panel" id="handsBottom"><div class="handRow" id="myHands"></div></div>
     </div>
   </div>
 
@@ -566,6 +218,11 @@
         </div>
 
         <div class="panel" id="modEditorPanel">
+          <div class="editorField">
+            <label>AIエンドポイント</label>
+            <input id="aiEndpoint" placeholder="https://example.workers.dev" />
+          </div>
+
           <div class="editorField">
             <label>MOD名</label>
             <input id="modName" maxlength="40" placeholder="MOD名を入力..." />
@@ -609,12 +266,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
     import {
-      getFirestore,
-      doc,
-      setDoc,
-      getDoc,
-      onSnapshot,
-      runTransaction
+      getFirestore, doc, setDoc, getDoc, onSnapshot, runTransaction
     } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
     (() => {
@@ -631,8 +283,6 @@
       const app = initializeApp(firebaseConfig);
       try { getAnalytics(app); } catch {}
       const db = getFirestore(app);
-
-      const MOD_AI_ENDPOINT = localStorage.getItem("MOD_AI_ENDPOINT") || "";
 
       const boardCanvas = document.getElementById("board");
       const ctx = boardCanvas.getContext("2d");
@@ -666,10 +316,13 @@
       const deleteModBtn = document.getElementById("deleteModBtn");
       const versionRow = document.getElementById("versionRow");
       const versionPreview = document.getElementById("versionPreview");
+      const aiEndpointEl = document.getElementById("aiEndpoint");
 
       const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
       const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
       const STALE_MS = 30000;
+      const COOLDOWN_MS = 3000;
+      const COUNTDOWN_MS = 3000;
 
       const TYPE_LABEL = {
         pawn:"歩", lance:"香", knight:"桂", silver:"銀", gold:"金",
@@ -701,6 +354,7 @@
         cpuBusy: false,
         activeMods: [],
         roomMods: [],
+        previewMods: [],
         modStore: loadModStore(),
         currentModId: null,
         currentVersion: null
@@ -746,13 +400,9 @@
           return { list: [] };
         }
       }
-
       function saveModStore(){
-        try{
-          localStorage.setItem("shogi_mod_store_v1", JSON.stringify(session.modStore));
-        }catch{}
+        try{ localStorage.setItem("shogi_mod_store_v1", JSON.stringify(session.modStore)); }catch{}
       }
-
       function deepMerge(a, b){
         const out = Array.isArray(a) ? a.slice() : { ...(a || {}) };
         for(const [k, v] of Object.entries(b || {})){
@@ -764,37 +414,22 @@
         }
         return out;
       }
-
       function getDefaultPatch(){
         return {
-          theme: {},
-          game: {
-            cooldownMs: 3000,
-            handCooldownMs: 3000,
-            cpuDelayMin: 1000,
-            cpuDelayMax: 1500,
-            seriousCpuInterval: 100
-          },
-          labels: {},
-          rules: {},
-          ui: {}
+          theme:{},
+          game:{ cooldownMs:3000, handCooldownMs:3000, cpuDelayMin:1000, cpuDelayMax:1500, seriousCpuInterval:100 },
+          labels:{},
+          rules:{},
+          ui:{}
         };
       }
-
-      function randomRoyalLabels(){
-        return Math.random() < 0.5 ? { black:"王", white:"玉" } : { black:"玉", white:"王" };
-      }
-
+      function randomRoyalLabels(){ return Math.random() < 0.5 ? { black:"王", white:"玉" } : { black:"玉", white:"王" }; }
       function buildRoyalLabels(lastWinnerSide){
         if(lastWinnerSide === "black" || lastWinnerSide === "white"){
-          return {
-            black: lastWinnerSide === "black" ? "王" : "玉",
-            white: lastWinnerSide === "white" ? "王" : "玉"
-          };
+          return { black: lastWinnerSide === "black" ? "王" : "玉", white: lastWinnerSide === "white" ? "王" : "玉" };
         }
         return randomRoyalLabels();
       }
-
       function currentTheme(){
         const patch = getRuntimePatch().theme || {};
         return {
@@ -804,36 +439,18 @@
           piece2: patch.piece2 || BASE_THEME.piece2
         };
       }
-
-      function currentGamePatch(){
-        return getRuntimePatch().game || {};
-      }
-
-      function currentCooldownMs(){
-        return Number(currentGamePatch().cooldownMs || 3000);
-      }
-
-      function currentHandCooldownMs(){
-        return Number(currentGamePatch().handCooldownMs || 3000);
-      }
-
+      function currentGamePatch(){ return getRuntimePatch().game || {}; }
+      function currentCooldownMs(){ return Number(currentGamePatch().cooldownMs || COOLDOWN_MS); }
+      function currentHandCooldownMs(){ return Number(currentGamePatch().handCooldownMs || COOLDOWN_MS); }
       function currentCpuDelay(){
         const p = currentGamePatch();
-        return {
-          min: Number(p.cpuDelayMin ?? 1000),
-          max: Number(p.cpuDelayMax ?? 1500),
-          serious: Number(p.seriousCpuInterval ?? 100)
-        };
+        return { min:Number(p.cpuDelayMin ?? 1000), max:Number(p.cpuDelayMax ?? 1500), serious:Number(p.seriousCpuInterval ?? 100) };
       }
-
       function getRuntimePatch(){
         let patch = getDefaultPatch();
-        for(const mod of [...session.activeMods, ...session.roomMods]){
-          patch = deepMerge(patch, mod.patch || {});
-        }
+        for(const mod of [...session.activeMods, ...session.roomMods]) patch = deepMerge(patch, mod.patch || {});
         return patch;
       }
-
       function applyRuntimeTheme(){
         const t = currentTheme();
         document.documentElement.style.setProperty("--board-dark", t.boardDark);
@@ -843,53 +460,30 @@
         scheduleRender(0);
       }
 
-      function normalizeRoomInputText(v){
-        return (v || "").trim();
-      }
-
+      function normalizeRoomInputText(v){ return (v || "").trim(); }
       function forceUpperRoomInput(){
-        const start = roomInput.selectionStart;
-        const end = roomInput.selectionEnd;
-        const upper = roomInput.value.toUpperCase();
-        if(roomInput.value !== upper){
-          roomInput.value = upper;
-          if(typeof start === "number" && typeof end === "number"){
-            try{ roomInput.setSelectionRange(start, end); }catch{}
-          }
-        }
+        const up = roomInput.value.toUpperCase();
+        if(roomInput.value !== up) roomInput.value = up;
       }
-
       function parseRoomAndMods(raw){
         const text = normalizeRoomInputText(raw);
         const match = text.match(/^(.*?)(?:\s+MOD=(.*))?$/i);
-        return {
-          room: (match?.[1] || "").trim(),
-          modSpec: (match?.[2] || "").trim()
-        };
+        return { room:(match?.[1] || "").trim(), modSpec:(match?.[2] || "").trim() };
       }
-
       function parseModRefs(spec){
         if(!spec) return [];
         return spec.split(",").map(s => s.trim()).filter(Boolean).map(entry => {
           const m = entry.match(/^(.+?)(?:\s+v(\d+))?$/i);
-          return {
-            name: (m?.[1] || entry).trim(),
-            version: m?.[2] ? Number(m[2]) : null
-          };
+          return { name:(m?.[1] || entry).trim(), version:m?.[2] ? Number(m[2]) : null };
         });
       }
-
       function normalizeModNameInput(v){
-        return (v || "")
-          .replace(/[^0-9A-Za-zぁ-んァ-ヶー一-龠\s\-_.]/g, "")
-          .replace(/[a-z]/g, s => s.toUpperCase());
+        return (v || "").replace(/[^0-9A-Za-zぁ-んァ-ヶー一-龠\s\-_.]/g, "").replace(/[a-z]/g, s => s.toUpperCase());
       }
-
       function isModModeCode(code){
         const c = normalizeRoomInputText(code).toUpperCase();
         return c === "MOD" || c === "MODS";
       }
-
       function specialModeFromCode(code){
         const c = normalizeRoomInputText(code).toUpperCase().replace(/[\s_]/g, "");
         if(c === "CPU") return "cpu";
@@ -898,58 +492,25 @@
         return "online";
       }
 
-      function generateModId(){
-        return "mod_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
-      }
-
-      function createBlankMod(){
-        return { id: generateModId(), name: "", versions: [] };
-      }
-
-      function nextVersionNumber(mod){
-        return mod.versions.length ? Math.max(...mod.versions.map(v => v.version)) + 1 : 1;
-      }
+      function generateModId(){ return "mod_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16); }
+      function createBlankMod(){ return { id: generateModId(), name: "", versions: [] }; }
+      function nextVersionNumber(mod){ return mod.versions.length ? Math.max(...mod.versions.map(v => v.version)) + 1 : 1; }
 
       function serializeMods(mods){
         return (mods || []).map(m => ({
-          id: m.id,
-          name: m.name,
-          version: m.version,
-          summary: m.summary || "",
-          patch: m.patch || getDefaultPatch()
+          id:m.id, name:m.name, version:m.version, summary:m.summary || "", patch:m.patch || getDefaultPatch()
         }));
       }
-
       function deserializeMods(list){
         return (list || []).map(m => ({
-          id: m.id || generateModId(),
-          name: m.name || "",
-          version: Number(m.version || 0),
-          summary: m.summary || "",
-          patch: deepMerge(getDefaultPatch(), m.patch || {})
+          id:m.id || generateModId(), name:m.name || "", version:Number(m.version || 0), summary:m.summary || "",
+          patch:deepMerge(getDefaultPatch(), m.patch || {})
         }));
       }
-
       function getModByName(name){
         const n = (name || "").trim().toLowerCase();
         return session.modStore.list.find(m => m.name.toLowerCase() === n) || null;
       }
-
-      function resolveModRef(ref){
-        const exact = getModByName(ref.name);
-        const prefix = session.modStore.list.find(m => m.name.toLowerCase().startsWith(ref.name.toLowerCase()));
-        const mod = exact || prefix || null;
-        if(!mod) return null;
-        if(ref.version){
-          const v = mod.versions.find(x => x.version === ref.version);
-          if(!v) return null;
-          return compileModVersion(mod, v);
-        }
-        const latest = mod.versions[mod.versions.length - 1];
-        if(!latest) return null;
-        return compileModVersion(mod, latest);
-      }
-
       function compileModVersion(mod, versionObj){
         return {
           id: mod.id,
@@ -960,7 +521,18 @@
           patch: deepMerge(getDefaultPatch(), versionObj.patch || {})
         };
       }
-
+      function resolveModRef(ref){
+        const exact = getModByName(ref.name);
+        const prefix = session.modStore.list.find(m => m.name.toLowerCase().startsWith(ref.name.toLowerCase()));
+        const mod = exact || prefix || null;
+        if(!mod) return null;
+        if(ref.version){
+          const v = mod.versions.find(x => x.version === ref.version);
+          return v ? compileModVersion(mod, v) : null;
+        }
+        const latest = mod.versions[mod.versions.length - 1];
+        return latest ? compileModVersion(mod, latest) : null;
+      }
       function buildSelectedModsFromRefs(spec){
         const refs = parseModRefs(spec);
         const out = [];
@@ -971,36 +543,23 @@
         return out;
       }
 
-      function combinedAppliedMods(){
-        const out = [];
-        const seen = new Set();
-        for(const mod of [...session.activeMods, ...session.roomMods]){
-          const key = `${mod.name.toLowerCase()}@${mod.version}`;
-          if(seen.has(key)) continue;
-          seen.add(key);
-          out.push(mod);
-        }
-        return out;
+      function currentInputPreviewMods(){
+        const { modSpec } = parseRoomAndMods(roomInput.value);
+        return buildSelectedModsFromRefs(modSpec);
       }
 
       function renderSelectedModsPills(){
         selectedModsEl.innerHTML = "";
-        for(const mod of combinedAppliedMods()){
+        const mods = state.roomData ? [...session.activeMods, ...session.roomMods] : session.previewMods;
+        const seen = new Set();
+        for(const mod of mods){
+          const key = `${mod.name.toLowerCase()}@${mod.version}`;
+          if(seen.has(key)) continue;
+          seen.add(key);
           const pill = document.createElement("span");
           pill.className = "modChip";
           pill.innerHTML = `<strong>${escapeHtml(mod.name)}</strong><span>v${mod.version}</span>`;
           pill.title = mod.summary || "";
-          pill.addEventListener("click", () => {
-            const current = roomInput.value.trim();
-            const { room, modSpec } = parseRoomAndMods(current);
-            const entries = parseModRefs(modSpec);
-            const key = `${mod.name.toLowerCase()}@${mod.version}`;
-            if(!entries.some(e => `${e.name.toLowerCase()}@${e.version || 0}` === key)){
-              entries.push({ name: mod.name, version: mod.version });
-            }
-            roomInput.value = room ? `${room} MOD=${entries.map(e => e.version ? `${e.name} v${e.version}` : e.name).join(",")}` : `MOD=${entries.map(e => e.version ? `${e.name} v${e.version}` : e.name).join(",")}`;
-            renderModSuggestions();
-          });
           selectedModsEl.appendChild(pill);
         }
       }
@@ -1008,9 +567,7 @@
       function findModsByPrefix(prefix){
         const p = (prefix || "").trim().toLowerCase();
         if(!p) return session.modStore.list.slice().sort((a,b) => a.name.localeCompare(b.name, "ja"));
-        return session.modStore.list
-          .filter(m => m.name.toLowerCase().startsWith(p))
-          .sort((a,b) => a.name.localeCompare(b.name, "ja"));
+        return session.modStore.list.filter(m => m.name.toLowerCase().startsWith(p)).sort((a,b) => a.name.localeCompare(b.name, "ja"));
       }
 
       function renderModSuggestions(){
@@ -1021,17 +578,14 @@
           modSuggestEl.innerHTML = "";
           return;
         }
-
         const last = modSpec.split(",").pop() || "";
         const prefix = last.replace(/\s+v\d+$/i, "").trim();
         const list = findModsByPrefix(prefix).slice(0, 8);
-
         modSuggestEl.innerHTML = "";
         if(!list.length){
           modSuggestEl.classList.remove("show");
           return;
         }
-
         modSuggestEl.classList.add("show");
         for(const mod of list){
           const latest = mod.versions[mod.versions.length - 1];
@@ -1044,17 +598,20 @@
               const hit = r.name.toLowerCase().startsWith(prefix.toLowerCase());
               return hit ? { name: mod.name, version: latest?.version || null } : r;
             });
-            if(!refs.length){
-              roomInput.value = `${room} MOD=${mod.name}`;
-            }else{
-              roomInput.value = `${room} MOD=${next.map(r => r.version ? `${r.name} v${r.version}` : r.name).join(",")}`;
-            }
+            roomInput.value = room ? `${room} MOD=${next.map(r => r.version ? `${r.name} v${r.version}` : r.name).join(",")}` : `MOD=${mod.name}`;
             forceUpperRoomInput();
-            renderModSuggestions();
+            updateInputPreview();
             roomInput.focus();
           });
           modSuggestEl.appendChild(chip);
         }
+      }
+
+      function updateInputPreview(){
+        forceUpperRoomInput();
+        session.previewMods = currentInputPreviewMods();
+        renderSelectedModsPills();
+        renderModSuggestions();
       }
 
       function saveCurrentModStore(){
@@ -1068,12 +625,10 @@
       function getCurrentMod(){
         return session.modStore.list.find(m => m.id === session.currentModId) || null;
       }
-
       function getCurrentVersionObj(mod){
         if(!mod || !mod.versions.length) return null;
         return mod.versions.find(v => v.version === session.currentVersion) || mod.versions[mod.versions.length - 1] || null;
       }
-
       function selectModForEdit(modId){
         const mod = session.modStore.list.find(m => m.id === modId) || null;
         session.currentModId = modId;
@@ -1103,7 +658,6 @@
           modListEl.appendChild(empty);
           return;
         }
-
         for(const mod of list){
           const card = document.createElement("div");
           card.className = "modCard" + (mod.id === session.currentModId ? " selected" : "");
@@ -1120,15 +674,26 @@
         }
       }
 
+      function describePatch(patch){
+        const parts = [];
+        if(patch?.theme?.boardDark || patch?.theme?.boardLight) parts.push("盤面の色");
+        if(patch?.theme?.piece1 || patch?.theme?.piece2) parts.push("駒の色");
+        if(Number.isFinite(patch?.game?.cooldownMs)) parts.push(`クールダウン ${Math.round(patch.game.cooldownMs / 1000 * 10) / 10}秒`);
+        if(Number.isFinite(patch?.game?.cpuDelayMin) || Number.isFinite(patch?.game?.cpuDelayMax)) parts.push("CPUの速さ");
+        if(patch?.labels?.kingBlack || patch?.labels?.kingWhite) parts.push("王/玉の表示");
+        if(Object.keys(patch?.rules || {}).length) parts.push("ルール変更");
+        if(Object.keys(patch?.ui || {}).length) parts.push("UI変更");
+        return parts.length ? parts.join("、") : "変更なし";
+      }
+
       function renderModEditor(){
         const mod = getCurrentMod();
         versionRow.innerHTML = "";
         if(!mod){
-          versionPreview.textContent = "MODを選ぶと内容がここに出るよ.";
+          versionPreview.textContent = "MODを選ぶと内容がここに出るよ。";
           deleteModBtn.disabled = true;
           return;
         }
-
         deleteModBtn.disabled = false;
         modNameEl.value = mod.name || "";
         const cur = getCurrentVersionObj(mod);
@@ -1150,11 +715,7 @@
             `MOD名: ${mod.name}`,
             `バージョン: v${cur.version}`,
             `説明: ${cur.summary || "(なし)"}`,
-            "",
-            `テーマ変更: ${JSON.stringify(cur.patch?.theme || {}, null, 2)}`,
-            `ゲーム設定: ${JSON.stringify(cur.patch?.game || {}, null, 2)}`,
-            `表示設定: ${JSON.stringify(cur.patch?.ui || {}, null, 2)}`,
-            `ルール設定: ${JSON.stringify(cur.patch?.rules || {}, null, 2)}`
+            `変更点: ${describePatch(cur.patch)}`,
           ].join("\n");
         }else{
           versionPreview.textContent = "このMODにはまだバージョンがないよ。AIで作るか保存してね。";
@@ -1175,18 +736,12 @@
       }
 
       function escapeHtml(text){
-        return String(text)
-          .replace(/&/g,"&amp;")
-          .replace(/</g,"&lt;")
-          .replace(/>/g,"&gt;")
-          .replace(/"/g,"&quot;")
-          .replace(/'/g,"&#39;");
+        return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
       }
 
       function localGeneratePatch(prompt, name){
         const text = `${name || ""} ${prompt || ""}`.toLowerCase();
         const patch = getDefaultPatch();
-
         if(text.includes("ダーク") || text.includes("dark")){
           patch.theme.boardDark = "#4f3f2d";
           patch.theme.boardLight = "#685039";
@@ -1210,8 +765,10 @@
       }
 
       async function askModAI(name, prompt, currentMod){
+        const endpoint = (aiEndpointEl.value || localStorage.getItem("MOD_AI_ENDPOINT") || "").trim();
+        if(!endpoint) throw new Error("AIエンドポイントが未設定です。");
+
         const body = {
-          game: "shogi-of-speed",
           currentModName: name,
           currentVersion: currentMod?.versions?.length || 0,
           existingVersions: currentMod?.versions?.map(v => ({ version:v.version, summary:v.summary })) || [],
@@ -1219,36 +776,29 @@
           basePatch: getDefaultPatch()
         };
 
-        if(MOD_AI_ENDPOINT){
-          try{
-            const res = await fetch(MOD_AI_ENDPOINT, {
-              method:"POST",
-              headers:{ "Content-Type":"application/json" },
-              body: JSON.stringify(body)
-            });
-            if(res.ok){
-              const data = await res.json();
-              if(data && typeof data === "object") return data;
-            }
-          }catch{}
+        const res = await fetch(endpoint, {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(body)
+        });
+
+        if(!res.ok){
+          const text = await res.text().catch(() => "");
+          throw new Error(`AI生成に失敗: ${res.status} ${text.slice(0, 200)}`);
         }
 
-        return {
-          summary: `「${name}」の試作MODを作ったよ。`,
-          prompt,
-          patch: localGeneratePatch(prompt, name)
-        };
+        const data = await res.json();
+        if(!data || typeof data !== "object") throw new Error("AIの返答が不正です。");
+        return data;
       }
 
       function createOrUpdateModFromEditor(){
         const name = normalizeModNameInput(modNameEl.value.trim());
         const prompt = modPromptEl.value.trim();
-
         if(!name){
           setStatus("MOD名を入れてね。");
           return;
         }
-
         let mod = getCurrentMod();
         if(!mod){
           mod = createBlankMod();
@@ -1258,12 +808,11 @@
         }else{
           mod.name = name;
         }
-
         const newVersion = nextVersionNumber(mod);
         const versionObj = {
           version: newVersion,
           prompt,
-          summary: `v${newVersion} の保存版。`,
+          summary: `保存版 v${newVersion}`,
           patch: localGeneratePatch(prompt, name),
           createdAt: Date.now()
         };
@@ -1276,12 +825,10 @@
       async function createAIGeneratedModVersion(){
         const name = normalizeModNameInput(modNameEl.value.trim());
         const prompt = modPromptEl.value.trim();
-
         if(!name){
           setStatus("MOD名を入れてね。");
           return;
         }
-
         let mod = getCurrentMod();
         if(!mod){
           mod = createBlankMod();
@@ -1293,20 +840,24 @@
         }
 
         setStatus("AIで作成中...");
-        const aiOut = await askModAI(name, prompt, mod);
-        const newVersion = nextVersionNumber(mod);
-        const versionObj = {
-          version: newVersion,
-          prompt,
-          summary: aiOut.summary || `v${newVersion} を生成したよ。`,
-          patch: aiOut.patch || localGeneratePatch(prompt, name),
-          createdAt: Date.now(),
-          raw: aiOut.raw || ""
-        };
-        mod.versions.push(versionObj);
-        session.currentVersion = newVersion;
-        saveCurrentModStore();
-        setStatus(`AIで「${name}」の v${newVersion} を作ったよ。`);
+        try{
+          const aiOut = await askModAI(name, prompt, mod);
+          const newVersion = nextVersionNumber(mod);
+          const versionObj = {
+            version: newVersion,
+            prompt: String(aiOut.prompt || prompt || ""),
+            summary: String(aiOut.summary || `試作MOD v${newVersion}`),
+            patch: aiOut.patch || localGeneratePatch(prompt, name),
+            createdAt: Date.now(),
+            raw: aiOut.raw || ""
+          };
+          mod.versions.push(versionObj);
+          session.currentVersion = newVersion;
+          saveCurrentModStore();
+          setStatus(`AIで「${name}」の v${newVersion} を作ったよ。`);
+        }catch(err){
+          setStatus(`AI生成に失敗した: ${err.message}`);
+        }
       }
 
       function deleteCurrentMod(){
@@ -1324,22 +875,15 @@
         setStatus(`MOD「${mod.name}」を削除したよ。`);
       }
 
-      function isPromotableType(type){
-        return !!PROMOTED_MOVE[type];
-      }
-
+      function isPromotableType(type){ return !!PROMOTED_MOVE[type]; }
       function makePiece(side, type, x, y){
         return {
-          id: `${side}_${type}_${Math.random().toString(16).slice(2)}_${Date.now()}`,
-          side,
-          type,
-          x,
-          y,
-          promoMode: isPromotableType(type) ? "normal" : "fixed",
-          cooldownUntil: 0
+          id:`${side}_${type}_${Math.random().toString(16).slice(2)}_${Date.now()}`,
+          side, type, x, y,
+          promoMode:isPromotableType(type) ? "normal" : "fixed",
+          cooldownUntil:0
         };
       }
-
       function makeHands(){
         const obj = {};
         for(const side of ["black","white"]){
@@ -1348,173 +892,121 @@
         }
         return obj;
       }
-
       function initialPieces(){
         const pieces = [];
         const add = (side, type, x, y) => pieces.push(makePiece(side, type, x, y));
-
         ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("white", t, x, 0));
-        add("white", "bishop", 1, 1);
-        add("white", "rook", 7, 1);
-        for(let x = 0; x < 9; x++) add("white", "pawn", x, 2);
-
+        add("white", "bishop", 1, 1); add("white", "rook", 7, 1);
+        for(let x=0;x<9;x++) add("white", "pawn", x, 2);
         ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("black", t, x, 8));
-        add("black", "rook", 1, 7);
-        add("black", "bishop", 7, 7);
-        for(let x = 0; x < 9; x++) add("black", "pawn", x, 6);
-
+        add("black", "rook", 1, 7); add("black", "bishop", 7, 7);
+        for(let x=0;x<9;x++) add("black", "pawn", x, 6);
         return pieces;
       }
-
       function freshState(royalLabels = buildRoyalLabels(null)){
         return {
           pieces: initialPieces(),
           hands: makeHands(),
-          winner: null,
-          updatedAt: Date.now(),
-          rev: 0,
-          handCooldownUntil: { black: 0, white: 0 },
+          winner:null,
+          updatedAt:Date.now(),
+          rev:0,
+          handCooldownUntil:{ black:0, white:0 },
           royalLabels,
-          lastWinnerSide: null
+          lastWinnerSide:null
         };
       }
-
       function cloneState(s){
         return {
-          pieces: s.pieces.map(p => ({ ...p })),
-          hands: JSON.parse(JSON.stringify(s.hands)),
-          winner: s.winner || null,
-          updatedAt: s.updatedAt || Date.now(),
-          rev: s.rev || 0,
-          handCooldownUntil: JSON.parse(JSON.stringify(s.handCooldownUntil || { black: 0, white: 0 })),
-          royalLabels: JSON.parse(JSON.stringify(s.royalLabels || state.fallbackRoyalLabels || randomRoyalLabels())),
-          lastWinnerSide: s.lastWinnerSide || null
+          pieces:s.pieces.map(p => ({ ...p })),
+          hands:JSON.parse(JSON.stringify(s.hands)),
+          winner:s.winner || null,
+          updatedAt:s.updatedAt || Date.now(),
+          rev:s.rev || 0,
+          handCooldownUntil:JSON.parse(JSON.stringify(s.handCooldownUntil || { black:0, white:0 })),
+          royalLabels:JSON.parse(JSON.stringify(s.royalLabels || state.fallbackRoyalLabels || randomRoyalLabels())),
+          lastWinnerSide:s.lastWinnerSide || null
         };
       }
-
       function makeOnlineRoomDoc(playerId, modSnapshot = []){
         return {
-          players: { black: playerId, white: null },
-          presence: { [playerId]: { side: "black", lastSeen: Date.now() } },
-          state: freshState(buildRoyalLabels(null)),
-          lastWinnerSide: null,
-          matchStartAt: null,
-          rematchVotes: {},
+          players:{ black:playerId, white:null },
+          presence:{ [playerId]:{ side:"black", lastSeen:Date.now() } },
+          state:freshState(buildRoyalLabels(null)),
+          lastWinnerSide:null,
+          matchStartAt:null,
+          rematchVotes:{},
           modSnapshot,
-          updatedAt: Date.now()
+          updatedAt:Date.now()
         };
       }
-
       function makeLocalRoom(kind){
         return {
-          mode: kind,
-          players: { black: "local", white: kind === "cpu" || kind === "cpu_serious" ? "cpu" : "local2" },
-          presence: {},
-          state: freshState(buildRoyalLabels(null)),
-          lastWinnerSide: null,
-          matchStartAt: null,
-          rematchVotes: {},
-          updatedAt: Date.now()
+          mode:kind,
+          players:{ black:"local", white: kind === "cpu" || kind === "cpu_serious" ? "cpu" : "local2" },
+          presence:{},
+          state:freshState(buildRoyalLabels(null)),
+          lastWinnerSide:null,
+          matchStartAt:null,
+          rematchVotes:{},
+          updatedAt:Date.now()
         };
       }
-
-      function isInside(x, y){ return x >= 0 && x < 9 && y >= 0 && y < 9; }
+      function isInside(x,y){ return x >= 0 && x < 9 && y >= 0 && y < 9; }
       function forward(side){ return side === "black" ? -1 : 1; }
       function opposite(side){ return side === "black" ? "white" : "black"; }
       function isInPromotionZone(side, y){ return PROMOTION_ZONE[side].includes(y); }
-
       function forcePromoteNeeded(piece, destY){
-        if(piece.type === "pawn" || piece.type === "lance"){
-          return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
-        }
-        if(piece.type === "knight"){
-          return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
-        }
+        if(piece.type === "pawn" || piece.type === "lance") return (piece.side === "black" && destY === 0) || (piece.side === "white" && destY === 8);
+        if(piece.type === "knight") return (piece.side === "black" && destY <= 1) || (piece.side === "white" && destY >= 7);
         return false;
       }
-
-      function boardMap(pieces){
-        const map = new Map();
-        for(const p of pieces) map.set(`${p.x},${p.y}`, p);
-        return map;
-      }
-
+      function boardMap(pieces){ const map = new Map(); for(const p of pieces) map.set(`${p.x},${p.y}`, p); return map; }
       function pieceAt(pieces, x, y){ return pieces.find(p => p.x === x && p.y === y); }
-      function kingPos(pieces, side){
-        const k = pieces.find(p => p.side === side && p.type === "king");
-        return k ? { x:k.x, y:k.y } : null;
-      }
-
+      function kingPos(pieces, side){ const k = pieces.find(p => p.side === side && p.type === "king"); return k ? { x:k.x, y:k.y } : null; }
       function dedupeMoves(arr){
-        const seen = new Set();
-        const out = [];
-        for(const m of arr){
-          const k = `${m.x},${m.y}`;
-          if(!seen.has(k)){ seen.add(k); out.push(m); }
-        }
+        const seen = new Set(); const out = [];
+        for(const m of arr){ const k = `${m.x},${m.y}`; if(!seen.has(k)){ seen.add(k); out.push(m); } }
         return out;
       }
-
       function pseudoMovesForType(side, type, x, y, pieces){
         const stepMoves = (steps) => {
-          const out = [];
-          const occ = boardMap(pieces);
+          const out = []; const occ = boardMap(pieces);
           for(const [dx, dy] of steps){
-            const nx = x + dx;
-            const ny = y + dy;
-            if(!isInside(nx, ny)) continue;
-            const hit = occ.get(`${nx},${ny}`);
-            if(!hit || hit.side !== side) out.push({ x:nx, y:ny });
-          }
-          return out;
+            const nx = x + dx, ny = y + dy; if(!isInside(nx, ny)) continue;
+            const hit = occ.get(`${nx},${ny}`); if(!hit || hit.side !== side) out.push({ x:nx, y:ny });
+          } return out;
         };
-
         const rayMoves = (dirs, maxSteps = 99) => {
-          const out = [];
-          const occ = boardMap(pieces);
+          const out = []; const occ = boardMap(pieces);
           for(const [dx, dy] of dirs){
             for(let step=1; step<=maxSteps; step++){
-              const nx = x + dx*step;
-              const ny = y + dy*step;
-              if(!isInside(nx, ny)) break;
+              const nx = x + dx*step, ny = y + dy*step; if(!isInside(nx, ny)) break;
               const hit = occ.get(`${nx},${ny}`);
-              if(hit){
-                if(hit.side !== side) out.push({ x:nx, y:ny });
-                break;
-              }
+              if(hit){ if(hit.side !== side) out.push({ x:nx, y:ny }); break; }
               out.push({ x:nx, y:ny });
             }
-          }
-          return out;
+          } return out;
         };
-
         const f = forward(side);
-
         if(type === "pawn") return stepMoves([[0, f]]);
         if(type === "lance") return rayMoves([[0, f]]);
         if(type === "knight") return stepMoves([[-1, 2*f], [1, 2*f]]);
-        if(type === "silver") return stepMoves([[0, f], [-1, f], [1, f], [-1, -f], [1, -f]]);
+        if(type === "silver") return stepMoves([[0, f],[-1, f],[1, f],[-1, -f],[1, -f]]);
         if(type === "gold" || type === "tokin" || type === "proLance" || type === "proKnight" || type === "proSilver"){
-          return stepMoves([[0, f], [-1, f], [1, f], [-1, 0], [1, 0], [0, -f]]);
+          return stepMoves([[0, f],[-1, f],[1, f],[-1, 0],[1, 0],[0, -f]]);
         }
         if(type === "bishop") return rayMoves([[-1,-1],[1,-1],[-1,1],[1,1]]);
         if(type === "rook") return rayMoves([[0,-1],[0,1],[-1,0],[1,0]]);
         if(type === "king") return stepMoves([[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]]);
-        if(type === "horse"){
-          return dedupeMoves([...rayMoves([[-1,-1],[1,-1],[-1,1],[1,1]]), ...stepMoves([[0,-1],[0,1],[-1,0],[1,0]])]);
-        }
-        if(type === "dragon"){
-          return dedupeMoves([...rayMoves([[0,-1],[0,1],[-1,0],[1,0]]), ...stepMoves([[-1,-1],[1,-1],[-1,1],[1,1]])]);
-        }
+        if(type === "horse") return dedupeMoves([...rayMoves([[-1,-1],[1,-1],[-1,1],[1,1]]), ...stepMoves([[0,-1],[0,1],[-1,0],[1,0]])]);
+        if(type === "dragon") return dedupeMoves([...rayMoves([[0,-1],[0,1],[-1,0],[1,0]]), ...stepMoves([[-1,-1],[1,-1],[-1,1],[1,1]])]);
         return [];
       }
-
       function movementForms(piece){
         if(piece.promoMode === "promoted") return [PROMOTED_MOVE[piece.type] || piece.type];
         if(piece.promoMode === "can") return [piece.type, PROMOTED_MOVE[piece.type]].filter(Boolean);
         return [piece.type];
       }
-
       function isSquareAttacked(pieces, x, y, bySide){
         for(const p of pieces){
           if(p.side !== bySide) continue;
@@ -1526,17 +1018,12 @@
         }
         return false;
       }
-
       function isKingInCheck(pieces, side){
         const kp = kingPos(pieces, side);
         if(!kp) return true;
         return isSquareAttacked(pieces, kp.x, kp.y, opposite(side));
       }
-
-      function currentRoyalLabels(){
-        return state.roomData?.state?.royalLabels || state.roomData?.royalLabels || state.fallbackRoyalLabels;
-      }
-
+      function currentRoyalLabels(){ return state.roomData?.state?.royalLabels || state.roomData?.royalLabels || state.fallbackRoyalLabels; }
       function kingLabelForSide(side){
         const labels = currentRoyalLabels();
         const patch = getRuntimePatch();
@@ -1544,7 +1031,6 @@
         if(side === "white" && patch.labels?.kingWhite) return patch.labels.kingWhite;
         return labels?.[side] || "玉";
       }
-
       function moveTextLabel(piece, now){
         if(!piece) return "?";
         if(piece.type === "king") return kingLabelForSide(piece.side);
@@ -1555,18 +1041,13 @@
         }
         return TYPE_LABEL[piece.type] || "?";
       }
-
       function pieceTextColor(piece){
         if(!piece) return "#111";
         if(piece.promoMode === "promoted") return "#d84b43";
         if(piece.promoMode === "can") return "#3569d6";
         return "#111";
       }
-
-      function canPieceHavePromotion(piece){
-        return isPromotableType(piece.type);
-      }
-
+      function canPieceHavePromotion(piece){ return isPromotableType(piece.type); }
       function simulateMoveAndCheck(stateObj, piece, dest, nextPromoMode){
         const sim = cloneState(stateObj);
         const sp = sim.pieces.find(p => p.id === piece.id);
@@ -1577,16 +1058,12 @@
           sim.pieces = sim.pieces.filter(p => p.id !== occupant.id);
           sim.hands[sp.side][occupant.type] += 1;
         }
-        sp.x = dest.x;
-        sp.y = dest.y;
-        sp.promoMode = nextPromoMode;
+        sp.x = dest.x; sp.y = dest.y; sp.promoMode = nextPromoMode;
         return !isKingInCheck(sim.pieces, sp.side);
       }
-
       function classifyMoveForPiece(stateObj, piece, dest, checkSafety = true){
         if(!piece || stateObj.winner) return null;
         if(piece.cooldownUntil && Date.now() < piece.cooldownUntil) return null;
-
         const baseType = piece.type;
         const promoType = PROMOTED_MOVE[baseType];
         const promotable = canPieceHavePromotion(piece);
@@ -1598,13 +1075,11 @@
           if(!baseReach) return null;
           return { x:dest.x, y:dest.y, kind:"normal", nextMode:"normal" };
         }
-
         if(piece.promoMode === "fixed"){
           if(!baseReach) return null;
           if(checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "fixed")) return null;
           return { x:dest.x, y:dest.y, kind:"normal", nextMode:"fixed" };
         }
-
         if(piece.promoMode === "promoted"){
           const pm = promoType || baseType;
           const promoPseudo = pseudoMovesForType(piece.side, pm, piece.x, piece.y, stateObj.pieces);
@@ -1613,7 +1088,6 @@
           if(checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
           return { x:dest.x, y:dest.y, kind:"normal", nextMode:"promoted" };
         }
-
         if(piece.promoMode === "normal"){
           if(!baseReach) return null;
           const nextMode = promotable && isInPromotionZone(piece.side, dest.y) ? "can" : "normal";
@@ -1624,32 +1098,26 @@
           if(checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, nextMode)) return null;
           return { x:dest.x, y:dest.y, kind:"normal", nextMode };
         }
-
         if(piece.promoMode === "can"){
           const promoPseudo = promoType ? pseudoMovesForType(piece.side, promoType, piece.x, piece.y, stateObj.pieces) : [];
           const promoReach = promoPseudo.some(m => m.x === dest.x && m.y === dest.y);
           const baseOK = baseReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "can"));
           const promoOK = promoReach && (!checkSafety || simulateMoveAndCheck(stateObj, piece, dest, "promoted"));
-
           if(forced){
             if(checkSafety && !simulateMoveAndCheck(stateObj, piece, dest, "promoted")) return null;
             return { x:dest.x, y:dest.y, kind:"promo", nextMode:"promoted" };
           }
-
           if(baseOK && promoOK) return { x:dest.x, y:dest.y, kind:"both", nextMode:"can" };
           if(promoOK) return { x:dest.x, y:dest.y, kind:"promo", nextMode:"promoted" };
           if(baseOK) return { x:dest.x, y:dest.y, kind:"base", nextMode:"can" };
           return null;
         }
-
         return null;
       }
-
       function legalMovesForPiece(stateObj, piece, checkSafety = true){
         if(!piece || stateObj.winner) return [];
         const out = [];
         const seen = new Set();
-
         const forms = [];
         if(piece.promoMode === "can" && canPieceHavePromotion(piece)){
           forms.push({ moveType: piece.type });
@@ -1659,7 +1127,6 @@
         }else{
           forms.push({ moveType: piece.type });
         }
-
         for(const form of forms){
           if(!form.moveType) continue;
           const pseudo = pseudoMovesForType(piece.side, form.moveType, piece.x, piece.y, stateObj.pieces);
@@ -1678,7 +1145,6 @@
         }
         return out;
       }
-
       function dropLegalSquares(stateObj){
         if(!stateObj || stateObj.winner) return [];
         const out = [];
@@ -1691,14 +1157,12 @@
         }
         return out;
       }
-
       function canControlSide(side){
         if(session.kind === "local_dual") return true;
         if(isCpuMode()) return side === "black";
         if(state.mySide === "spectator") return false;
         return side === state.mySide;
       }
-
       function selectedLegalMoves(live){
         if(!live || !state.selected || live.winner) return [];
         if(state.selected.kind === "piece"){
@@ -1706,62 +1170,33 @@
           if(!piece) return [];
           return legalMovesForPiece(live, piece, true);
         }
-        if(state.selected.kind === "hand"){
-          return dropLegalSquares(live);
-        }
+        if(state.selected.kind === "hand") return dropLegalSquares(live);
         return [];
       }
-
       function selectedPieceObj(){
         const live = state.roomData?.state;
         if(!live || !state.selected || state.selected.kind !== "piece") return null;
         return live.pieces.find(p => p.id === state.selected.id) || null;
       }
-
       function setStatus(msg){ statusEl.textContent = msg; }
-
       function updateMePill(){
-        if(session.kind === "cpu"){
-          mePill.textContent = "CPU / あなた: 先手";
-          return;
-        }
-        if(session.kind === "cpu_serious"){
-          mePill.textContent = "SERIOUS CPU / あなた: 先手";
-          return;
-        }
-        if(session.kind === "local_dual"){
-          mePill.textContent = "1 SMARTPHONE / 両方操作";
-          return;
-        }
-        if(!state.roomId){
-          mePill.textContent = "未接続";
-          return;
-        }
-        const label = state.mySide === "black" ? "あなた: 先手"
-                   : state.mySide === "white" ? "あなた: 後手"
-                   : "あなた: 観戦";
+        if(session.kind === "cpu"){ mePill.textContent = "CPU / あなた: 先手"; return; }
+        if(session.kind === "cpu_serious"){ mePill.textContent = "SERIOUS CPU / あなた: 先手"; return; }
+        if(session.kind === "local_dual"){ mePill.textContent = "1 SMARTPHONE / 両方操作"; return; }
+        if(!state.roomId){ mePill.textContent = "未接続"; return; }
+        const label = state.mySide === "black" ? "あなた: 先手" : state.mySide === "white" ? "あなた: 後手" : "あなた: 観戦";
         mePill.textContent = `${state.roomId} / ${label}`;
       }
-
-      function isBothPlayersReady(roomData){
-        return !!roomData?.players?.black && !!roomData?.players?.white;
-      }
-
+      function isBothPlayersReady(roomData){ return !!roomData?.players?.black && !!roomData?.players?.white; }
       function shouldShowRematch(roomData){
         if(!roomData) return false;
         if(!roomData.state?.winner) return false;
         return session.kind !== "online" ? true : isBothPlayersReady(roomData);
       }
-
       function hideRematchOverlay(){ rematchOverlay.classList.remove("show"); }
-
       function updateRematchOverlay(){
         const room = state.roomData;
-        if(!shouldShowRematch(room)){
-          hideRematchOverlay();
-          return;
-        }
-
+        if(!shouldShowRematch(room)){ hideRematchOverlay(); return; }
         const winnerRaw = room.state?.winner;
         let winnerText = "決着";
         if(session.kind === "online"){
@@ -1776,7 +1211,6 @@
         }else if(session.kind === "local_dual"){
           winnerText = winnerRaw === "black" ? "先手の勝ち" : "後手の勝ち";
         }
-
         rematchWinner.textContent = winnerText;
 
         if(session.kind !== "online"){
@@ -1794,7 +1228,6 @@
         rematchDesc.textContent = `${me}\n${other}`;
         rematchOverlay.classList.add("show");
       }
-
       function getHandCooldownRemaining(side, now){
         const live = state.roomData?.state;
         return Math.max(0, (live?.handCooldownUntil?.[side] || 0) - now);
@@ -1803,7 +1236,6 @@
       function refreshHands(){
         const live = state.roomData?.state;
         const hands = live?.hands || makeHands();
-
         const renderHandArea = (el, side, interactive, labelText) => {
           el.innerHTML = "";
           const label = document.createElement("div");
@@ -1821,9 +1253,7 @@
             btn.dataset.side = side;
             btn.dataset.type = t;
 
-            if(state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t){
-              btn.classList.add("selected");
-            }
+            if(state.selected?.kind === "hand" && state.selected.side === side && state.selected.type === t) btn.classList.add("selected");
 
             const now = Date.now();
             const remaining = interactive ? getHandCooldownRemaining(side, now) : 0;
@@ -1870,7 +1300,6 @@
           renderHandArea(myHandsEl, "black", true, "自分の持ち駒");
           return;
         }
-
         if(state.mySide === "black"){
           renderHandArea(enemyHandsEl, "white", false, "相手の持ち駒");
           renderHandArea(myHandsEl, "black", true, "自分の持ち駒");
@@ -1902,89 +1331,50 @@
           ctx.fillRect(0,0,w,h);
         }catch{}
       }
-
       function safeRenderFrame(){
-        try{
-          renderFrame();
-        }catch(err){
-          console.error("renderFrame failed", err);
-          recoverCanvas();
-          scheduleRender(150);
-        }
+        try{ renderFrame(); }catch(err){ console.error("renderFrame failed", err); recoverCanvas(); scheduleRender(150); }
       }
-
       function resizeCanvas(){
         try{
           const rect = boardCanvas.getBoundingClientRect();
           const cssW = Math.max(1, Math.round(rect.width));
           const cssH = Math.max(1, Math.round(rect.height));
-          if(cssW < 20 || cssH < 20){
-            scheduleRender(120);
-            return;
-          }
-
+          if(cssW < 20 || cssH < 20){ scheduleRender(120); return; }
           const dpr = Math.max(1, window.devicePixelRatio || 1);
           const pxW = Math.max(1, Math.floor(cssW * dpr));
           const pxH = Math.max(1, Math.floor(cssH * dpr));
-
           if(pxW === canvasHealth.lastW && pxH === canvasHealth.lastH && dpr === canvasHealth.lastDpr){
             state.boardReady = true;
             scheduleRender(0);
             return;
           }
-
           boardCanvas.width = pxW;
           boardCanvas.height = pxH;
-          if(typeof ctx.resetTransform === "function"){
-            ctx.resetTransform();
-          }else{
-            ctx.setTransform(1,0,0,1,0,0);
-          }
+          if(typeof ctx.resetTransform === "function") ctx.resetTransform();
+          else ctx.setTransform(1,0,0,1,0,0);
           ctx.setTransform(dpr,0,0,dpr,0,0);
-
           canvasHealth.lastW = pxW;
           canvasHealth.lastH = pxH;
           canvasHealth.lastDpr = dpr;
           state.boardReady = true;
           scheduleRender(0);
-        }catch{
-          scheduleRender(120);
-        }
+        }catch{ scheduleRender(120); }
       }
 
       function getViewSide(){ return state.mySide === "white" ? "white" : "black"; }
-
-      function boardToScreen(x, y){
-        if(session.kind === "local_dual") return { x, y };
-        if(getViewSide() === "white") return { x:8-x, y:8-y };
-        return { x, y };
-      }
-
-      function screenToBoard(x, y){
-        if(session.kind === "local_dual") return { x, y };
-        if(getViewSide() === "white") return { x:8-x, y:8-y };
-        return { x, y };
-      }
-
-      function moveColor(kind){
-        if(kind === "base") return "rgba(216,75,67,.34)";
-        if(kind === "promo") return "rgba(53,105,214,.30)";
-        return "rgba(242,201,76,.34)";
-      }
-
+      function boardToScreen(x, y){ if(session.kind === "local_dual") return { x, y }; if(getViewSide() === "white") return { x:8-x, y:8-y }; return { x, y }; }
+      function screenToBoard(x, y){ if(session.kind === "local_dual") return { x, y }; if(getViewSide() === "white") return { x:8-x, y:8-y }; return { x, y }; }
+      function moveColor(kind){ if(kind === "base") return "rgba(216,75,67,.34)"; if(kind === "promo") return "rgba(53,105,214,.30)"; return "rgba(242,201,76,.34)"; }
       function octantFromVector(dx, dy){
         if(dx === 0 && dy === 0) return null;
-        const angle = Math.atan2(dy, dx);
-        let idx = Math.round(angle / (Math.PI / 4));
+        let idx = Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
         idx = ((idx % 8) + 8) % 8;
         return idx;
       }
-
       function pieceScreenCenter(piece){
         const s = boardToScreen(piece.x, piece.y);
         return { x:s.x + 0.5, y:s.y + 0.5 };
       }
-
       function drawPiece(piece, cell, now, selected){
         const x = cell.x + cell.size / 2;
         const y = cell.y + cell.size / 2;
@@ -1999,7 +1389,6 @@
           ctx.lineWidth = 4;
           ctx.strokeRect(cell.x + 3, cell.y + 3, s - 6, s - 6);
         }
-
         ctx.translate(x, y);
         ctx.rotate(piece.side === getViewSide() ? 0 : Math.PI);
 
@@ -2042,10 +1431,8 @@
           ctx.lineWidth = 2;
           ctx.stroke();
         }
-
         ctx.restore();
       }
-
       function getCountdownText(matchStartAt, now){
         if(!matchStartAt) return null;
         const remain = matchStartAt - now;
@@ -2057,7 +1444,6 @@
         if(remain > 1000) return "2";
         return "1";
       }
-
       function hasAnimatingState(){
         const live = state.roomData?.state;
         if(!live) return false;
@@ -2068,50 +1454,39 @@
         if((live.handCooldownUntil?.white || 0) > now) return true;
         return false;
       }
-
       function scheduleRender(delay = null){
         if(session.renderTimer) clearTimeout(session.renderTimer);
-
         if(delay === null){
           if(!hasAnimatingState()) return;
           const now = Date.now();
           let next = 250;
           const live = state.roomData?.state;
-          if(state.roomData?.matchStartAt && state.roomData.matchStartAt > now){
-            next = Math.min(next, Math.max(50, state.roomData.matchStartAt - now));
-          }
-          for(const p of live?.pieces || []){
-            if(p.cooldownUntil > now) next = Math.min(next, Math.max(50, p.cooldownUntil - now));
-          }
+          if(state.roomData?.matchStartAt && state.roomData.matchStartAt > now) next = Math.min(next, Math.max(50, state.roomData.matchStartAt - now));
+          for(const p of live?.pieces || []) if(p.cooldownUntil > now) next = Math.min(next, Math.max(50, p.cooldownUntil - now));
           const hs = live?.handCooldownUntil || {};
           if((hs.black || 0) > now) next = Math.min(next, Math.max(50, hs.black - now));
           if((hs.white || 0) > now) next = Math.min(next, Math.max(50, hs.white - now));
           delay = next;
         }
-
         session.renderTimer = setTimeout(() => {
           session.renderTimer = null;
           safeRenderFrame();
         }, delay);
       }
-
       function cpuThinkDelay(){
         const p = currentCpuDelay();
         if(session.kind === "cpu") return p.min + Math.random() * Math.max(0, p.max - p.min);
         if(session.kind === "cpu_serious") return p.serious;
         return 0;
       }
-
       function scheduleCpuThink(delay = null){
         if(!isCpuMode()) return;
         if(session.cpuTimer) return;
-        const actualDelay = delay ?? cpuThinkDelay();
         session.cpuTimer = setTimeout(() => {
           session.cpuTimer = null;
           void cpuThink();
-        }, actualDelay);
+        }, delay ?? cpuThinkDelay());
       }
-
       function updateHandCooldownIndicators(now){
         const live = state.roomData?.state;
         if(!live) return;
@@ -2130,48 +1505,19 @@
           }
         }
       }
-
-      function recoverCanvas(){
-        try{
-          const rect = boardCanvas.getBoundingClientRect();
-          const dpr = Math.max(1, window.devicePixelRatio || 1);
-          const w = Math.max(1, Math.round(rect.width));
-          const h = Math.max(1, Math.round(rect.height));
-          if(w < 20 || h < 20) return;
-          boardCanvas.width = Math.floor(w * dpr);
-          boardCanvas.height = Math.floor(h * dpr);
-          if(typeof ctx.resetTransform === "function") ctx.resetTransform();
-          else ctx.setTransform(1,0,0,1,0,0);
-          ctx.setTransform(dpr,0,0,dpr,0,0);
-          ctx.clearRect(0,0,w,h);
-          ctx.fillStyle = currentTheme().boardLight;
-          ctx.fillRect(0,0,w,h);
-        }catch{}
-      }
-
-      function safeRenderFrame(){
-        try{
-          renderFrame();
-        }catch(err){
-          console.error("renderFrame failed", err);
-          recoverCanvas();
-          scheduleRender(150);
-        }
-      }
+      function safeRenderCanvasBg(){ recoverCanvas(); }
 
       function renderFrame(){
         if(!state.boardReady) return;
-
         const rect = boardCanvas.getBoundingClientRect();
-        const w = rect.width;
-        const h = rect.height;
+        const w = rect.width, h = rect.height;
         if(w < 20 || h < 20) return;
         const cell = w / 9;
         const now = Date.now();
         const theme = currentTheme();
 
         updateHandCooldownIndicators(now);
-        ctx.clearRect(0, 0, w, h);
+        ctx.clearRect(0,0,w,h);
 
         for(let sy=0; sy<9; sy++){
           for(let sx=0; sx<9; sx++){
@@ -2186,13 +1532,9 @@
         ctx.lineWidth = 1;
         for(let i=0;i<=9;i++){
           ctx.beginPath();
-          ctx.moveTo(i * cell, 0);
-          ctx.lineTo(i * cell, 9 * cell);
-          ctx.stroke();
+          ctx.moveTo(i * cell, 0); ctx.lineTo(i * cell, 9 * cell); ctx.stroke();
           ctx.beginPath();
-          ctx.moveTo(0, i * cell);
-          ctx.lineTo(9 * cell, i * cell);
-          ctx.stroke();
+          ctx.moveTo(0, i * cell); ctx.lineTo(9 * cell, i * cell); ctx.stroke();
         }
 
         const live = state.roomData?.state;
@@ -2207,8 +1549,7 @@
           return;
         }
 
-        const legal = selectedLegalMoves(live);
-        for(const m of legal){
+        for(const m of selectedLegalMoves(live)){
           const s = boardToScreen(m.x, m.y);
           ctx.fillStyle = moveColor(m.kind);
           ctx.fillRect(s.x * cell + 2, s.y * cell + 2, cell - 4, cell - 4);
@@ -2225,8 +1566,7 @@
         for(const p of live.pieces){
           const sp = boardToScreen(p.x, p.y);
           const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-          try{ drawPiece(p, { x:sp.x * cell, y:sp.y * cell, size:cell }, now, isSel); }
-          catch(err){ console.error("drawPiece failed", err); }
+          try{ drawPiece(p, { x:sp.x * cell, y:sp.y * cell, size:cell }, now, isSel); }catch(err){ console.error("drawPiece failed", err); }
         }
 
         const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
@@ -2234,7 +1574,7 @@
 
         if(live.winner){
           ctx.fillStyle = "rgba(0,0,0,.35)";
-          ctx.fillRect(0, 0, w, h);
+          ctx.fillRect(0,0,w,h);
           ctx.fillStyle = "#fff";
           ctx.font = "800 26px system-ui, sans-serif";
           ctx.textAlign = "center";
@@ -2243,7 +1583,7 @@
           ctx.fillText("この対局は終了してるよ", w / 2, h / 2 + 22);
         }else if(!bothReady){
           ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
+          ctx.fillRect(0,0,w,h);
           ctx.fillStyle = "#fff";
           ctx.font = "800 22px system-ui, sans-serif";
           ctx.textAlign = "center";
@@ -2252,7 +1592,7 @@
           ctx.fillText("両方そろうまで移動できない", w / 2, h / 2 + 20);
         }else if(countdownText){
           ctx.fillStyle = "rgba(0,0,0,.28)";
-          ctx.fillRect(0, 0, w, h);
+          ctx.fillRect(0,0,w,h);
           ctx.fillStyle = "#fff";
           ctx.font = "900 54px system-ui, sans-serif";
           ctx.textAlign = "center";
@@ -2274,14 +1614,12 @@
         if(!isInside(sx, sy)) return null;
         return { x:sx, y:sy, px, py };
       }
-
       function pieceUnderSquare(screenX, screenY){
         const live = state.roomData?.state;
         if(!live) return null;
         const b = screenToBoard(screenX, screenY);
         return live.pieces.find(p => p.x === b.x && p.y === b.y) || null;
       }
-
       function canAct(){
         if(session.kind !== "online") return true;
         const room = state.roomData;
@@ -2292,7 +1630,6 @@
         if(room.matchStartAt && now < room.matchStartAt) return false;
         return true;
       }
-
       function clearSelection(){
         state.selected = null;
         state.dragPointerId = null;
@@ -2302,7 +1639,6 @@
         refreshHands();
         scheduleRender(0);
       }
-
       function selectedSideOfSelection(){
         if(!state.selected) return null;
         if(state.selected.kind === "piece"){
@@ -2313,12 +1649,8 @@
         if(state.selected.kind === "hand") return state.selected.side;
         return null;
       }
-
       function leaveToHome(){
-        if(state.unsub){
-          state.unsub();
-          state.unsub = null;
-        }
+        if(state.unsub){ state.unsub(); state.unsub = null; }
         if(session.cpuTimer) clearTimeout(session.cpuTimer);
         if(session.renderTimer) clearTimeout(session.renderTimer);
         session.cpuTimer = null;
@@ -2335,6 +1667,7 @@
         state.dragSource = null;
         hideRematchOverlay();
         roomInput.value = "";
+        session.previewMods = [];
         updateMePill();
         refreshHands();
         setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
@@ -2347,6 +1680,7 @@
         next.rev = (next.rev || 0) + 1;
         next.updatedAt = now;
         next.handCooldownUntil = next.handCooldownUntil || { black: 0, white: 0 };
+
         const cooldownMs = currentCooldownMs();
 
         if(selected.kind === "piece"){
@@ -2383,17 +1717,18 @@
           if(!anySide && side !== actorSide) return null;
           if((next.hands[side]?.[selected.type] || 0) <= 0) return null;
           if((next.handCooldownUntil?.[side] || 0) > now) return null;
+
           const occupant = pieceAt(next.pieces, destBoard.x, destBoard.y);
           if(occupant) return null;
 
           next.hands[side][selected.type] -= 1;
           next.pieces.push({
-            id: `drop_${side}_${selected.type}_${now}_${Math.random().toString(16).slice(2)}`,
+            id:`drop_${side}_${selected.type}_${now}_${Math.random().toString(16).slice(2)}`,
             side,
-            type: selected.type,
-            x: destBoard.x,
-            y: destBoard.y,
-            promoMode: "normal",
+            type:selected.type,
+            x:destBoard.x,
+            y:destBoard.y,
+            promoMode:"normal",
             cooldownUntil: now + cooldownMs
           });
           next.handCooldownUntil[side] = now + cooldownMs;
@@ -2413,18 +1748,10 @@
         const captured = meta.capturedType || "-";
         return ["piece", meta.pieceType, meta.promoMode, dx, dy, captured, meta.nextMode || "normal", actorSide].join("|");
       }
-
       function aiAverage(key){
         const s = ai.stats[key];
         if(!s) return 0;
         return s.sum / Math.max(1, s.count);
-      }
-
-      function aiReward(key, reward){
-        if(!key || !Number.isFinite(reward)) return;
-        const stat = ai.stats[key] || (ai.stats[key] = { sum:0, count:0 });
-        stat.sum += reward;
-        stat.count += 1;
       }
 
       function normalizeStatsBlob(blob){
@@ -2452,10 +1779,7 @@
       function saveLocalAIMemory(){
         try{
           localStorage.setItem("shogi_of_speed_ai_memory_v1", JSON.stringify({
-            version: 1,
-            stats: ai.stats,
-            games: ai.games,
-            updatedAt: Date.now()
+            version:1, stats:ai.stats, games:ai.games, updatedAt:Date.now()
           }));
         }catch{}
       }
@@ -2468,9 +1792,7 @@
           ai.stats = normalizeStatsBlob(parsed);
           ai.games = Number(parsed.games || 0);
           return true;
-        }catch{
-          return false;
-        }
+        }catch{ return false; }
       }
 
       async function ensureAIMemoryLoaded(){
@@ -2479,7 +1801,6 @@
         ai.loading = (async () => {
           const localLoaded = loadLocalAIMemory();
           ai.loaded = true;
-
           try{
             ai.memoryDoc = doc(db, "ai_memory", "cpu_v1");
             const snap = await getDoc(ai.memoryDoc);
@@ -2510,20 +1831,17 @@
             const snap = await tx.get(ai.memoryDoc);
             const remote = snap.exists() ? normalizeStatsBlob(snap.data()) : {};
             const merged = { ...remote };
-
             for(const [k, delta] of Object.entries(ai.pending)){
               const cur = merged[k] || { sum:0, count:0 };
               merged[k] = { sum:(cur.sum || 0) + (delta.sum || 0), count:(cur.count || 0) + (delta.count || 0) };
             }
-
             const pruned = pruneStats(merged, 1500);
             tx.set(ai.memoryDoc, {
-              version: 1,
-              stats: pruned,
-              games: Math.max(Number(snap.exists() ? snap.data()?.games || 0 : 0), ai.games || 0),
-              updatedAt: Date.now()
+              version:1,
+              stats:pruned,
+              games:Math.max(Number(snap.exists() ? snap.data()?.games || 0 : 0), ai.games || 0),
+              updatedAt:Date.now()
             }, { merge:true });
-
             ai.stats = pruned;
             ai.pending = {};
             saveLocalAIMemory();
@@ -2539,7 +1857,6 @@
           tokin:200, proLance:200, proKnight:200, proSilver:200, horse:650, dragon:700
         }[type] || 100;
       }
-
       function captureReward(type){ return Math.max(1.2, cpuValue(type) * 0.02); }
       function lossPenalty(type){ return -Math.max(1.2, cpuValue(type) * 0.02); }
       function terminalRewardForWinner(winnerSide){ return winnerSide === "white" ? 90 : -90; }
@@ -2549,14 +1866,12 @@
         if(meta.capturedType) score += cpuValue(meta.capturedType);
         if(meta.nextMode === "promoted") score += 30;
         if(meta.kind === "hand") score += 5;
-
         const oppSide = actorSide === "white" ? "black" : "white";
         const oppKing = kingPos(live.pieces, oppSide);
         if(oppKing){
           const dist = Math.abs(oppKing.x - meta.to.x) + Math.abs(oppKing.y - meta.to.y);
           score += Math.max(0, (10 - dist)) * 2;
         }
-
         if(meta.pieceType === "pawn" || meta.pieceType === "lance"){
           score += (actorSide === "white" ? meta.to.y : 8 - meta.to.y) * 0.8;
         }else if(meta.pieceType === "knight"){
@@ -2565,7 +1880,6 @@
           score += (4 - Math.abs(meta.to.x - 4)) * 0.5;
           score += (4 - Math.abs(meta.to.y - 4)) * 0.5;
         }
-
         const key = aiActionKey(meta, actorSide);
         score += Math.max(-20, Math.min(20, aiAverage(key) * 2));
         score += Math.random() * 2;
@@ -2580,29 +1894,24 @@
       function aiObserveTransition(prevLive, nextLive, actorSide, actionMeta){
         if(!isCpuMode()) return;
         if(!prevLive || !nextLive) return;
-
         if(actorSide === "white" && actionMeta){
           const key = aiActionKey(actionMeta, "white");
-          for(const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "black")){
-            aiReward(key, captureReward(t));
-          }
+          for(const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "black")) ai.stats[key] = { sum:(ai.stats[key]?.sum || 0) + captureReward(t), count:(ai.stats[key]?.count || 0) + 1 };
           ai.lastCpuActionKey = key;
           ai.episode.push(key);
         }
-
         if(actorSide === "black"){
           for(const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "white")){
-            if(ai.lastCpuActionKey) aiReward(ai.lastCpuActionKey, lossPenalty(t));
+            if(ai.lastCpuActionKey){
+              ai.stats[ai.lastCpuActionKey] = { sum:(ai.stats[ai.lastCpuActionKey]?.sum || 0) + lossPenalty(t), count:(ai.stats[ai.lastCpuActionKey]?.count || 0) + 1 };
+            }
           }
         }
-
         if(nextLive.winner) aiFinishEpisode(nextLive.winner);
       }
-
       function aiFinishEpisode(winnerSide){
         if(ai.gameFinalized) return;
         ai.gameFinalized = true;
-
         if(!ai.episode.length){
           ai.lastCpuActionKey = null;
           ai.pending = {};
@@ -2610,14 +1919,13 @@
           void saveAIMemoryToFirebase();
           return;
         }
-
         const base = terminalRewardForWinner(winnerSide);
         let factor = 1;
         for(let i = ai.episode.length - 1; i >= 0; i--){
-          aiReward(ai.episode[i], base * factor);
+          const key = ai.episode[i];
+          ai.stats[key] = { sum:(ai.stats[key]?.sum || 0) + base * factor, count:(ai.stats[key]?.count || 0) + 1 };
           factor *= 0.92;
         }
-
         ai.episode = [];
         ai.lastCpuActionKey = null;
         ai.games += 1;
@@ -2625,22 +1933,11 @@
         saveLocalAIMemory();
         void saveAIMemoryToFirebase();
       }
-
-      function resetLocalEpisode(){
-        ai.episode = [];
-        ai.lastCpuActionKey = null;
-        ai.gameFinalized = false;
-      }
-
-      function isCpuMode(){
-        return session.kind === "cpu" || session.kind === "cpu_serious";
-      }
+      function resetLocalEpisode(){ ai.episode = []; ai.lastCpuActionKey = null; ai.gameFinalized = false; }
+      function isCpuMode(){ return session.kind === "cpu" || session.kind === "cpu_serious"; }
 
       function setLocalRoom(kind){
-        if(state.unsub){
-          state.unsub();
-          state.unsub = null;
-        }
+        if(state.unsub){ state.unsub(); state.unsub = null; }
         state.roomRef = null;
         state.roomId = kind === "cpu" ? "CPU" : kind === "cpu_serious" ? "SERIOUS CPU" : "1 SMARTPHONE";
         state.mySide = kind === "local_dual" ? "both" : "black";
@@ -2657,62 +1954,55 @@
         }
       }
 
+      function syncPreviewFromInput(){
+        forceUpperRoomInput();
+        session.previewMods = currentInputPreviewMods();
+        renderSelectedModsPills();
+        renderModSuggestions();
+      }
+
       async function enterRoom(){
         const raw = normalizeRoomInputText(roomInput.value);
-
         if(isModModeCode(raw)){
           showModScreen(session.appMode !== "mod");
           return;
         }
-
         const { room, modSpec } = parseRoomAndMods(raw);
         const mode = specialModeFromCode(room);
-
         if(mode === "cpu" || mode === "cpu_serious" || mode === "local_dual"){
           session.kind = mode;
           setLocalRoom(mode);
           return;
         }
-
         session.kind = "online";
-        if(state.unsub){
-          state.unsub();
-          state.unsub = null;
-        }
+        if(state.unsub){ state.unsub(); state.unsub = null; }
         if(session.cpuTimer) clearTimeout(session.cpuTimer);
         if(session.renderTimer) clearTimeout(session.renderTimer);
-        session.cpuTimer = null;
-        session.renderTimer = null;
-        session.cpuBusy = false;
+        session.cpuTimer = null; session.renderTimer = null; session.cpuBusy = false;
 
         try{
           let roomId = room || randRoomId();
           if(!room){
             roomInput.value = roomId;
           }
-
           const selectedMods = buildSelectedModsFromRefs(modSpec);
           session.activeMods = selectedMods;
+          session.previewMods = selectedMods;
           renderSelectedModsPills();
           applyRuntimeTheme();
 
           const ref = doc(db, "rooms", roomId);
           const snap = await getDoc(ref);
           const modSnapshot = serializeMods(selectedMods);
-
           if(!snap.exists()){
             await setDoc(ref, makeOnlineRoomDoc(state.playerId, modSnapshot));
           }else if(modSnapshot.length){
             await runTransaction(db, async (tx) => {
               const r = await tx.get(ref);
               if(!r.exists()) return;
-              tx.update(ref, {
-                modSnapshot,
-                updatedAt: Date.now()
-              });
+              tx.update(ref, { modSnapshot, updatedAt: Date.now() });
             });
           }
-
           await connectOnlineRoom(roomId);
         }catch(err){
           setStatus(`入室に失敗した: ${err.message}`);
@@ -2729,7 +2019,6 @@
       async function connectOnlineRoom(roomId){
         roomId = normalizeRoomInputText(roomId).toUpperCase();
         if(!roomId) return;
-
         if(state.unsub) state.unsub();
         state.roomId = roomId;
         state.roomRef = doc(db, "rooms", roomId);
@@ -2740,12 +2029,10 @@
         await runTransaction(db, async (tx) => {
           const now = Date.now();
           const snap = await tx.get(state.roomRef);
-
           if(!snap.exists()){
             tx.set(state.roomRef, makeOnlineRoomDoc(state.playerId, serializeMods(session.activeMods)));
             return;
           }
-
           const data = snap.data() || {};
           let players = data.players || { black:null, white:null };
           let presence = data.presence || {};
@@ -2754,7 +2041,6 @@
           let rematchVotes = data.rematchVotes || {};
           let forceHomeAt = data.forceHomeAt || null;
           let lastWinnerSide = data.lastWinnerSide || roomState.lastWinnerSide || null;
-
           if(!roomState.royalLabels) roomState.royalLabels = buildRoyalLabels(lastWinnerSide);
 
           const currentAlready = players.black === state.playerId || players.white === state.playerId;
@@ -2798,40 +2084,22 @@
 
           const bothReady = !!players.black && !!players.white;
           if(bothReady && !matchStartAt && !roomState.winner){
-            matchStartAt = now + 3000;
+            matchStartAt = now + COUNTDOWN_MS;
           }
 
           tx.update(state.roomRef, {
-            players,
-            presence,
-            state: roomState,
-            lastWinnerSide,
-            matchStartAt,
-            rematchVotes,
-            forceHomeAt,
-            updatedAt: now
+            players,presence,state:roomState,lastWinnerSide,matchStartAt,rematchVotes,forceHomeAt,updatedAt:now
           });
         });
 
         state.unsub = onSnapshot(state.roomRef, (snap) => {
-          if(!snap.exists()){
-            setStatus("ルームが見つからないよ。");
-            return;
-          }
-
+          if(!snap.exists()){ setStatus("ルームが見つからないよ。"); return; }
           const data = snap.data();
-          if(data.forceHomeAt){
-            leaveToHome();
-            return;
-          }
+          if(data.forceHomeAt){ leaveToHome(); return; }
 
           state.roomData = data;
           const players = state.roomData.players || {};
-          state.mySide =
-            players.black === state.playerId ? "black" :
-            players.white === state.playerId ? "white" :
-            "spectator";
-
+          state.mySide = players.black === state.playerId ? "black" : players.white === state.playerId ? "white" : "spectator";
           session.roomMods = deserializeMods(data.modSnapshot || []);
           applyRuntimeTheme();
           renderSelectedModsPills();
@@ -2840,7 +2108,6 @@
             const stillThere = state.roomData.state?.pieces?.some(p => p.id === state.selected.id);
             if(!stillThere) state.selected = null;
           }
-
           updateMePill();
           const live = state.roomData.state || {};
           if(live.winner){
@@ -2855,13 +2122,9 @@
               setStatus(`ルーム ${state.roomId} に接続中。`);
             }
           }
-
           refreshHands();
           scheduleRender(0);
-
-          if(isCpuMode() && live && !live.winner){
-            scheduleCpuThink(cpuThinkDelay());
-          }
+          if(isCpuMode() && live && !live.winner) scheduleCpuThink(cpuThinkDelay());
         });
 
         setStatus(`ルーム ${roomId} に接続したよ。`);
@@ -2872,11 +2135,9 @@
         if(!isCpuMode() || !state.roomData) return;
         if(session.cpuBusy) return;
         session.cpuBusy = true;
-
         try{
           const live = state.roomData.state;
           if(!live || live.winner) return;
-
           const now = Date.now();
           if(state.roomData.matchStartAt && now < state.roomData.matchStartAt){
             scheduleCpuThink(cpuThinkDelay());
@@ -2892,21 +2153,16 @@
             const moves = legalMovesForPiece(live, p, true);
             for(const mv of moves){
               const meta = {
-                kind: "piece",
-                pieceType: p.type,
-                promoMode: p.promoMode,
-                from: { x:p.x, y:p.y },
-                to: { x:mv.x, y:mv.y },
+                kind:"piece",
+                pieceType:p.type,
+                promoMode:p.promoMode,
+                from:{ x:p.x, y:p.y },
+                to:{ x:mv.x, y:mv.y },
                 capturedType: pieceAt(live.pieces, mv.x, mv.y)?.type || null,
                 nextMode: mv.nextMode || p.promoMode || "normal",
                 moveKind: mv.kind || "normal"
               };
-              actions.push({
-                selected: { kind:"piece", id:p.id },
-                dest: { x:mv.x, y:mv.y },
-                meta,
-                score: scoreAction(live, meta, actorSide)
-              });
+              actions.push({ selected:{ kind:"piece", id:p.id }, dest:{ x:mv.x, y:mv.y }, meta, score:scoreAction(live, meta, actorSide) });
             }
           }
 
@@ -2919,40 +2175,28 @@
                 for(let x=0;x<9;x++){
                   if(pieceAt(live.pieces, x, y)) continue;
                   const meta = {
-                    kind: "hand",
-                    pieceType: t,
-                    promoMode: "hand",
-                    from: null,
-                    to: { x, y },
-                    capturedType: null,
-                    nextMode: "normal",
-                    moveKind: "drop"
+                    kind:"hand",
+                    pieceType:t,
+                    promoMode:"hand",
+                    from:null,
+                    to:{ x, y },
+                    capturedType:null,
+                    nextMode:"normal",
+                    moveKind:"drop"
                   };
-                  actions.push({
-                    selected: { kind:"hand", side:"white", type:t },
-                    dest: { x, y },
-                    meta,
-                    score: scoreAction(live, meta, actorSide)
-                  });
+                  actions.push({ selected:{ kind:"hand", side:"white", type:t }, dest:{ x, y }, meta, score:scoreAction(live, meta, actorSide) });
                 }
               }
             }
           }
 
-          if(!actions.length){
-            scheduleCpuThink(cpuThinkDelay());
-            return;
-          }
-
+          if(!actions.length){ scheduleCpuThink(cpuThinkDelay()); return; }
           actions.sort((a, b) => b.score - a.score);
           const pool = actions.slice(0, Math.min(6, actions.length));
           const pick = Math.random() < 0.75 ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
           const prevLive = cloneState(live);
           const next = applyActionToLive(live, pick.selected, "white", pick.dest, false);
-          if(!next){
-            scheduleCpuThink(cpuThinkDelay());
-            return;
-          }
+          if(!next){ scheduleCpuThink(cpuThinkDelay()); return; }
 
           state.roomData.state = next;
           state.roomData.updatedAt = Date.now();
@@ -2960,7 +2204,6 @@
           refreshHands();
           aiObserveTransition(prevLive, next, "white", pick.meta);
           scheduleRender(0);
-
           if(!next.winner) scheduleCpuThink(cpuThinkDelay());
         }finally{
           session.cpuBusy = false;
@@ -2994,7 +2237,6 @@
           }
           return;
         }
-
         if(!state.roomRef || !state.roomData) return;
         const room = state.roomData;
         if(!room.state?.winner || !isBothPlayersReady(room)) return;
@@ -3002,16 +2244,13 @@
         await runTransaction(db, async (tx) => {
           const snap = await tx.get(state.roomRef);
           if(!snap.exists()) return;
-
           const data = snap.data() || {};
           const live = data.state || {};
           const players = data.players || {};
           const rematchVotes = data.rematchVotes || {};
           const now = Date.now();
 
-          const mySide = players.black === state.playerId ? "black"
-                       : players.white === state.playerId ? "white"
-                       : "spectator";
+          const mySide = players.black === state.playerId ? "black" : players.white === state.playerId ? "white" : "spectator";
           if(mySide === "spectator") return;
           if(!live.winner || !players.black || !players.white) return;
 
@@ -3026,29 +2265,26 @@
           if(bothYes){
             const royalLabels = buildRoyalLabels(historyWinner);
             tx.update(state.roomRef, {
-              state: freshState(royalLabels),
-              lastWinnerSide: historyWinner,
-              matchStartAt: now + 3000,
-              rematchVotes: {},
-              forceHomeAt: null,
-              updatedAt: now
+              state:freshState(royalLabels),
+              lastWinnerSide:historyWinner,
+              matchStartAt:now + COUNTDOWN_MS,
+              rematchVotes:{},
+              forceHomeAt:null,
+              updatedAt:now
             });
             return;
           }
 
           if(!yes){
             tx.update(state.roomRef, {
-              rematchVotes: {},
-              forceHomeAt: now,
-              updatedAt: now
+              rematchVotes:{},
+              forceHomeAt:now,
+              updatedAt:now
             });
             return;
           }
 
-          tx.update(state.roomRef, {
-            rematchVotes,
-            updatedAt: now
-          });
+          tx.update(state.roomRef, { rematchVotes, updatedAt:now });
         }).catch(err => setStatus(`リマッチの処理に失敗した: ${err.message}`));
 
         if(!yes) leaveToHome();
@@ -3063,28 +2299,18 @@
           const legal = legalMovesForPiece(live, piece, true);
           const move = legal.find(m => m.x === destBoard.x && m.y === destBoard.y);
           return {
-            kind: "piece",
-            pieceType: piece.type,
-            promoMode: piece.promoMode,
-            from: { x: piece.x, y: piece.y },
-            to: { x: destBoard.x, y: destBoard.y },
-            capturedType: captured?.type || null,
-            nextMode: move?.nextMode || piece.promoMode || "normal",
-            moveKind: move?.kind || "normal"
+            kind:"piece",
+            pieceType:piece.type,
+            promoMode:piece.promoMode,
+            from:{ x:piece.x, y:piece.y },
+            to:{ x:destBoard.x, y:destBoard.y },
+            capturedType:captured?.type || null,
+            nextMode:move?.nextMode || piece.promoMode || "normal",
+            moveKind:move?.kind || "normal"
           };
         }
-
         if(selected.kind === "hand"){
-          return {
-            kind: "hand",
-            pieceType: selected.type,
-            promoMode: "hand",
-            from: null,
-            to: { x: destBoard.x, y: destBoard.y },
-            capturedType: null,
-            nextMode: "normal",
-            moveKind: "drop"
-          };
+          return { kind:"hand", pieceType:selected.type, promoMode:"hand", from:null, to:{ x:destBoard.x, y:destBoard.y }, capturedType:null, nextMode:"normal", moveKind:"drop" };
         }
         return null;
       }
@@ -3107,9 +2333,7 @@
             const now = Date.now();
             if(room.matchStartAt && now < room.matchStartAt) return;
 
-            const side = room.players?.black === state.playerId ? "black"
-                       : room.players?.white === state.playerId ? "white"
-                       : "spectator";
+            const side = room.players?.black === state.playerId ? "black" : room.players?.white === state.playerId ? "white" : "spectator";
             if(side === "spectator") return;
             if(!canControlSide(selectedSideOfSelection())) return;
 
@@ -3119,11 +2343,7 @@
             const presence = room.presence || {};
             presence[state.playerId] = { side, lastSeen: now };
 
-            const update = {
-              state: next,
-              presence,
-              updatedAt: now
-            };
+            const update = { state: next, presence, updatedAt: now };
             if(next.winner) update.lastWinnerSide = next.lastWinnerSide || next.winner;
             tx.update(state.roomRef, update);
           }).catch(err => setStatus(`動かせなかった: ${err.message}`));
@@ -3134,7 +2354,6 @@
 
         const liveLocal = state.roomData?.state;
         if(!liveLocal) return;
-
         const anySide = session.kind === "local_dual";
         const actorSide = isCpuMode() ? "black" : null;
         const selected = state.selected.kind === "piece" || state.selected.kind === "hand" ? state.selected : null;
@@ -3175,14 +2394,10 @@
           const moveOct = octantFromVector(center.x - start.x, center.y - start.y);
           if(moveOct !== dragOct) continue;
           const d = (center.x - releasePoint.x) ** 2 + (center.y - releasePoint.y) ** 2;
-          if(d < bestD){
-            bestD = d;
-            best = m;
-          }
+          if(d < bestD){ bestD = d; best = m; }
         }
         return best;
       }
-
       function getHandDropTarget(ev){
         const sq = pointToSquare(ev);
         if(!sq) return null;
@@ -3192,13 +2407,9 @@
         if(pieceAt(live.pieces, board.x, board.y)) return null;
         return board;
       }
-
       function pointFromEvent(ev){
         const rect = boardCanvas.getBoundingClientRect();
-        return {
-          x: (ev.clientX - rect.left) / rect.width * 9,
-          y: (ev.clientY - rect.top) / rect.height * 9
-        };
+        return { x:(ev.clientX - rect.left) / rect.width * 9, y:(ev.clientY - rect.top) / rect.height * 9 };
       }
 
       boardCanvas.addEventListener("click", async (ev) => {
@@ -3224,7 +2435,6 @@
 
           if(state.selected.kind === "piece"){
             const selectedPiece = live.pieces.find(p => p.id === state.selected.id);
-
             if(selectedPiece && canControlSide(selectedPiece.side)){
               const destBoard = screenToBoard(sq.x, sq.y);
               const legal = legalMovesForPiece(live, selectedPiece, true);
@@ -3235,7 +2445,6 @@
                 return;
               }
             }
-
             if(clicked && canControlSide(clicked.side)){
               state.selected = { kind:"piece", id: clicked.id };
               state.dragSource = "board";
@@ -3243,7 +2452,6 @@
               scheduleRender(0);
               return;
             }
-
             clearSelection();
             return;
           }
@@ -3263,7 +2471,6 @@
             clearSelection();
             return;
           }
-
           if(clicked && canControlSide(clicked.side)){
             state.selected = { kind:"piece", id: clicked.id };
             state.dragSource = "board";
@@ -3340,9 +2547,7 @@
         state.dragStart = null;
         state.dragging = false;
       }
-
       document.addEventListener("pointerup", finishSlidePointer, true);
-
       boardCanvas.addEventListener("pointercancel", () => {
         state.dragPointerId = null;
         state.dragStart = null;
@@ -3350,292 +2555,40 @@
         state.dragSource = null;
       });
 
-      function renderModList(){
-        modListEl.innerHTML = "";
-        const list = session.modStore.list.slice().sort((a,b) => (b.versions.length - a.versions.length) || a.name.localeCompare(b.name, "ja"));
-        if(!list.length){
-          const empty = document.createElement("div");
-          empty.className = "modCard";
-          empty.innerHTML = `<div class="modTitle">まだMODがないよ</div><div class="modMeta">+新規MODから作ってね。</div>`;
-          modListEl.appendChild(empty);
-          return;
-        }
-
-        for(const mod of list){
-          const card = document.createElement("div");
-          card.className = "modCard" + (mod.id === session.currentModId ? " selected" : "");
-          const latest = mod.versions[mod.versions.length - 1];
-          card.innerHTML = `
-            <div class="modTitle">
-              <span>${escapeHtml(mod.name || "(名前なし)")}</span>
-              <span class="badge">v${latest?.version || 0}</span>
-            </div>
-            <div class="modMeta">${escapeHtml(latest?.summary || "まだ説明がないよ。")}</div>
-          `;
-          card.addEventListener("click", () => selectModForEdit(mod.id));
-          modListEl.appendChild(card);
-        }
-      }
-
-      function renderModEditor(){
-        const mod = getCurrentMod();
-        versionRow.innerHTML = "";
-
-        if(!mod){
-          versionPreview.textContent = "MODを選ぶと内容がここに出るよ。";
-          deleteModBtn.disabled = true;
-          return;
-        }
-
-        deleteModBtn.disabled = false;
-        modNameEl.value = mod.name || "";
-        const cur = getCurrentVersionObj(mod);
-
-        for(const v of mod.versions){
-          const btn = document.createElement("button");
-          btn.className = "verBtn" + (v.version === session.currentVersion ? " selected" : "");
-          btn.textContent = `v${v.version}`;
-          btn.addEventListener("click", () => {
-            session.currentVersion = v.version;
-            modPromptEl.value = v.prompt || "";
-            renderModEditor();
-          });
-          versionRow.appendChild(btn);
-        }
-
-        if(cur){
-          versionPreview.textContent = [
-            `MOD名: ${mod.name}`,
-            `バージョン: v${cur.version}`,
-            `説明: ${cur.summary || "(なし)"}`,
-            "",
-            `テーマ変更: ${JSON.stringify(cur.patch?.theme || {}, null, 2)}`,
-            `ゲーム設定: ${JSON.stringify(cur.patch?.game || {}, null, 2)}`,
-            `表示設定: ${JSON.stringify(cur.patch?.ui || {}, null, 2)}`,
-            `ルール設定: ${JSON.stringify(cur.patch?.rules || {}, null, 2)}`
-          ].join("\n");
-        }else{
-          versionPreview.textContent = "このMODにはまだバージョンがないよ。AIで作るか保存してね。";
-        }
-      }
-
-      function showModScreen(show){
-        session.appMode = show ? "mod" : "game";
-        modScreen.classList.toggle("show", show);
-        if(show){
-          renderModList();
-          renderModEditor();
-          setStatus("MOD制作画面だよ。");
-        }else{
-          setStatus("ゲーム画面に戻ったよ。");
-          scheduleRender(0);
-        }
-      }
-
-      function escapeHtml(text){
-        return String(text)
-          .replace(/&/g,"&amp;")
-          .replace(/</g,"&lt;")
-          .replace(/>/g,"&gt;")
-          .replace(/"/g,"&quot;")
-          .replace(/'/g,"&#39;");
-      }
-
-      function localGeneratePatch(prompt, name){
-        const text = `${name || ""} ${prompt || ""}`.toLowerCase();
-        const patch = getDefaultPatch();
-
-        if(text.includes("ダーク") || text.includes("dark")){
-          patch.theme.boardDark = "#4f3f2d";
-          patch.theme.boardLight = "#685039";
-        }
-        if(text.includes("cooldown") || text.includes("クール") || text.includes("3秒")){
-          patch.game.cooldownMs = text.includes("1秒") ? 1000 : text.includes("0.5") ? 500 : 3000;
-          patch.game.handCooldownMs = patch.game.cooldownMs;
-        }
-        if(text.includes("cpu")){
-          patch.game.cpuDelayMin = 800;
-          patch.game.cpuDelayMax = 1400;
-        }
-        if(text.includes("serious")){
-          patch.game.seriousCpuInterval = 100;
-        }
-        if(text.includes("王") || text.includes("玉")){
-          patch.labels.kingBlack = "王";
-          patch.labels.kingWhite = "玉";
-        }
-        return patch;
-      }
-
-      async function askModAI(name, prompt, currentMod){
-        const body = {
-          game: "shogi-of-speed",
-          currentModName: name,
-          currentVersion: currentMod?.versions?.length || 0,
-          existingVersions: currentMod?.versions?.map(v => ({ version:v.version, summary:v.summary })) || [],
-          request: prompt,
-          basePatch: getDefaultPatch()
-        };
-
-        if(MOD_AI_ENDPOINT){
-          try{
-            const res = await fetch(MOD_AI_ENDPOINT, {
-              method:"POST",
-              headers:{ "Content-Type":"application/json" },
-              body: JSON.stringify(body)
-            });
-            if(res.ok){
-              const data = await res.json();
-              if(data && typeof data === "object") return data;
-            }
-          }catch{}
-        }
-
-        return {
-          summary: `「${name}」の試作MODを作ったよ。`,
-          prompt,
-          patch: localGeneratePatch(prompt, name)
-        };
-      }
-
-      function createOrUpdateModFromEditor(){
-        const name = normalizeModNameInput(modNameEl.value.trim());
-        const prompt = modPromptEl.value.trim();
-
-        if(!name){
-          setStatus("MOD名を入れてね。");
-          return;
-        }
-
-        let mod = getCurrentMod();
-        if(!mod){
-          mod = createBlankMod();
-          mod.name = name;
-          session.modStore.list.unshift(mod);
-          session.currentModId = mod.id;
-        }else{
-          mod.name = name;
-        }
-
-        const newVersion = nextVersionNumber(mod);
-        const versionObj = {
-          version: newVersion,
-          prompt,
-          summary: `v${newVersion} の保存版。`,
-          patch: localGeneratePatch(prompt, name),
-          createdAt: Date.now()
-        };
-        mod.versions.push(versionObj);
-        session.currentVersion = newVersion;
-        saveCurrentModStore();
-        setStatus(`MOD「${name}」を v${newVersion} として保存したよ。`);
-      }
-
-      async function createAIGeneratedModVersion(){
-        const name = normalizeModNameInput(modNameEl.value.trim());
-        const prompt = modPromptEl.value.trim();
-
-        if(!name){
-          setStatus("MOD名を入れてね。");
-          return;
-        }
-
-        let mod = getCurrentMod();
-        if(!mod){
-          mod = createBlankMod();
-          mod.name = name;
-          session.modStore.list.unshift(mod);
-          session.currentModId = mod.id;
-        }else{
-          mod.name = name;
-        }
-
-        setStatus("AIで作成中...");
-        const aiOut = await askModAI(name, prompt, mod);
-        const newVersion = nextVersionNumber(mod);
-        const versionObj = {
-          version: newVersion,
-          prompt,
-          summary: aiOut.summary || `v${newVersion} を生成したよ。`,
-          patch: aiOut.patch || localGeneratePatch(prompt, name),
-          createdAt: Date.now(),
-          raw: aiOut.raw || ""
-        };
-        mod.versions.push(versionObj);
-        session.currentVersion = newVersion;
-        saveCurrentModStore();
-        setStatus(`AIで「${name}」の v${newVersion} を作ったよ。`);
-      }
-
-      function deleteCurrentMod(){
-        const mod = getCurrentMod();
-        if(!mod) return;
-        if(!confirm(`MOD「${mod.name}」を削除する？`)) return;
-        session.modStore.list = session.modStore.list.filter(m => m.id !== mod.id);
-        session.currentModId = null;
-        session.currentVersion = null;
-        saveCurrentModStore();
-        modNameEl.value = "";
-        modPromptEl.value = "";
-        renderModList();
-        renderModEditor();
-        setStatus(`MOD「${mod.name}」を削除したよ。`);
-      }
-
-      function updateModUIFromInput(){
-        forceUpperRoomInput();
-        renderModSuggestions();
-      }
-
-      function renderInitial(){
-        applyRuntimeTheme();
+      function renderModAndGameState(){
         renderModList();
         renderModEditor();
         renderSelectedModsPills();
-        updateMePill();
-        updateRematchOverlay();
-        resizeCanvas();
-        scheduleRender(0);
       }
 
-      function openRoomOrModeFromInput(){
+      enterBtn.addEventListener("click", () => {
         const raw = normalizeRoomInputText(roomInput.value);
         if(isModModeCode(raw)){
           showModScreen(session.appMode !== "mod");
           return;
         }
         void enterRoom();
-      }
-
-      enterBtn.addEventListener("click", openRoomOrModeFromInput);
-
-      roomInput.addEventListener("input", () => {
-        updateModUIFromInput();
       });
 
+      roomInput.addEventListener("input", () => {
+        updateInputPreview();
+      });
       roomInput.addEventListener("change", () => {
-        updateModUIFromInput();
+        updateInputPreview();
+      });
+      roomInput.addEventListener("keydown", (e) => {
+        if(e.key === "Enter") enterBtn.click();
       });
 
       shareBtn.addEventListener("click", async () => {
         const code = normalizeRoomInputText(roomInput.value || state.roomId || (session.kind === "cpu" ? "CPU" : session.kind === "cpu_serious" ? "SERIOUS CPU" : session.kind === "local_dual" ? "1 SMARTPHONE" : ""));
-        if(!code){
-          setStatus("共有するコードがないよ。");
-          return;
-        }
-
-        if(!navigator.share){
-          setStatus("この端末は共有に対応していないよ。");
-          return;
-        }
-
+        if(!code){ setStatus("共有するコードがないよ。"); return; }
+        if(!navigator.share){ setStatus("この端末は共有に対応していないよ。"); return; }
         try{
           await navigator.share({ text: code });
           setStatus(`コードを共有したよ: ${code}`);
         }catch(err){
-          if(err && err.name !== "AbortError"){
-            setStatus(`共有できなかった: ${err.message}`);
-          }
+          if(err && err.name !== "AbortError") setStatus(`共有できなかった: ${err.message}`);
         }
       });
 
@@ -3662,16 +2615,47 @@
         modPromptEl.value = "";
         versionPreview.textContent = "AIに説明を書いてね。";
       });
-
       saveModBtn.addEventListener("click", createOrUpdateModFromEditor);
       aiGenerateBtn.addEventListener("click", createAIGeneratedModVersion);
       deleteModBtn.addEventListener("click", deleteCurrentMod);
+      modNameEl.addEventListener("input", () => { modNameEl.value = normalizeModNameInput(modNameEl.value); });
 
-      modNameEl.addEventListener("input", () => {
-        modNameEl.value = normalizeModNameInput(modNameEl.value);
+      aiEndpointEl.value = localStorage.getItem("MOD_AI_ENDPOINT") || "";
+      aiEndpointEl.addEventListener("input", () => {
+        localStorage.setItem("MOD_AI_ENDPOINT", aiEndpointEl.value.trim());
       });
 
-      window.addEventListener("resize", resizeCanvas);
+      function renderInitial(){
+        applyRuntimeTheme();
+        renderModList();
+        renderModEditor();
+        renderSelectedModsPills();
+        updateMePill();
+        updateRematchOverlay();
+        resizeCanvas();
+        scheduleRender(0);
+      }
+
+      function updateInputPreview(){
+        forceUpperRoomInput();
+        syncPreviewFromInput();
+      }
+
+      function syncPreviewFromInput(){
+        session.previewMods = currentInputPreviewMods();
+        renderSelectedModsPills();
+        renderModSuggestions();
+      }
+
+      function openRoomOrModeFromInput(){
+        const raw = normalizeRoomInputText(roomInput.value);
+        if(isModModeCode(raw)){
+          showModScreen(session.appMode !== "mod");
+          return;
+        }
+        void enterRoom();
+      }
+      enterBtn.addEventListener("click", openRoomOrModeFromInput);
 
       function modStoreChanged(){
         saveModStore();
@@ -3680,18 +2664,34 @@
         renderSelectedModsPills();
       }
 
-      function idleTick(){
-        scheduleRender();
-        if(isCpuMode()) {
-          if(state.roomData && !state.roomData.state?.winner) scheduleCpuThink(cpuThinkDelay());
-        }
-        setTimeout(idleTick, 250);
-      }
-
+      window.addEventListener("resize", resizeCanvas);
       void ensureAIMemoryLoaded();
+      syncPreviewFromInput();
       renderInitial();
       setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+
+      function idleTick(){
+        scheduleRender();
+        if(isCpuMode() && state.roomData && !state.roomData.state?.winner) scheduleCpuThink(cpuThinkDelay());
+        setTimeout(idleTick, 250);
+      }
       setTimeout(idleTick, 250);
+
+      function enterModScreenToggle(){ showModScreen(session.appMode !== "mod"); }
+
+      async function connectAndLoadMods(roomId){
+        await connectOnlineRoom(roomId);
+        if(state.roomData){
+          session.roomMods = deserializeMods(state.roomData.modSnapshot || []);
+          renderSelectedModsPills();
+        }
+      }
+
+      // Keep connected room mods synced with input preview before join.
+      updateInputPreview();
+
+      // Optional public hook
+      window.MOD_AI_ENDPOINT = localStorage.getItem("MOD_AI_ENDPOINT") || "";
     })();
   </script>
 </body>
