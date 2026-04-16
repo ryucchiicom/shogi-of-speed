@@ -13,41 +13,36 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return json({ error: "Method not allowed", message: "Use POST." }, 405, corsHeaders);
+      return json({ error: "Method not allowed" }, 405, corsHeaders);
     }
 
     if (!env.OPENAI_API_KEY) {
-      return json(
-        { error: "Missing OPENAI_API_KEY", message: "Set OPENAI_API_KEY in your Worker environment variables." },
-        500,
-        corsHeaders
-      );
+      return json({
+        error: "Missing OPENAI_API_KEY",
+        message: "Set OPENAI_API_KEY in the Worker settings."
+      }, 500, corsHeaders);
     }
 
     let body;
     try {
       body = await request.json();
     } catch {
-      return json({ error: "Invalid JSON", message: "Request body must be JSON." }, 400, corsHeaders);
+      return json({ error: "Invalid JSON" }, 400, corsHeaders);
     }
 
-    const normalized = normalizeRequest(body);
+    const input = normalizeRequest(body);
 
     try {
-      const aiResult = await generateModWithOpenAI(env, normalized);
-      return json(aiResult, 200, corsHeaders);
+      const result = await generateMod(env, input);
+      return json(result, 200, corsHeaders);
     } catch (err) {
-      return json(
-        {
-          error: "OpenAI request failed",
-          message: err?.message || String(err),
-          fallback: buildFallbackResult(normalized),
-        },
-        500,
-        corsHeaders
-      );
+      return json({
+        error: "OpenAI request failed",
+        message: err?.message || String(err),
+        fallback: fallbackResult(input)
+      }, 500, corsHeaders);
     }
-  },
+  }
 };
 
 function json(data, status = 200, headers = {}) {
@@ -55,38 +50,27 @@ function json(data, status = 200, headers = {}) {
 }
 
 function normalizeRequest(body) {
-  const currentModName = safeString(body?.currentModName || body?.name || "");
-  const request = safeString(body?.request || body?.prompt || "");
-  const currentVersion = Number(body?.currentVersion || 0) || 0;
-
-  const existingVersions = Array.isArray(body?.existingVersions)
-    ? body.existingVersions.map((v) => ({
-        version: Number(v?.version || 0) || 0,
-        summary: safeString(v?.summary || ""),
-      }))
-    : [];
-
-  const basePatch = isObject(body?.basePatch) ? body.basePatch : {};
-
-  return { currentModName, request, currentVersion, existingVersions, basePatch };
+  return {
+    currentModName: typeof body?.currentModName === "string" ? body.currentModName : "",
+    request: typeof body?.request === "string" ? body.request : "",
+    currentVersion: Number(body?.currentVersion || 0) || 0,
+    existingVersions: Array.isArray(body?.existingVersions) ? body.existingVersions : [],
+    basePatch: isObj(body?.basePatch) ? body.basePatch : {}
+  };
 }
 
-function safeString(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-function isObject(v) {
+function isObj(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
-function buildSystemPrompt() {
+function systemPrompt() {
   return [
     "あなたは将棋ゲームのMOD生成AIです。",
     "出力はJSONのみ。",
-    "summary は短い日本語にする。",
+    "summary は簡潔な日本語にする。",
     "prompt は短い日本語にする。",
-    "難しい説明、暗号っぽい表現、JSON断片の羅列は禁止。",
-    "新規MODならシンプルで分かりやすい提案にする。",
-    "既存MODの修正なら、前回より少しだけ改善する。",
+    "暗号っぽい記号の列は禁止。",
+    "説明は人が読んで一発でわかるようにする。",
     "",
     "返すJSON schema:",
     "{",
@@ -99,39 +83,37 @@ function buildSystemPrompt() {
     '    "rules": object,',
     '    "ui": object',
     "  }",
-    "}",
+    "}"
   ].join("\n");
 }
 
-async function generateModWithOpenAI(env, input) {
-  const model = env.OPENAI_MODEL || "gpt-4.1-mini";
-
-  const userPrompt = [
+async function generateMod(env, input) {
+  const payload = [
     `MOD名: ${input.currentModName || "(未設定)"}`,
     `現在のバージョン数: ${input.currentVersion || 0}`,
     "",
-    "既存バージョンの要約:",
+    "既存バージョン:",
     ...(input.existingVersions.length
-      ? input.existingVersions.map((v) => `- v${v.version}: ${v.summary || "(なし)"}`)
+      ? input.existingVersions.map(v => `- v${Number(v.version || 0)}: ${String(v.summary || "")}`)
       : ["- なし"]),
     "",
-    "ベースの設定:",
+    "ベース設定:",
     JSON.stringify(input.basePatch || {}, null, 2),
     "",
     "依頼内容:",
-    input.request || "(なし)",
+    input.request || "(なし)"
   ].join("\n");
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
+      "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model,
-      instructions: buildSystemPrompt(),
-      input: userPrompt,
+      model: env.OPENAI_MODEL || "gpt-4.1-mini",
+      instructions: systemPrompt(),
+      input: payload,
       temperature: 0.2,
       max_output_tokens: 1200,
       text: {
@@ -156,9 +138,8 @@ async function generateModWithOpenAI(env, input) {
                       boardLight: { type: "string" },
                       boardDark: { type: "string" },
                       piece1: { type: "string" },
-                      piece2: { type: "string" },
-                    },
-                    required: [],
+                      piece2: { type: "string" }
+                    }
                   },
                   game: {
                     type: "object",
@@ -168,58 +149,56 @@ async function generateModWithOpenAI(env, input) {
                       handCooldownMs: { type: "number" },
                       cpuDelayMin: { type: "number" },
                       cpuDelayMax: { type: "number" },
-                      seriousCpuInterval: { type: "number" },
-                    },
-                    required: [],
+                      seriousCpuInterval: { type: "number" }
+                    }
                   },
                   labels: {
                     type: "object",
                     additionalProperties: false,
                     properties: {
                       kingBlack: { type: "string" },
-                      kingWhite: { type: "string" },
-                    },
-                    required: [],
+                      kingWhite: { type: "string" }
+                    }
                   },
                   rules: { type: "object", additionalProperties: true },
-                  ui: { type: "object", additionalProperties: true },
+                  ui: { type: "object", additionalProperties: true }
                 },
-                required: ["theme", "game", "labels", "rules", "ui"],
-              },
+                required: ["theme", "game", "labels", "rules", "ui"]
+              }
             },
-            required: ["summary", "prompt", "patch"],
-          },
-        },
-      },
-    }),
+            required: ["summary", "prompt", "patch"]
+          }
+        }
+      }
+    })
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`OpenAI ${response.status}: ${text.slice(0, 500)}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`OpenAI ${res.status}: ${text.slice(0, 400)}`);
   }
 
-  const data = await response.json();
-  const text = extractOutputText(data);
-
-  if (!text) return buildFallbackResult(input);
+  const data = await res.json();
+  const text = extractText(data);
+  if (!text) return fallbackResult(input);
 
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch {
-    parsed = buildFallbackResult(input);
+    parsed = fallbackResult(input);
   }
 
-  return sanitizeResult(parsed, input);
+  return sanitize(parsed, input);
 }
 
-function extractOutputText(data) {
-  if (!data || typeof data !== "object") return "";
-  if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
+function extractText(data) {
+  if (typeof data?.output_text === "string" && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
 
-  const out = Array.isArray(data.output) ? data.output : [];
-  for (const item of out) {
+  const output = Array.isArray(data?.output) ? data.output : [];
+  for (const item of output) {
     if (!item || typeof item !== "object") continue;
     if (item.type === "message" && Array.isArray(item.content)) {
       for (const part of item.content) {
@@ -232,21 +211,20 @@ function extractOutputText(data) {
   return "";
 }
 
-function sanitizeResult(parsed, input) {
-  const fallback = buildFallbackResult(input);
-  const out = {
-    summary: safeString(parsed?.summary || fallback.summary),
-    prompt: safeString(parsed?.prompt || input.request || fallback.prompt),
-    patch: mergePatch(fallback.patch, isObject(parsed?.patch) ? parsed.patch : {}),
+function sanitize(parsed, input) {
+  const fb = fallbackResult(input);
+  return {
+    summary: cleanString(parsed?.summary) || fb.summary,
+    prompt: cleanString(parsed?.prompt) || fb.prompt,
+    patch: mergePatch(fb.patch, isObj(parsed?.patch) ? parsed.patch : {})
   };
-  if (!out.summary.trim()) out.summary = fallback.summary;
-  if (!out.prompt.trim()) out.prompt = fallback.prompt;
-  if (out.summary.length > 40) out.summary = out.summary.slice(0, 40);
-  if (out.prompt.length > 60) out.prompt = out.prompt.slice(0, 60);
-  return out;
 }
 
-function buildFallbackResult(input) {
+function cleanString(v) {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function fallbackResult(input) {
   return {
     summary: `試作MOD「${input.currentModName || "MOD"}」`,
     prompt: input.request || "",
@@ -257,45 +235,52 @@ function buildFallbackResult(input) {
         handCooldownMs: 3000,
         cpuDelayMin: 1000,
         cpuDelayMax: 1500,
-        seriousCpuInterval: 100,
+        seriousCpuInterval: 100
       },
       labels: {},
       rules: {},
-      ui: {},
-    },
+      ui: {}
+    }
   };
 }
 
 function mergePatch(base, extra) {
   const out = deepClone(base);
-  if (extra.theme) out.theme = { ...(out.theme || {}), ...pickStringFields(extra.theme, ["boardLight", "boardDark", "piece1", "piece2"]) };
-  if (extra.game) out.game = { ...(out.game || {}), ...pickNumberFields(extra.game, ["cooldownMs", "handCooldownMs", "cpuDelayMin", "cpuDelayMax", "seriousCpuInterval"]) };
-  if (extra.labels) out.labels = { ...(out.labels || {}), ...pickStringFields(extra.labels, ["kingBlack", "kingWhite"]) };
-  if (extra.rules && isObject(extra.rules)) out.rules = deepMergeObjects(out.rules || {}, extra.rules);
-  if (extra.ui && isObject(extra.ui)) out.ui = deepMergeObjects(out.ui || {}, extra.ui);
+  if (extra.theme) out.theme = { ...(out.theme || {}), ...pickStrings(extra.theme, ["boardLight", "boardDark", "piece1", "piece2"]) };
+  if (extra.game) out.game = { ...(out.game || {}), ...pickNumbers(extra.game, ["cooldownMs", "handCooldownMs", "cpuDelayMin", "cpuDelayMax", "seriousCpuInterval"]) };
+  if (extra.labels) out.labels = { ...(out.labels || {}), ...pickStrings(extra.labels, ["kingBlack", "kingWhite"]) };
+  if (extra.rules && isObj(extra.rules)) out.rules = deepMerge(out.rules || {}, extra.rules);
+  if (extra.ui && isObj(extra.ui)) out.ui = deepMerge(out.ui || {}, extra.ui);
   return out;
 }
 
-function deepClone(v) { return JSON.parse(JSON.stringify(v || {})); }
-function deepMergeObjects(a, b) {
+function deepClone(v) {
+  return JSON.parse(JSON.stringify(v || {}));
+}
+
+function deepMerge(a, b) {
   const out = Array.isArray(a) ? a.slice() : { ...a };
   for (const [k, v] of Object.entries(b || {})) {
-    if (isObject(v) && isObject(out[k])) out[k] = deepMergeObjects(out[k], v);
+    if (isObj(v) && isObj(out[k])) out[k] = deepMerge(out[k], v);
     else if (Array.isArray(v)) out[k] = v.slice();
     else out[k] = v;
   }
   return out;
 }
-function pickStringFields(obj, keys) {
+
+function pickStrings(obj, keys) {
   const out = {};
-  for (const key of keys) if (typeof obj?.[key] === "string") out[key] = obj[key];
+  for (const k of keys) {
+    if (typeof obj?.[k] === "string") out[k] = obj[k];
+  }
   return out;
 }
-function pickNumberFields(obj, keys) {
+
+function pickNumbers(obj, keys) {
   const out = {};
-  for (const key of keys) {
-    const n = Number(obj?.[key]);
-    if (Number.isFinite(n)) out[key] = n;
+  for (const k of keys) {
+    const n = Number(obj?.[k]);
+    if (Number.isFinite(n)) out[k] = n;
   }
   return out;
 }
