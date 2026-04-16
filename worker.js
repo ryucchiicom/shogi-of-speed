@@ -13,19 +13,12 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return json(
-        { error: "Method not allowed", message: "Use POST." },
-        405,
-        corsHeaders
-      );
+      return json({ error: "Method not allowed", message: "Use POST." }, 405, corsHeaders);
     }
 
     if (!env.OPENAI_API_KEY) {
       return json(
-        {
-          error: "Missing OPENAI_API_KEY",
-          message: "Set OPENAI_API_KEY in your Worker environment variables.",
-        },
+        { error: "Missing OPENAI_API_KEY", message: "Set OPENAI_API_KEY in your Worker environment variables." },
         500,
         corsHeaders
       );
@@ -35,11 +28,7 @@ export default {
     try {
       body = await request.json();
     } catch {
-      return json(
-        { error: "Invalid JSON", message: "Request body must be JSON." },
-        400,
-        corsHeaders
-      );
+      return json({ error: "Invalid JSON", message: "Request body must be JSON." }, 400, corsHeaders);
     }
 
     const normalized = normalizeRequest(body);
@@ -62,10 +51,7 @@ export default {
 };
 
 function json(data, status = 200, headers = {}) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers,
-  });
+  return new Response(JSON.stringify(data, null, 2), { status, headers });
 }
 
 function normalizeRequest(body) {
@@ -82,19 +68,12 @@ function normalizeRequest(body) {
 
   const basePatch = isObject(body?.basePatch) ? body.basePatch : {};
 
-  return {
-    currentModName,
-    request,
-    currentVersion,
-    existingVersions,
-    basePatch,
-  };
+  return { currentModName, request, currentVersion, existingVersions, basePatch };
 }
 
 function safeString(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
-
 function isObject(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
@@ -103,11 +82,11 @@ function buildSystemPrompt() {
   return [
     "あなたは将棋ゲームのMOD生成AIです。",
     "出力はJSONのみ。",
-    "summary は簡潔な日本語にする。",
-    "summary は 20文字前後を目安にする。",
-    "prompt も簡潔な日本語にする。",
-    "暗号みたいな表現や記号だらけの説明は禁止。",
-    "patch は安全で小さな変更だけにする。",
+    "summary は短い日本語にする。",
+    "prompt は短い日本語にする。",
+    "難しい説明、暗号っぽい表現、JSON断片の羅列は禁止。",
+    "新規MODならシンプルで分かりやすい提案にする。",
+    "既存MODの修正なら、前回より少しだけ改善する。",
     "",
     "返すJSON schema:",
     "{",
@@ -202,14 +181,8 @@ async function generateModWithOpenAI(env, input) {
                     },
                     required: [],
                   },
-                  rules: {
-                    type: "object",
-                    additionalProperties: true,
-                  },
-                  ui: {
-                    type: "object",
-                    additionalProperties: true,
-                  },
+                  rules: { type: "object", additionalProperties: true },
+                  ui: { type: "object", additionalProperties: true },
                 },
                 required: ["theme", "game", "labels", "rules", "ui"],
               },
@@ -229,9 +202,7 @@ async function generateModWithOpenAI(env, input) {
   const data = await response.json();
   const text = extractOutputText(data);
 
-  if (!text) {
-    return buildFallbackResult(input);
-  }
+  if (!text) return buildFallbackResult(input);
 
   let parsed;
   try {
@@ -245,10 +216,7 @@ async function generateModWithOpenAI(env, input) {
 
 function extractOutputText(data) {
   if (!data || typeof data !== "object") return "";
-
-  if (typeof data.output_text === "string" && data.output_text.trim()) {
-    return data.output_text.trim();
-  }
+  if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
 
   const out = Array.isArray(data.output) ? data.output : [];
   for (const item of out) {
@@ -261,7 +229,6 @@ function extractOutputText(data) {
       }
     }
   }
-
   return "";
 }
 
@@ -272,10 +239,10 @@ function sanitizeResult(parsed, input) {
     prompt: safeString(parsed?.prompt || input.request || fallback.prompt),
     patch: mergePatch(fallback.patch, isObject(parsed?.patch) ? parsed.patch : {}),
   };
-
   if (!out.summary.trim()) out.summary = fallback.summary;
   if (!out.prompt.trim()) out.prompt = fallback.prompt;
-
+  if (out.summary.length > 40) out.summary = out.summary.slice(0, 40);
+  if (out.prompt.length > 60) out.prompt = out.prompt.slice(0, 60);
   return out;
 }
 
@@ -309,32 +276,21 @@ function mergePatch(base, extra) {
   return out;
 }
 
-function deepClone(v) {
-  return JSON.parse(JSON.stringify(v || {}));
-}
-
+function deepClone(v) { return JSON.parse(JSON.stringify(v || {})); }
 function deepMergeObjects(a, b) {
   const out = Array.isArray(a) ? a.slice() : { ...a };
   for (const [k, v] of Object.entries(b || {})) {
-    if (isObject(v) && isObject(out[k])) {
-      out[k] = deepMergeObjects(out[k], v);
-    } else if (Array.isArray(v)) {
-      out[k] = v.slice();
-    } else {
-      out[k] = v;
-    }
+    if (isObject(v) && isObject(out[k])) out[k] = deepMergeObjects(out[k], v);
+    else if (Array.isArray(v)) out[k] = v.slice();
+    else out[k] = v;
   }
   return out;
 }
-
 function pickStringFields(obj, keys) {
   const out = {};
-  for (const key of keys) {
-    if (typeof obj?.[key] === "string") out[key] = obj[key];
-  }
+  for (const key of keys) if (typeof obj?.[key] === "string") out[key] = obj[key];
   return out;
 }
-
 function pickNumberFields(obj, keys) {
   const out = {};
   for (const key of keys) {
