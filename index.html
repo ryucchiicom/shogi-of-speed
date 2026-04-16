@@ -520,7 +520,7 @@
 <body>
   <div id="app">
     <div class="panel" id="topbar">
-      <input id="roomInput" maxlength="120" placeholder="ROOM CODE / MOD=..." />
+      <input id="roomInput" maxlength="120" placeholder="GAME ROOM" />
       <button class="primary" id="enterBtn">入室 / 作成</button>
       <button id="shareBtn">コードを共有</button>
       <label class="pill">操作
@@ -573,7 +573,7 @@
 
           <div class="editorField">
             <label>AIに何を作るか説明</label>
-            <textarea id="modPrompt" placeholder="例: 駒のクールダウンを短くして、角を強くして、ダークモードの盤面を少し濃くして..."></textarea>
+            <textarea id="modPrompt" placeholder="例: 盤面を少し暗くして、駒の見た目を落ち着いた感じにして..."></textarea>
           </div>
 
           <div id="modTools">
@@ -694,8 +694,8 @@
       };
 
       const session = {
-        kind: "online",            // online | cpu | cpu_serious | local_dual
-        appMode: "game",           // game | mod
+        kind: "online",
+        appMode: "game",
         renderTimer: null,
         cpuTimer: null,
         cpuBusy: false,
@@ -723,6 +723,18 @@
         fallbackRoyalLabels: randomRoyalLabels()
       };
       localStorage.setItem("shogi_of_speed_pid", state.playerId);
+
+      const ai = {
+        loaded: false,
+        loading: null,
+        stats: {},
+        pending: {},
+        episode: [],
+        lastCpuActionKey: null,
+        games: 0,
+        gameFinalized: false,
+        memoryDoc: null
+      };
 
       function loadModStore(){
         try{
@@ -833,6 +845,18 @@
 
       function normalizeRoomInputText(v){
         return (v || "").trim();
+      }
+
+      function forceUpperRoomInput(){
+        const start = roomInput.selectionStart;
+        const end = roomInput.selectionEnd;
+        const upper = roomInput.value.toUpperCase();
+        if(roomInput.value !== upper){
+          roomInput.value = upper;
+          if(typeof start === "number" && typeof end === "number"){
+            try{ roomInput.setSelectionRange(start, end); }catch{}
+          }
+        }
       }
 
       function parseRoomAndMods(raw){
@@ -1025,6 +1049,7 @@
             }else{
               roomInput.value = `${room} MOD=${next.map(r => r.version ? `${r.name} v${r.version}` : r.name).join(",")}`;
             }
+            forceUpperRoomInput();
             renderModSuggestions();
             roomInput.focus();
           });
@@ -1099,7 +1124,7 @@
         const mod = getCurrentMod();
         versionRow.innerHTML = "";
         if(!mod){
-          versionPreview.textContent = "MODを選ぶと内容がここに出るよ。";
+          versionPreview.textContent = "MODを選ぶと内容がここに出るよ.";
           deleteModBtn.disabled = true;
           return;
         }
@@ -1209,7 +1234,7 @@
         }
 
         return {
-          summary: `「${name}」の内容を説明文から生成したよ。`,
+          summary: `「${name}」の試作MODを作ったよ。`,
           prompt,
           patch: localGeneratePatch(prompt, name)
         };
@@ -1267,6 +1292,7 @@
           mod.name = name;
         }
 
+        setStatus("AIで作成中...");
         const aiOut = await askModAI(name, prompt, mod);
         const newVersion = nextVersionNumber(mod);
         const versionObj = {
@@ -1330,12 +1356,12 @@
         ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("white", t, x, 0));
         add("white", "bishop", 1, 1);
         add("white", "rook", 7, 1);
-        for(let x=0;x<9;x++) add("white", "pawn", x, 2);
+        for(let x = 0; x < 9; x++) add("white", "pawn", x, 2);
 
         ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("black", t, x, 8));
         add("black", "rook", 1, 7);
         add("black", "bishop", 7, 7);
-        for(let x=0;x<9;x++) add("black", "pawn", x, 6);
+        for(let x = 0; x < 9; x++) add("black", "pawn", x, 6);
 
         return pieces;
       }
@@ -1413,10 +1439,7 @@
         return map;
       }
 
-      function pieceAt(pieces, x, y){
-        return pieces.find(p => p.x === x && p.y === y);
-      }
-
+      function pieceAt(pieces, x, y){ return pieces.find(p => p.x === x && p.y === y); }
       function kingPos(pieces, side){
         const k = pieces.find(p => p.side === side && p.type === "king");
         return k ? { x:k.x, y:k.y } : null;
@@ -1427,10 +1450,7 @@
         const out = [];
         for(const m of arr){
           const k = `${m.x},${m.y}`;
-          if(!seen.has(k)){
-            seen.add(k);
-            out.push(m);
-          }
+          if(!seen.has(k)){ seen.add(k); out.push(m); }
         }
         return out;
       }
@@ -1932,9 +1952,7 @@
         }
       }
 
-      function getViewSide(){
-        return state.mySide === "white" ? "white" : "black";
-      }
+      function getViewSide(){ return state.mySide === "white" ? "white" : "black"; }
 
       function boardToScreen(x, y){
         if(session.kind === "local_dual") return { x, y };
@@ -2077,6 +2095,13 @@
         }, delay);
       }
 
+      function cpuThinkDelay(){
+        const p = currentCpuDelay();
+        if(session.kind === "cpu") return p.min + Math.random() * Math.max(0, p.max - p.min);
+        if(session.kind === "cpu_serious") return p.serious;
+        return 0;
+      }
+
       function scheduleCpuThink(delay = null){
         if(!isCpuMode()) return;
         if(session.cpuTimer) return;
@@ -2085,13 +2110,6 @@
           session.cpuTimer = null;
           void cpuThink();
         }, actualDelay);
-      }
-
-      function cpuThinkDelay(){
-        const p = currentCpuDelay();
-        if(session.kind === "cpu") return p.min + Math.random() * Math.max(0, p.max - p.min);
-        if(session.kind === "cpu_serious") return p.serious;
-        return 0;
       }
 
       function updateHandCooldownIndicators(now){
@@ -2110,6 +2128,34 @@
           }else{
             ring.style.opacity = "0";
           }
+        }
+      }
+
+      function recoverCanvas(){
+        try{
+          const rect = boardCanvas.getBoundingClientRect();
+          const dpr = Math.max(1, window.devicePixelRatio || 1);
+          const w = Math.max(1, Math.round(rect.width));
+          const h = Math.max(1, Math.round(rect.height));
+          if(w < 20 || h < 20) return;
+          boardCanvas.width = Math.floor(w * dpr);
+          boardCanvas.height = Math.floor(h * dpr);
+          if(typeof ctx.resetTransform === "function") ctx.resetTransform();
+          else ctx.setTransform(1,0,0,1,0,0);
+          ctx.setTransform(dpr,0,0,dpr,0,0);
+          ctx.clearRect(0,0,w,h);
+          ctx.fillStyle = currentTheme().boardLight;
+          ctx.fillRect(0,0,w,h);
+        }catch{}
+      }
+
+      function safeRenderFrame(){
+        try{
+          renderFrame();
+        }catch(err){
+          console.error("renderFrame failed", err);
+          recoverCanvas();
+          scheduleRender(150);
         }
       }
 
@@ -2179,11 +2225,8 @@
         for(const p of live.pieces){
           const sp = boardToScreen(p.x, p.y);
           const isSel = state.selected?.kind === "piece" && state.selected.id === p.id;
-          try{
-            drawPiece(p, { x:sp.x * cell, y:sp.y * cell, size:cell }, now, isSel);
-          }catch(err){
-            console.error("drawPiece failed", err);
-          }
+          try{ drawPiece(p, { x:sp.x * cell, y:sp.y * cell, size:cell }, now, isSel); }
+          catch(err){ console.error("drawPiece failed", err); }
         }
 
         const bothReady = session.kind !== "online" ? true : isBothPlayersReady(room);
@@ -2490,16 +2533,16 @@
         }
       }
 
-      function captureReward(type){ return Math.max(1.2, cpuValue(type) * 0.02); }
-      function lossPenalty(type){ return -Math.max(1.2, cpuValue(type) * 0.02); }
-      function terminalRewardForWinner(winnerSide){ return winnerSide === "white" ? 90 : -90; }
-
       function cpuValue(type){
         return {
           king:10000, rook:500, bishop:450, gold:320, silver:280, knight:240, lance:220, pawn:120,
           tokin:200, proLance:200, proKnight:200, proSilver:200, horse:650, dragon:700
         }[type] || 100;
       }
+
+      function captureReward(type){ return Math.max(1.2, cpuValue(type) * 0.02); }
+      function lossPenalty(type){ return -Math.max(1.2, cpuValue(type) * 0.02); }
+      function terminalRewardForWinner(winnerSide){ return winnerSide === "white" ? 90 : -90; }
 
       function scoreAction(live, meta, actorSide){
         let score = 0;
@@ -2540,9 +2583,6 @@
 
         if(actorSide === "white" && actionMeta){
           const key = aiActionKey(actionMeta, "white");
-          ai.pending[key] = ai.pending[key] || { sum:0, count:0 };
-          ai.pending[key].sum += 0;
-          ai.pending[key].count += 0;
           for(const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "black")){
             aiReward(key, captureReward(t));
           }
@@ -2558,18 +2598,6 @@
 
         if(nextLive.winner) aiFinishEpisode(nextLive.winner);
       }
-
-      const ai = {
-        loaded: false,
-        loading: null,
-        stats: {},
-        pending: {},
-        episode: [],
-        lastCpuActionKey: null,
-        games: 0,
-        gameFinalized: false,
-        memoryDoc: null
-      };
 
       function aiFinishEpisode(winnerSide){
         if(ai.gameFinalized) return;
@@ -2670,8 +2698,8 @@
 
           const ref = doc(db, "rooms", roomId);
           const snap = await getDoc(ref);
-
           const modSnapshot = serializeMods(selectedMods);
+
           if(!snap.exists()){
             await setDoc(ref, makeOnlineRoomDoc(state.playerId, modSnapshot));
           }else if(modSnapshot.length){
@@ -3141,7 +3169,6 @@
 
         let best = null;
         let bestD = Infinity;
-
         for(const m of legal){
           const s = boardToScreen(m.x, m.y);
           const center = { x:s.x + 0.5, y:s.y + 0.5 };
@@ -3323,12 +3350,6 @@
         state.dragSource = null;
       });
 
-      function renderModAndGameState(){
-        renderModList();
-        renderModEditor();
-        renderSelectedModsPills();
-      }
-
       function renderModList(){
         modListEl.innerHTML = "";
         const list = session.modStore.list.slice().sort((a,b) => (b.versions.length - a.versions.length) || a.name.localeCompare(b.name, "ja"));
@@ -3398,11 +3419,203 @@
         }
       }
 
-      function enterModScreenToggle(){
-        showModScreen(session.appMode !== "mod");
+      function showModScreen(show){
+        session.appMode = show ? "mod" : "game";
+        modScreen.classList.toggle("show", show);
+        if(show){
+          renderModList();
+          renderModEditor();
+          setStatus("MOD制作画面だよ。");
+        }else{
+          setStatus("ゲーム画面に戻ったよ。");
+          scheduleRender(0);
+        }
       }
 
-      enterBtn.addEventListener("click", enterRoom);
+      function escapeHtml(text){
+        return String(text)
+          .replace(/&/g,"&amp;")
+          .replace(/</g,"&lt;")
+          .replace(/>/g,"&gt;")
+          .replace(/"/g,"&quot;")
+          .replace(/'/g,"&#39;");
+      }
+
+      function localGeneratePatch(prompt, name){
+        const text = `${name || ""} ${prompt || ""}`.toLowerCase();
+        const patch = getDefaultPatch();
+
+        if(text.includes("ダーク") || text.includes("dark")){
+          patch.theme.boardDark = "#4f3f2d";
+          patch.theme.boardLight = "#685039";
+        }
+        if(text.includes("cooldown") || text.includes("クール") || text.includes("3秒")){
+          patch.game.cooldownMs = text.includes("1秒") ? 1000 : text.includes("0.5") ? 500 : 3000;
+          patch.game.handCooldownMs = patch.game.cooldownMs;
+        }
+        if(text.includes("cpu")){
+          patch.game.cpuDelayMin = 800;
+          patch.game.cpuDelayMax = 1400;
+        }
+        if(text.includes("serious")){
+          patch.game.seriousCpuInterval = 100;
+        }
+        if(text.includes("王") || text.includes("玉")){
+          patch.labels.kingBlack = "王";
+          patch.labels.kingWhite = "玉";
+        }
+        return patch;
+      }
+
+      async function askModAI(name, prompt, currentMod){
+        const body = {
+          game: "shogi-of-speed",
+          currentModName: name,
+          currentVersion: currentMod?.versions?.length || 0,
+          existingVersions: currentMod?.versions?.map(v => ({ version:v.version, summary:v.summary })) || [],
+          request: prompt,
+          basePatch: getDefaultPatch()
+        };
+
+        if(MOD_AI_ENDPOINT){
+          try{
+            const res = await fetch(MOD_AI_ENDPOINT, {
+              method:"POST",
+              headers:{ "Content-Type":"application/json" },
+              body: JSON.stringify(body)
+            });
+            if(res.ok){
+              const data = await res.json();
+              if(data && typeof data === "object") return data;
+            }
+          }catch{}
+        }
+
+        return {
+          summary: `「${name}」の試作MODを作ったよ。`,
+          prompt,
+          patch: localGeneratePatch(prompt, name)
+        };
+      }
+
+      function createOrUpdateModFromEditor(){
+        const name = normalizeModNameInput(modNameEl.value.trim());
+        const prompt = modPromptEl.value.trim();
+
+        if(!name){
+          setStatus("MOD名を入れてね。");
+          return;
+        }
+
+        let mod = getCurrentMod();
+        if(!mod){
+          mod = createBlankMod();
+          mod.name = name;
+          session.modStore.list.unshift(mod);
+          session.currentModId = mod.id;
+        }else{
+          mod.name = name;
+        }
+
+        const newVersion = nextVersionNumber(mod);
+        const versionObj = {
+          version: newVersion,
+          prompt,
+          summary: `v${newVersion} の保存版。`,
+          patch: localGeneratePatch(prompt, name),
+          createdAt: Date.now()
+        };
+        mod.versions.push(versionObj);
+        session.currentVersion = newVersion;
+        saveCurrentModStore();
+        setStatus(`MOD「${name}」を v${newVersion} として保存したよ。`);
+      }
+
+      async function createAIGeneratedModVersion(){
+        const name = normalizeModNameInput(modNameEl.value.trim());
+        const prompt = modPromptEl.value.trim();
+
+        if(!name){
+          setStatus("MOD名を入れてね。");
+          return;
+        }
+
+        let mod = getCurrentMod();
+        if(!mod){
+          mod = createBlankMod();
+          mod.name = name;
+          session.modStore.list.unshift(mod);
+          session.currentModId = mod.id;
+        }else{
+          mod.name = name;
+        }
+
+        setStatus("AIで作成中...");
+        const aiOut = await askModAI(name, prompt, mod);
+        const newVersion = nextVersionNumber(mod);
+        const versionObj = {
+          version: newVersion,
+          prompt,
+          summary: aiOut.summary || `v${newVersion} を生成したよ。`,
+          patch: aiOut.patch || localGeneratePatch(prompt, name),
+          createdAt: Date.now(),
+          raw: aiOut.raw || ""
+        };
+        mod.versions.push(versionObj);
+        session.currentVersion = newVersion;
+        saveCurrentModStore();
+        setStatus(`AIで「${name}」の v${newVersion} を作ったよ。`);
+      }
+
+      function deleteCurrentMod(){
+        const mod = getCurrentMod();
+        if(!mod) return;
+        if(!confirm(`MOD「${mod.name}」を削除する？`)) return;
+        session.modStore.list = session.modStore.list.filter(m => m.id !== mod.id);
+        session.currentModId = null;
+        session.currentVersion = null;
+        saveCurrentModStore();
+        modNameEl.value = "";
+        modPromptEl.value = "";
+        renderModList();
+        renderModEditor();
+        setStatus(`MOD「${mod.name}」を削除したよ。`);
+      }
+
+      function updateModUIFromInput(){
+        forceUpperRoomInput();
+        renderModSuggestions();
+      }
+
+      function renderInitial(){
+        applyRuntimeTheme();
+        renderModList();
+        renderModEditor();
+        renderSelectedModsPills();
+        updateMePill();
+        updateRematchOverlay();
+        resizeCanvas();
+        scheduleRender(0);
+      }
+
+      function openRoomOrModeFromInput(){
+        const raw = normalizeRoomInputText(roomInput.value);
+        if(isModModeCode(raw)){
+          showModScreen(session.appMode !== "mod");
+          return;
+        }
+        void enterRoom();
+      }
+
+      enterBtn.addEventListener("click", openRoomOrModeFromInput);
+
+      roomInput.addEventListener("input", () => {
+        updateModUIFromInput();
+      });
+
+      roomInput.addEventListener("change", () => {
+        updateModUIFromInput();
+      });
 
       shareBtn.addEventListener("click", async () => {
         const code = normalizeRoomInputText(roomInput.value || state.roomId || (session.kind === "cpu" ? "CPU" : session.kind === "cpu_serious" ? "SERIOUS CPU" : session.kind === "local_dual" ? "1 SMARTPHONE" : ""));
@@ -3426,14 +3639,6 @@
         }
       });
 
-      roomInput.addEventListener("keydown", (e) => {
-        if(e.key === "Enter") enterBtn.click();
-      });
-
-      roomInput.addEventListener("input", () => {
-        renderModSuggestions();
-      });
-
       modeSelect.addEventListener("change", () => {
         localStorage.setItem("shogi_of_speed_mode", modeSelect.value);
         state.selected = null;
@@ -3446,7 +3651,6 @@
       rematchNo.addEventListener("click", () => voteRematch(false));
 
       backFromMod.addEventListener("click", () => showModScreen(false));
-
       newModBtn.addEventListener("click", () => {
         const mod = createBlankMod();
         mod.name = "NEW MOD";
@@ -3469,53 +3673,6 @@
 
       window.addEventListener("resize", resizeCanvas);
 
-      function applyModCodeFromRoomInputIfNeeded(){
-        const raw = normalizeRoomInputText(roomInput.value);
-        if(isModModeCode(raw)){
-          showModScreen(session.appMode !== "mod");
-          return true;
-        }
-        return false;
-      }
-
-      roomInput.addEventListener("input", renderModSuggestions);
-
-      function renderInitial(){
-        applyRuntimeTheme();
-        renderModAndGameState();
-        updateMePill();
-        updateRematchOverlay();
-        resizeCanvas();
-        scheduleRender(0);
-      }
-
-      function openRoomOrModeFromInput(){
-        const raw = normalizeRoomInputText(roomInput.value);
-        if(isModModeCode(raw)){
-          enterModScreenToggle();
-          return;
-        }
-        void enterRoom();
-      }
-
-      enterBtn.removeEventListener?.("click", openRoomOrModeFromInput);
-      enterBtn.addEventListener("click", openRoomOrModeFromInput);
-
-      function syncRoomModsFromInput(){
-        const { room, modSpec } = parseRoomAndMods(roomInput.value);
-        if(!modSpec){
-          session.activeMods = [];
-          renderSelectedModsPills();
-          applyRuntimeTheme();
-          return;
-        }
-        session.activeMods = buildSelectedModsFromRefs(modSpec);
-        renderSelectedModsPills();
-        applyRuntimeTheme();
-      }
-
-      roomInput.addEventListener("change", syncRoomModsFromInput);
-
       function modStoreChanged(){
         saveModStore();
         renderModList();
@@ -3523,62 +3680,18 @@
         renderSelectedModsPills();
       }
 
-      function ensureRoomActiveModsAreRendered(){
-        renderSelectedModsPills();
-        applyRuntimeTheme();
-      }
-
-      syncRoomModsFromInput();
-      renderModAndGameState();
-      updateMePill();
-      updateRematchOverlay();
-      void ensureAIMemoryLoaded();
-      renderInitial();
-
-      // One safe, single recoverCanvas only.
-      // All drawing failures now go through safeRenderFrame().
-
-      function updatePresenceAndCpu(){
-        if(isCpuMode()){
-          if(state.roomData && !state.roomData.state?.winner){
-            scheduleCpuThink(cpuThinkDelay());
-          }
-        }
-      }
-
-      function connectModAwareRoom(roomId){
-        return connectOnlineRoom(roomId);
-      }
-
-      // keep a small loop alive for animation/cooldowns
       function idleTick(){
         scheduleRender();
-        if(isCpuMode()) updatePresenceAndCpu();
+        if(isCpuMode()) {
+          if(state.roomData && !state.roomData.state?.winner) scheduleCpuThink(cpuThinkDelay());
+        }
         setTimeout(idleTick, 250);
       }
-      setTimeout(idleTick, 250);
 
-      // ---------- public-ish helpers ----------
-      function renderModAndGameState(){
-        renderSelectedModsPills();
-        renderModList();
-        renderModEditor();
-      }
-
-      // ---------- final room join ----------
-      async function openFromInput(){
-        const raw = normalizeRoomInputText(roomInput.value);
-        if(isModModeCode(raw)){
-          enterModScreenToggle();
-          return;
-        }
-        await enterRoom();
-      }
-
-      enterBtn.onclick = openFromInput;
-
-      // ---------- initial status ----------
+      void ensureAIMemoryLoaded();
+      renderInitial();
       setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+      setTimeout(idleTick, 250);
     })();
   </script>
 </body>
