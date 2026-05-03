@@ -82,7 +82,7 @@
     }
 
     #roomInput{
-      width:min(100%, 340px);
+      width:min(100%, 320px);
       padding:9px 10px;
       border-radius:11px;
       border:1px solid var(--line);
@@ -573,7 +573,7 @@
 
           <div class="editorField">
             <label>AIに何を作るか説明</label>
-            <textarea id="modPrompt" placeholder="例: 盤面を少し暗くして、駒の見た目を落ち着いた感じにして..."></textarea>
+            <textarea id="modPrompt" placeholder="例: 駒のクールダウンを短くして、角を強くして、ダークモードの盤面を少し濃くして..."></textarea>
           </div>
 
           <div id="modTools">
@@ -632,6 +632,8 @@
       try { getAnalytics(app); } catch {}
       const db = getFirestore(app);
 
+      const MOD_AI_ENDPOINT = localStorage.getItem("MOD_AI_ENDPOINT") || "";
+
       const boardCanvas = document.getElementById("board");
       const ctx = boardCanvas.getContext("2d");
       const boardWrap = document.getElementById("boardWrap");
@@ -668,8 +670,6 @@
       const PROMOTION_ZONE = { black: [0,1,2], white: [6,7,8] };
       const pieceOrder = ["pawn","lance","knight","silver","gold","bishop","rook"];
       const STALE_MS = 30000;
-      const COOLDOWN_MS_DEFAULT = 3000;
-      const COUNTDOWN_MS = 3000;
 
       const TYPE_LABEL = {
         pawn:"歩", lance:"香", knight:"桂", silver:"銀", gold:"金",
@@ -679,21 +679,11 @@
       };
 
       const PROMOTED_LABEL = {
-        pawn:"と",
-        lance:"成香",
-        knight:"成桂",
-        silver:"成銀",
-        bishop:"馬",
-        rook:"龍"
+        pawn:"と", lance:"成香", knight:"成桂", silver:"成銀", bishop:"馬", rook:"龍"
       };
 
       const PROMOTED_MOVE = {
-        pawn:"tokin",
-        lance:"proLance",
-        knight:"proKnight",
-        silver:"proSilver",
-        bishop:"horse",
-        rook:"dragon"
+        pawn:"tokin", lance:"proLance", knight:"proKnight", silver:"proSilver", bishop:"horse", rook:"dragon"
       };
 
       const BASE_THEME = {
@@ -703,12 +693,9 @@
         piece2: getComputedStyle(document.documentElement).getPropertyValue("--piece-fill-2").trim()
       };
 
-      const DEFAULT_AI_ENDPOINT = "https://YOUR-WORKER-URL.example.workers.dev/";
-      const MOD_AI_ENDPOINT = localStorage.getItem("MOD_AI_ENDPOINT") || DEFAULT_AI_ENDPOINT;
-
       const session = {
-        kind: "online",
-        appMode: "game",
+        kind: "online",            // online | cpu | cpu_serious | local_dual
+        appMode: "game",           // game | mod
         renderTimer: null,
         cpuTimer: null,
         cpuBusy: false,
@@ -736,18 +723,6 @@
         fallbackRoyalLabels: randomRoyalLabels()
       };
       localStorage.setItem("shogi_of_speed_pid", state.playerId);
-
-      const ai = {
-        loaded: false,
-        loading: null,
-        stats: {},
-        pending: {},
-        episode: [],
-        lastCpuActionKey: null,
-        games: 0,
-        gameFinalized: false,
-        memoryDoc: null
-      };
 
       function loadModStore(){
         try{
@@ -782,8 +757,8 @@
         return {
           theme: {},
           game: {
-            cooldownMs: COOLDOWN_MS_DEFAULT,
-            handCooldownMs: COOLDOWN_MS_DEFAULT,
+            cooldownMs: 3000,
+            handCooldownMs: 3000,
             cpuDelayMin: 1000,
             cpuDelayMax: 1500,
             seriousCpuInterval: 100
@@ -823,11 +798,11 @@
       }
 
       function currentCooldownMs(){
-        return Number(currentGamePatch().cooldownMs || COOLDOWN_MS_DEFAULT);
+        return Number(currentGamePatch().cooldownMs || 3000);
       }
 
       function currentHandCooldownMs(){
-        return Number(currentGamePatch().handCooldownMs || COOLDOWN_MS_DEFAULT);
+        return Number(currentGamePatch().handCooldownMs || 3000);
       }
 
       function currentCpuDelay(){
@@ -860,18 +835,6 @@
         return (v || "").trim();
       }
 
-      function forceUpperRoomInput(){
-        const start = roomInput.selectionStart;
-        const end = roomInput.selectionEnd;
-        const upper = roomInput.value.toUpperCase();
-        if(roomInput.value !== upper){
-          roomInput.value = upper;
-          if(typeof start === "number" && typeof end === "number"){
-            try{ roomInput.setSelectionRange(start, end); }catch{}
-          }
-        }
-      }
-
       function parseRoomAndMods(raw){
         const text = normalizeRoomInputText(raw);
         const match = text.match(/^(.*?)(?:\s+MOD=(.*))?$/i);
@@ -886,7 +849,7 @@
         return spec.split(",").map(s => s.trim()).filter(Boolean).map(entry => {
           const m = entry.match(/^(.+?)(?:\s+v(\d+))?$/i);
           return {
-            name: (m?.[1] || entry).trim().toUpperCase(),
+            name: (m?.[1] || entry).trim(),
             version: m?.[2] ? Number(m[2]) : null
           };
         });
@@ -1012,7 +975,6 @@
               entries.push({ name: mod.name, version: mod.version });
             }
             roomInput.value = room ? `${room} MOD=${entries.map(e => e.version ? `${e.name} v${e.version}` : e.name).join(",")}` : `MOD=${entries.map(e => e.version ? `${e.name} v${e.version}` : e.name).join(",")}`;
-            forceUpperRoomInput();
             renderModSuggestions();
           });
           selectedModsEl.appendChild(pill);
@@ -1063,7 +1025,6 @@
             }else{
               roomInput.value = `${room} MOD=${next.map(r => r.version ? `${r.name} v${r.version}` : r.name).join(",")}`;
             }
-            forceUpperRoomInput();
             renderModSuggestions();
             roomInput.focus();
           });
@@ -1225,33 +1186,31 @@
 
       async function askModAI(name, prompt, currentMod){
         const body = {
+          game: "shogi-of-speed",
           currentModName: name,
-          request: prompt,
           currentVersion: currentMod?.versions?.length || 0,
           existingVersions: currentMod?.versions?.map(v => ({ version:v.version, summary:v.summary })) || [],
+          request: prompt,
           basePatch: getDefaultPatch()
         };
 
-        if(MOD_AI_ENDPOINT && !MOD_AI_ENDPOINT.includes("YOUR-WORKER-URL")){
-          const res = await fetch(MOD_AI_ENDPOINT, {
-            method:"POST",
-            headers:{ "Content-Type":"application/json" },
-            body: JSON.stringify(body)
-          });
-          if(res.ok){
-            const data = await res.json();
-            return {
-              summary: String(data?.summary || "試作MOD"),
-              prompt: String(data?.prompt || prompt || ""),
-              patch: data?.patch || body.basePatch
-            };
-          }
-          throw new Error(`AI endpoint error: ${res.status}`);
+        if(MOD_AI_ENDPOINT){
+          try{
+            const res = await fetch(MOD_AI_ENDPOINT, {
+              method:"POST",
+              headers:{ "Content-Type":"application/json" },
+              body: JSON.stringify(body)
+            });
+            if(res.ok){
+              const data = await res.json();
+              if(data && typeof data === "object") return data;
+            }
+          }catch{}
         }
 
         return {
-          summary: `試作MOD「${name}」`,
-          prompt: prompt || "",
+          summary: `「${name}」の内容を説明文から生成したよ。`,
+          prompt,
           patch: localGeneratePatch(prompt, name)
         };
       }
@@ -1308,25 +1267,20 @@
           mod.name = name;
         }
 
-        setStatus("AIで作成中...");
-        try{
-          const aiOut = await askModAI(name, prompt, mod);
-          const newVersion = nextVersionNumber(mod);
-          const versionObj = {
-            version: newVersion,
-            prompt: aiOut.prompt || prompt,
-            summary: aiOut.summary || `v${newVersion} を生成したよ。`,
-            patch: aiOut.patch || localGeneratePatch(prompt, name),
-            createdAt: Date.now(),
-            raw: aiOut.raw || ""
-          };
-          mod.versions.push(versionObj);
-          session.currentVersion = newVersion;
-          saveCurrentModStore();
-          setStatus(`AIで「${name}」の v${newVersion} を作ったよ。`);
-        }catch(err){
-          setStatus(`AIで作れなかった: ${err.message}`);
-        }
+        const aiOut = await askModAI(name, prompt, mod);
+        const newVersion = nextVersionNumber(mod);
+        const versionObj = {
+          version: newVersion,
+          prompt,
+          summary: aiOut.summary || `v${newVersion} を生成したよ。`,
+          patch: aiOut.patch || localGeneratePatch(prompt, name),
+          createdAt: Date.now(),
+          raw: aiOut.raw || ""
+        };
+        mod.versions.push(versionObj);
+        session.currentVersion = newVersion;
+        saveCurrentModStore();
+        setStatus(`AIで「${name}」の v${newVersion} を作ったよ。`);
       }
 
       function deleteCurrentMod(){
@@ -1376,12 +1330,12 @@
         ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("white", t, x, 0));
         add("white", "bishop", 1, 1);
         add("white", "rook", 7, 1);
-        for(let x = 0; x < 9; x++) add("white", "pawn", x, 2);
+        for(let x=0;x<9;x++) add("white", "pawn", x, 2);
 
         ["lance","knight","silver","gold","king","gold","silver","knight","lance"].forEach((t, x) => add("black", t, x, 8));
         add("black", "rook", 1, 7);
         add("black", "bishop", 7, 7);
-        for(let x = 0; x < 9; x++) add("black", "pawn", x, 6);
+        for(let x=0;x<9;x++) add("black", "pawn", x, 6);
 
         return pieces;
       }
@@ -1459,7 +1413,10 @@
         return map;
       }
 
-      function pieceAt(pieces, x, y){ return pieces.find(p => p.x === x && p.y === y); }
+      function pieceAt(pieces, x, y){
+        return pieces.find(p => p.x === x && p.y === y);
+      }
+
       function kingPos(pieces, side){
         const k = pieces.find(p => p.side === side && p.type === "king");
         return k ? { x:k.x, y:k.y } : null;
@@ -1470,7 +1427,10 @@
         const out = [];
         for(const m of arr){
           const k = `${m.x},${m.y}`;
-          if(!seen.has(k)){ seen.add(k); out.push(m); }
+          if(!seen.has(k)){
+            seen.add(k);
+            out.push(m);
+          }
         }
         return out;
       }
@@ -1972,7 +1932,9 @@
         }
       }
 
-      function getViewSide(){ return state.mySide === "white" ? "white" : "black"; }
+      function getViewSide(){
+        return state.mySide === "white" ? "white" : "black";
+      }
 
       function boardToScreen(x, y){
         if(session.kind === "local_dual") return { x, y };
@@ -2115,13 +2077,6 @@
         }, delay);
       }
 
-      function cpuThinkDelay(){
-        const p = currentCpuDelay();
-        if(session.kind === "cpu") return p.min + Math.random() * Math.max(0, p.max - p.min);
-        if(session.kind === "cpu_serious") return p.serious;
-        return 0;
-      }
-
       function scheduleCpuThink(delay = null){
         if(!isCpuMode()) return;
         if(session.cpuTimer) return;
@@ -2130,6 +2085,13 @@
           session.cpuTimer = null;
           void cpuThink();
         }, actualDelay);
+      }
+
+      function cpuThinkDelay(){
+        const p = currentCpuDelay();
+        if(session.kind === "cpu") return p.min + Math.random() * Math.max(0, p.max - p.min);
+        if(session.kind === "cpu_serious") return p.serious;
+        return 0;
       }
 
       function updateHandCooldownIndicators(now){
@@ -2148,16 +2110,6 @@
           }else{
             ring.style.opacity = "0";
           }
-        }
-      }
-
-      function safeRenderFrameGuard(){
-        try{
-          renderFrame();
-        }catch(err){
-          console.error("renderFrame failed", err);
-          recoverCanvas();
-          scheduleRender(150);
         }
       }
 
@@ -2430,10 +2382,6 @@
         const stat = ai.stats[key] || (ai.stats[key] = { sum:0, count:0 });
         stat.sum += reward;
         stat.count += 1;
-
-        const pend = ai.pending[key] || (ai.pending[key] = { sum:0, count:0 });
-        pend.sum += reward;
-        pend.count += 1;
       }
 
       function normalizeStatsBlob(blob){
@@ -2542,16 +2490,16 @@
         }
       }
 
+      function captureReward(type){ return Math.max(1.2, cpuValue(type) * 0.02); }
+      function lossPenalty(type){ return -Math.max(1.2, cpuValue(type) * 0.02); }
+      function terminalRewardForWinner(winnerSide){ return winnerSide === "white" ? 90 : -90; }
+
       function cpuValue(type){
         return {
           king:10000, rook:500, bishop:450, gold:320, silver:280, knight:240, lance:220, pawn:120,
           tokin:200, proLance:200, proKnight:200, proSilver:200, horse:650, dragon:700
         }[type] || 100;
       }
-
-      function captureReward(type){ return Math.max(1.2, cpuValue(type) * 0.02); }
-      function lossPenalty(type){ return -Math.max(1.2, cpuValue(type) * 0.02); }
-      function terminalRewardForWinner(winnerSide){ return winnerSide === "white" ? 90 : -90; }
 
       function scoreAction(live, meta, actorSide){
         let score = 0;
@@ -2592,6 +2540,9 @@
 
         if(actorSide === "white" && actionMeta){
           const key = aiActionKey(actionMeta, "white");
+          ai.pending[key] = ai.pending[key] || { sum:0, count:0 };
+          ai.pending[key].sum += 0;
+          ai.pending[key].count += 0;
           for(const t of lostPieceTypes(prevLive.pieces, nextLive.pieces, "black")){
             aiReward(key, captureReward(t));
           }
@@ -2607,6 +2558,18 @@
 
         if(nextLive.winner) aiFinishEpisode(nextLive.winner);
       }
+
+      const ai = {
+        loaded: false,
+        loading: null,
+        stats: {},
+        pending: {},
+        episode: [],
+        lastCpuActionKey: null,
+        games: 0,
+        gameFinalized: false,
+        memoryDoc: null
+      };
 
       function aiFinishEpisode(winnerSide){
         if(ai.gameFinalized) return;
@@ -2707,8 +2670,8 @@
 
           const ref = doc(db, "rooms", roomId);
           const snap = await getDoc(ref);
-          const modSnapshot = serializeMods(selectedMods);
 
+          const modSnapshot = serializeMods(selectedMods);
           if(!snap.exists()){
             await setDoc(ref, makeOnlineRoomDoc(state.playerId, modSnapshot));
           }else if(modSnapshot.length){
@@ -2807,7 +2770,7 @@
 
           const bothReady = !!players.black && !!players.white;
           if(bothReady && !matchStartAt && !roomState.winner){
-            matchStartAt = now + COUNTDOWN_MS;
+            matchStartAt = now + 3000;
           }
 
           tx.update(state.roomRef, {
@@ -3037,7 +3000,7 @@
             tx.update(state.roomRef, {
               state: freshState(royalLabels),
               lastWinnerSide: historyWinner,
-              matchStartAt: now + COUNTDOWN_MS,
+              matchStartAt: now + 3000,
               rematchVotes: {},
               forceHomeAt: null,
               updatedAt: now
@@ -3178,6 +3141,7 @@
 
         let best = null;
         let bestD = Infinity;
+
         for(const m of legal){
           const s = boardToScreen(m.x, m.y);
           const center = { x:s.x + 0.5, y:s.y + 0.5 };
@@ -3359,83 +3323,86 @@
         state.dragSource = null;
       });
 
-      enterBtn.addEventListener("click", async () => {
-        const raw = normalizeRoomInputText(roomInput.value);
-        forceUpperRoomInput();
+      function renderModAndGameState(){
+        renderModList();
+        renderModEditor();
+        renderSelectedModsPills();
+      }
 
-        if(isModModeCode(raw)){
-          showModScreen(session.appMode !== "mod");
+      function renderModList(){
+        modListEl.innerHTML = "";
+        const list = session.modStore.list.slice().sort((a,b) => (b.versions.length - a.versions.length) || a.name.localeCompare(b.name, "ja"));
+        if(!list.length){
+          const empty = document.createElement("div");
+          empty.className = "modCard";
+          empty.innerHTML = `<div class="modTitle">まだMODがないよ</div><div class="modMeta">+新規MODから作ってね。</div>`;
+          modListEl.appendChild(empty);
           return;
         }
 
-        const { room, modSpec } = parseRoomAndMods(raw);
-        const mode = specialModeFromCode(room);
+        for(const mod of list){
+          const card = document.createElement("div");
+          card.className = "modCard" + (mod.id === session.currentModId ? " selected" : "");
+          const latest = mod.versions[mod.versions.length - 1];
+          card.innerHTML = `
+            <div class="modTitle">
+              <span>${escapeHtml(mod.name || "(名前なし)")}</span>
+              <span class="badge">v${latest?.version || 0}</span>
+            </div>
+            <div class="modMeta">${escapeHtml(latest?.summary || "まだ説明がないよ。")}</div>
+          `;
+          card.addEventListener("click", () => selectModForEdit(mod.id));
+          modListEl.appendChild(card);
+        }
+      }
 
-        if(mode === "cpu" || mode === "cpu_serious" || mode === "local_dual"){
-          session.kind = mode;
-          setLocalRoom(mode);
+      function renderModEditor(){
+        const mod = getCurrentMod();
+        versionRow.innerHTML = "";
+
+        if(!mod){
+          versionPreview.textContent = "MODを選ぶと内容がここに出るよ。";
+          deleteModBtn.disabled = true;
           return;
         }
 
-        session.kind = "online";
-        if(state.unsub){
-          state.unsub();
-          state.unsub = null;
+        deleteModBtn.disabled = false;
+        modNameEl.value = mod.name || "";
+        const cur = getCurrentVersionObj(mod);
+
+        for(const v of mod.versions){
+          const btn = document.createElement("button");
+          btn.className = "verBtn" + (v.version === session.currentVersion ? " selected" : "");
+          btn.textContent = `v${v.version}`;
+          btn.addEventListener("click", () => {
+            session.currentVersion = v.version;
+            modPromptEl.value = v.prompt || "";
+            renderModEditor();
+          });
+          versionRow.appendChild(btn);
         }
-        if(session.cpuTimer) clearTimeout(session.cpuTimer);
-        if(session.renderTimer) clearTimeout(session.renderTimer);
-        session.cpuTimer = null;
-        session.renderTimer = null;
-        session.cpuBusy = false;
 
-        try{
-          let roomId = room || randRoomId();
-          if(!room){
-            roomInput.value = roomId;
-          }
-
-          const selectedMods = buildSelectedModsFromRefs(modSpec);
-          session.activeMods = selectedMods;
-          renderSelectedModsPills();
-          applyRuntimeTheme();
-
-          const ref = doc(db, "rooms", roomId);
-          const snap = await getDoc(ref);
-          const modSnapshot = serializeMods(selectedMods);
-
-          if(!snap.exists()){
-            await setDoc(ref, makeOnlineRoomDoc(state.playerId, modSnapshot));
-          }else if(modSnapshot.length){
-            await runTransaction(db, async (tx) => {
-              const r = await tx.get(ref);
-              if(!r.exists()) return;
-              tx.update(ref, {
-                modSnapshot,
-                updatedAt: Date.now()
-              });
-            });
-          }
-
-          await connectOnlineRoom(roomId);
-        }catch(err){
-          setStatus(`入室に失敗した: ${err.message}`);
+        if(cur){
+          versionPreview.textContent = [
+            `MOD名: ${mod.name}`,
+            `バージョン: v${cur.version}`,
+            `説明: ${cur.summary || "(なし)"}`,
+            "",
+            `テーマ変更: ${JSON.stringify(cur.patch?.theme || {}, null, 2)}`,
+            `ゲーム設定: ${JSON.stringify(cur.patch?.game || {}, null, 2)}`,
+            `表示設定: ${JSON.stringify(cur.patch?.ui || {}, null, 2)}`,
+            `ルール設定: ${JSON.stringify(cur.patch?.rules || {}, null, 2)}`
+          ].join("\n");
+        }else{
+          versionPreview.textContent = "このMODにはまだバージョンがないよ。AIで作るか保存してね。";
         }
-      });
+      }
 
-      roomInput.addEventListener("input", () => {
-        forceUpperRoomInput();
-        renderModSuggestions();
+      function enterModScreenToggle(){
+        showModScreen(session.appMode !== "mod");
+      }
 
-        const raw = roomInput.value.trim().toUpperCase();
-        if(raw === "MOD" || raw === "MODS"){
-          showModScreen(session.appMode !== "mod");
-        }
-      });
-
-      roomInput.addEventListener("change", () => {
-        forceUpperRoomInput();
-        renderModSuggestions();
-      });
+      enterBtn.addEventListener("click", enterRoom);
 
       shareBtn.addEventListener("click", async () => {
         const code = normalizeRoomInputText(roomInput.value || state.roomId || (session.kind === "cpu" ? "CPU" : session.kind === "cpu_serious" ? "SERIOUS CPU" : session.kind === "local_dual" ? "1 SMARTPHONE" : ""));
@@ -3457,6 +3424,14 @@
             setStatus(`共有できなかった: ${err.message}`);
           }
         }
+      });
+
+      roomInput.addEventListener("keydown", (e) => {
+        if(e.key === "Enter") enterBtn.click();
+      });
+
+      roomInput.addEventListener("input", () => {
+        renderModSuggestions();
       });
 
       modeSelect.addEventListener("change", () => {
@@ -3494,11 +3469,20 @@
 
       window.addEventListener("resize", resizeCanvas);
 
+      function applyModCodeFromRoomInputIfNeeded(){
+        const raw = normalizeRoomInputText(roomInput.value);
+        if(isModModeCode(raw)){
+          showModScreen(session.appMode !== "mod");
+          return true;
+        }
+        return false;
+      }
+
+      roomInput.addEventListener("input", renderModSuggestions);
+
       function renderInitial(){
         applyRuntimeTheme();
-        renderModList();
-        renderModEditor();
-        renderSelectedModsPills();
+        renderModAndGameState();
         updateMePill();
         updateRematchOverlay();
         resizeCanvas();
@@ -3508,26 +3492,93 @@
       function openRoomOrModeFromInput(){
         const raw = normalizeRoomInputText(roomInput.value);
         if(isModModeCode(raw)){
-          showModScreen(session.appMode !== "mod");
+          enterModScreenToggle();
           return;
         }
         void enterRoom();
       }
 
-      function idleTick(){
-        scheduleRender();
-        if(isCpuMode() && state.roomData && !state.roomData.state?.winner){
-          scheduleCpuThink(cpuThinkDelay());
+      enterBtn.removeEventListener?.("click", openRoomOrModeFromInput);
+      enterBtn.addEventListener("click", openRoomOrModeFromInput);
+
+      function syncRoomModsFromInput(){
+        const { room, modSpec } = parseRoomAndMods(roomInput.value);
+        if(!modSpec){
+          session.activeMods = [];
+          renderSelectedModsPills();
+          applyRuntimeTheme();
+          return;
         }
-        setTimeout(idleTick, 250);
+        session.activeMods = buildSelectedModsFromRefs(modSpec);
+        renderSelectedModsPills();
+        applyRuntimeTheme();
       }
 
+      roomInput.addEventListener("change", syncRoomModsFromInput);
+
+      function modStoreChanged(){
+        saveModStore();
+        renderModList();
+        renderModEditor();
+        renderSelectedModsPills();
+      }
+
+      function ensureRoomActiveModsAreRendered(){
+        renderSelectedModsPills();
+        applyRuntimeTheme();
+      }
+
+      syncRoomModsFromInput();
+      renderModAndGameState();
+      updateMePill();
+      updateRematchOverlay();
       void ensureAIMemoryLoaded();
       renderInitial();
-      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
+
+      // One safe, single recoverCanvas only.
+      // All drawing failures now go through safeRenderFrame().
+
+      function updatePresenceAndCpu(){
+        if(isCpuMode()){
+          if(state.roomData && !state.roomData.state?.winner){
+            scheduleCpuThink(cpuThinkDelay());
+          }
+        }
+      }
+
+      function connectModAwareRoom(roomId){
+        return connectOnlineRoom(roomId);
+      }
+
+      // keep a small loop alive for animation/cooldowns
+      function idleTick(){
+        scheduleRender();
+        if(isCpuMode()) updatePresenceAndCpu();
+        setTimeout(idleTick, 250);
+      }
       setTimeout(idleTick, 250);
-      enterBtn.removeEventListener("click", openRoomOrModeFromInput);
-      enterBtn.addEventListener("click", openRoomOrModeFromInput);
+
+      // ---------- public-ish helpers ----------
+      function renderModAndGameState(){
+        renderSelectedModsPills();
+        renderModList();
+        renderModEditor();
+      }
+
+      // ---------- final room join ----------
+      async function openFromInput(){
+        const raw = normalizeRoomInputText(roomInput.value);
+        if(isModModeCode(raw)){
+          enterModScreenToggle();
+          return;
+        }
+        await enterRoom();
+      }
+
+      enterBtn.onclick = openFromInput;
+
+      // ---------- initial status ----------
+      setStatus("ルームコードを入れて「入室 / 作成」を押してね。");
     })();
   </script>
 </body>
